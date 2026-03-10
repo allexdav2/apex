@@ -1,0 +1,43 @@
+[workspace]
+resolver = "2"
+
+members = [
+    "crates/apex-core",
+    "crates/apex-coverage",
+    "crates/apex-instrument",
+    "crates/apex-lang",
+    "crates/apex-sandbox",
+    "crates/apex-agent",
+    "crates/apex-synth",
+    "crates/apex-symbolic",
+    "crates/apex-concolic",
+    "crates/apex-fuzz",
+    "crates/apex-detect",
+    "crates/apex-rpc",
+    "crates/apex-cli",
+    "crates/apex-mir",
+    "crates/apex-index",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+authors = ["AD <allexdav@gmail.com>"]
+license = "MIT"
+repository = "https://github.com/allexdav2/apex"
+
+[workspace.dependencies]
+tokio = { version = "1", features = ["full"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+thiserror = "1"
+anyhow = "1"
+tracing = "0.1"
+bytes = "1"
+uuid = { version = "1", features = ["v4", "serde"] }
+mockall = "0.13"
+proptest = "1"
+
+[profile.release]
+lto = true
+codegen-units = 1

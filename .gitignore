@@ -1,0 +1,48 @@
+# Rust build artifacts
+/target/
+**/.apex_coverage
+**/.apex_coverage.json
+**/.apex_coverage.lcov
+**/.apex_coverage_js/
+**/.nyc_output/
+**/.apex_tracer.py
+**/.apex_trace.json
+*.profraw
+*.profdata
+
+# Generated test probes
+**/apex_probe_*.rs
+**/apex_probe_*.test.js
+
+# Firecracker runtime files
+*.sock
+snapshot.bin
+snapshot.mem
+
+# IDE / OS
+.DS_Store
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Environment
+.env
+.env.local
+
+# Claude local settings
+.claude/settings.local.json
+
+# Mutation testing output
+mutants.out/
+mutants.out.old/
+
+# Python cache
+__pycache__/
+*.pyc
+
+# Superpowers plugin cache
+.superpowers/
+
+# Fuzz corpus/artifacts
+fuzz/

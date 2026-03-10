@@ -1,0 +1,1030 @@
+//! Firecracker microVM sandbox.
+//!
+//! Drives Firecracker via its REST API on a Unix domain socket, using
+//! pre-built rootfs images (one per language) stored in `~/.apex/rootfs/`.
+//!
+//! Each VM is snapshotted after the target is loaded. `run()` restores the
+//! snapshot, injects the seed via virtio-vsock, collects the coverage bitmap,
+//! then suspends the VM again — boot latency is paid only once per session.
+//!
+//! # Vsock frame protocol
+//!
+//! ```text
+//! Send: [4B len (big-endian)][seed data]
+//! Recv: [4B bitmap_len][bitmap][4B exit_code][4B stdout_len][stdout][4B stderr_len][stderr]
+//! ```
+//!
+//! # Feature flags
+//!
+//! When compiled with `--features firecracker`, the `FcClient` uses `hyper`
+//! for real HTTP/1.1 over Unix sockets and `tokio-vsock` for vsock transport.
+//! Without the feature, all API calls return stub (success) results.
+//!
+//! # Prerequisites (production)
+//! - Firecracker binary >= 1.4 in PATH or `/usr/local/bin/firecracker`
+//! - Pre-built rootfs images: `~/.apex/rootfs/<language>/rootfs.ext4`
+//! - KVM device access: `/dev/kvm` readable by current user
+//! - `jailer` binary for production isolation
+
+use apex_core::{
+    error::{ApexError, Result},
+    traits::Sandbox,
+    types::{BranchId, ExecutionResult, ExecutionStatus, InputSeed, Language, SnapshotId},
+};
+use apex_coverage::CoverageOracle;
+use async_trait::async_trait;
+use std::{
+    path::{Path, PathBuf},
+    sync::{Arc, Mutex},
+    time::Instant,
+};
+#[cfg(feature = "firecracker")]
+use tracing::warn;
+use tracing::{debug, info};
+
+// ---------------------------------------------------------------------------
+// Vsock frame serialization / deserialization
+// ---------------------------------------------------------------------------
+
+/// Encode a seed as a vsock frame: `[4B len (big-endian)][data]`.
+pub fn encode_vsock_frame(seed_data: &[u8]) -> Vec<u8> {
+    let len = seed_data.len() as u32;
+    let mut frame = Vec::with_capacity(4 + seed_data.len());
+    frame.extend_from_slice(&len.to_be_bytes());
+    frame.extend_from_slice(seed_data);
+    frame
+}
+
+/// Result of decoding a vsock response frame.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct VsockResponse {
+    pub bitmap: Vec<u8>,
+    pub exit_code: u32,
+    pub stdout: Vec<u8>,
+    pub stderr: Vec<u8>,
+}
+
+/// Decode a vsock response frame.
+///
+/// Format: `[4B bitmap_len][bitmap][4B exit_code][4B stdout_len][stdout][4B stderr_len][stderr]`
+///
+/// Returns `Err` if the buffer is too short or the lengths are inconsistent.
+pub fn decode_vsock_response(data: &[u8]) -> Result<VsockResponse> {
+    let mut pos = 0usize;
+
+    let read_u32 = |data: &[u8], pos: &mut usize| -> Result<u32> {
+        if *pos + 4 > data.len() {
+            return Err(ApexError::Sandbox(
+                "vsock frame: unexpected EOF reading u32".into(),
+            ));
+        }
+        let val = u32::from_be_bytes([data[*pos], data[*pos + 1], data[*pos + 2], data[*pos + 3]]);
+        *pos += 4;
+        Ok(val)
+    };
+
+    let read_bytes = |data: &[u8], pos: &mut usize, len: usize| -> Result<Vec<u8>> {
+        if *pos + len > data.len() {
+            return Err(ApexError::Sandbox(format!(
+                "vsock frame: expected {len} bytes at offset {pos}, but only {} remain",
+                data.len() - *pos,
+            )));
+        }
+        let slice = data[*pos..*pos + len].to_vec();
+        *pos += len;
+        Ok(slice)
+    };
+
+    let bitmap_len = read_u32(data, &mut pos)? as usize;
+    let bitmap = read_bytes(data, &mut pos, bitmap_len)?;
+    let exit_code = read_u32(data, &mut pos)?;
+    let stdout_len = read_u32(data, &mut pos)? as usize;
+    let stdout = read_bytes(data, &mut pos, stdout_len)?;
+    let stderr_len = read_u32(data, &mut pos)? as usize;
+    let stderr = read_bytes(data, &mut pos, stderr_len)?;
+
+    Ok(VsockResponse {
+        bitmap,
+        exit_code,
+        stdout,
+        stderr,
+    })
+}
+
+/// Build a vsock response frame (for testing / guest-side usage).
+pub fn encode_vsock_response(resp: &VsockResponse) -> Vec<u8> {
+    let mut buf = Vec::new();
+    buf.extend_from_slice(&(resp.bitmap.len() as u32).to_be_bytes());
+    buf.extend_from_slice(&resp.bitmap);
+    buf.extend_from_slice(&resp.exit_code.to_be_bytes());
+    buf.extend_from_slice(&(resp.stdout.len() as u32).to_be_bytes());
+    buf.extend_from_slice(&resp.stdout);
+    buf.extend_from_slice(&(resp.stderr.len() as u32).to_be_bytes());
+    buf.extend_from_slice(&resp.stderr);
+    buf
+}
+
+// ---------------------------------------------------------------------------
+// REST client helpers
+// ---------------------------------------------------------------------------
+
+/// Firecracker REST API endpoint over a Unix domain socket.
+struct FcClient {
+    socket_path: PathBuf,
+}
+
+impl FcClient {
+    fn new(socket_path: PathBuf) -> Self {
+        FcClient { socket_path }
+    }
+
+    /// PUT /machine-config
+    async fn put_machine_config(&self, vcpu_count: u8, mem_mb: u32) -> Result<()> {
+        debug!(
+            socket = %self.socket_path.display(),
+            vcpu_count,
+            mem_mb,
+            "FC: PUT /machine-config"
+        );
+        #[cfg(feature = "firecracker")]
+        {
+            self.http_put(
+                "/machine-config",
+                &serde_json::json!({
+                    "vcpu_count": vcpu_count,
+                    "mem_size_mib": mem_mb,
+                }),
+            )
+            .await?;
+        }
+        Ok(())
+    }
+
+    /// PUT /drives/rootfs
+    async fn put_rootfs(&self, rootfs_path: &Path) -> Result<()> {
+        debug!(
+            socket = %self.socket_path.display(),
+            rootfs = %rootfs_path.display(),
+            "FC: PUT /drives/rootfs"
+        );
+        #[cfg(feature = "firecracker")]
+        {
+            self.http_put(
+                "/drives/rootfs",
+                &serde_json::json!({
+                    "drive_id": "rootfs",
+                    "path_on_host": rootfs_path.to_string_lossy(),
+                    "is_root_device": true,
+                    "is_read_only": false,
+                }),
+            )
+            .await?;
+        }
+        Ok(())
+    }
+
+    /// PUT /actions — start the VM.
+    async fn start(&self) -> Result<()> {
+        info!(socket = %self.socket_path.display(), "FC: starting microVM");
+        #[cfg(feature = "firecracker")]
+        {
+            self.http_put(
+                "/actions",
+                &serde_json::json!({ "action_type": "InstanceStart" }),
+            )
+            .await?;
+        }
+        Ok(())
+    }
+
+    /// PUT /snapshot/create
+    async fn create_snapshot(&self, snap_path: &Path, mem_path: &Path) -> Result<()> {
+        debug!(
+            snap = %snap_path.display(),
+            mem = %mem_path.display(),
+            "FC: snapshot/create"
+        );
+        #[cfg(feature = "firecracker")]
+        {
+            self.http_put(
+                "/snapshot/create",
+                &serde_json::json!({
+                    "snapshot_type": "Full",
+                    "snapshot_path": snap_path.to_string_lossy(),
+                    "mem_file_path": mem_path.to_string_lossy(),
+                }),
+            )
+            .await?;
+        }
+        Ok(())
+    }
+
+    /// PUT /snapshot/load
+    async fn load_snapshot(&self, snap_path: &Path, mem_path: &Path) -> Result<()> {
+        debug!(
+            snap = %snap_path.display(),
+            mem = %mem_path.display(),
+            "FC: snapshot/load"
+        );
+        #[cfg(feature = "firecracker")]
+        {
+            self.http_put(
+                "/snapshot/load",
+                &serde_json::json!({
+                    "snapshot_path": snap_path.to_string_lossy(),
+                    "mem_file_path": mem_path.to_string_lossy(),
+                }),
+            )
+            .await?;
+        }
+        Ok(())
+    }
+
+    /// Real HTTP PUT over Unix socket (only compiled with `firecracker` feature).
+    #[cfg(feature = "firecracker")]
+    async fn http_put(&self, path: &str, body: &serde_json::Value) -> Result<()> {
+        use http_body_util::Full;
+        use hyper::body::Bytes;
+        use hyper::Request;
+        use hyper_util::rt::TokioIo;
+        use tokio::net::UnixStream;
+
+        let stream = UnixStream::connect(&self.socket_path).await.map_err(|e| {
+            ApexError::Sandbox(format!("FC connect {}: {e}", self.socket_path.display()))
+        })?;
+
+        let io = TokioIo::new(stream);
+        let (mut sender, conn) = hyper::client::conn::http1::handshake(io)
+            .await
+            .map_err(|e| ApexError::Sandbox(format!("FC handshake: {e}")))?;
+
+        // Spawn connection driver.
+        tokio::spawn(async move {
+            if let Err(e) = conn.await {
+                tracing::error!(error = %e, "FC HTTP connection error");
+            }
+        });
+
+        let json = serde_json::to_vec(body)
+            .map_err(|e| ApexError::Sandbox(format!("FC serialize: {e}")))?;
+
+        let req = Request::builder()
+            .method("PUT")
+            .uri(format!("http://localhost{path}"))
+            .header("Content-Type", "application/json")
+            .header("Accept", "application/json")
+            .body(Full::new(Bytes::from(json)))
+            .map_err(|e| ApexError::Sandbox(format!("FC request build: {e}")))?;
+
+        let resp = sender
+            .send_request(req)
+            .await
+            .map_err(|e| ApexError::Sandbox(format!("FC request: {e}")))?;
+
+        let status = resp.status();
+        if !status.is_success() && status.as_u16() != 204 {
+            return Err(ApexError::Sandbox(format!(
+                "FC API {path} returned {status}"
+            )));
+        }
+
+        Ok(())
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Snapshot state
+// ---------------------------------------------------------------------------
+
+#[derive(Debug, Clone)]
+#[allow(dead_code)]
+struct Snapshot {
+    id: SnapshotId,
+    snap_file: PathBuf,
+    mem_file: PathBuf,
+}
+
+// ---------------------------------------------------------------------------
+// FirecrackerSandbox
+// ---------------------------------------------------------------------------
+
+/// Sandbox backed by Firecracker microVMs.
+///
+/// One `FirecrackerSandbox` manages a pool of N VMs, each snapshotted after
+/// the target is loaded. `run()` picks an available VM, restores the snapshot,
+/// injects the seed, collects coverage, and re-suspends.
+pub struct FirecrackerSandbox {
+    language: Language,
+    /// Path to the rootfs image for this language.
+    rootfs: PathBuf,
+    /// Directory for VM sockets and snapshot files.
+    work_dir: PathBuf,
+    /// Active snapshot (set after `prepare()`).
+    snapshot: Mutex<Option<Snapshot>>,
+    /// Pool size.
+    pool_size: usize,
+    /// Coverage oracle for bitmap→branch mapping.
+    oracle: Option<Arc<CoverageOracle>>,
+    /// Branch index: bitmap position → BranchId.
+    branch_index: Vec<BranchId>,
+}
+
+impl FirecrackerSandbox {
+    pub fn new(language: Language, work_dir: PathBuf) -> Self {
+        let rootfs = Self::default_rootfs(language);
+        FirecrackerSandbox {
+            language,
+            rootfs,
+            work_dir,
+            snapshot: Mutex::new(None),
+            pool_size: 4,
+            oracle: None,
+            branch_index: Vec::new(),
+        }
+    }
+
+    pub fn with_rootfs(mut self, rootfs: PathBuf) -> Self {
+        self.rootfs = rootfs;
+        self
+    }
+
+    pub fn with_pool_size(mut self, n: usize) -> Self {
+        self.pool_size = n;
+        self
+    }
+
+    pub fn with_coverage(
+        mut self,
+        oracle: Arc<CoverageOracle>,
+        branch_index: Vec<BranchId>,
+    ) -> Self {
+        self.oracle = Some(oracle);
+        self.branch_index = branch_index;
+        self
+    }
+
+    /// Default rootfs path: `~/.apex/rootfs/<language>/rootfs.ext4`.
+    fn default_rootfs(language: Language) -> PathBuf {
+        let lang_str = format!("{language}");
+        dirs_next_home()
+            .unwrap_or_else(|| PathBuf::from("/tmp"))
+            .join(".apex")
+            .join("rootfs")
+            .join(lang_str)
+            .join("rootfs.ext4")
+    }
+
+    fn socket_path(&self) -> PathBuf {
+        self.work_dir.join("firecracker.sock")
+    }
+
+    fn client(&self) -> FcClient {
+        FcClient::new(self.socket_path())
+    }
+
+    /// Prepare the VM pool — start one VM, run the target, create snapshot.
+    ///
+    /// Must be called before `run()`. In production, this would launch N VMs.
+    pub async fn prepare(&self) -> Result<()> {
+        if !self.rootfs.exists() {
+            return Err(ApexError::Sandbox(format!(
+                "Firecracker rootfs not found at {}. \
+                 Build it with: apex rootfs build --lang {}",
+                self.rootfs.display(),
+                self.language,
+            )));
+        }
+
+        std::fs::create_dir_all(&self.work_dir)
+            .map_err(|e| ApexError::Sandbox(format!("create work dir: {e}")))?;
+
+        // TODO: spawn `firecracker --api-sock <socket_path>` process.
+        // TODO: wait for API socket to become available.
+
+        let client = self.client();
+        client.put_machine_config(1, 128).await?;
+        client.put_rootfs(&self.rootfs).await?;
+        client.start().await?;
+
+        // TODO: inject target via vsock, run install/build steps, then snapshot.
+
+        let snap_file = self.work_dir.join("snapshot.bin");
+        let mem_file = self.work_dir.join("snapshot.mem");
+        client.create_snapshot(&snap_file, &mem_file).await?;
+
+        *self.snapshot.lock().unwrap() = Some(Snapshot {
+            id: SnapshotId::new(),
+            snap_file,
+            mem_file,
+        });
+
+        info!(language = %self.language, "Firecracker sandbox prepared");
+        Ok(())
+    }
+}
+
+fn dirs_next_home() -> Option<PathBuf> {
+    std::env::var("HOME").ok().map(PathBuf::from)
+}
+
+#[async_trait]
+impl Sandbox for FirecrackerSandbox {
+    fn language(&self) -> Language {
+        self.language
+    }
+
+    async fn run(&self, seed: &InputSeed) -> Result<ExecutionResult> {
+        let snap = self
+            .snapshot
+            .lock()
+            .map_err(|e| ApexError::Sandbox(format!("snapshot lock poisoned: {e}")))?
+            .clone()
+            .ok_or_else(|| ApexError::Sandbox("FirecrackerSandbox not prepared".into()))?;
+
+        let start = Instant::now();
+
+        // Restore snapshot.
+        let client = self.client();
+        client
+            .load_snapshot(&snap.snap_file, &snap.mem_file)
+            .await?;
+
+        // Encode seed as vsock frame.
+        let frame = encode_vsock_frame(&seed.data);
+
+        // Without the firecracker feature, simulate an empty response.
+        // With the feature, this would send `frame` over the vsock socket.
+        #[cfg(not(feature = "firecracker"))]
+        let response = VsockResponse {
+            bitmap: vec![],
+            exit_code: 0,
+            stdout: vec![],
+            stderr: vec![],
+        };
+
+        #[cfg(feature = "firecracker")]
+        let response = {
+            // TODO: real vsock socket I/O using self.socket_path()
+            // 1. Connect to vsock CID 3, port 5000
+            // 2. Write `frame` bytes
+            // 3. Read response bytes
+            // 4. decode_vsock_response(&response_bytes)?
+            warn!("firecracker feature: real vsock I/O not yet implemented");
+            VsockResponse {
+                bitmap: vec![],
+                exit_code: 0,
+                stdout: vec![],
+                stderr: vec![],
+            }
+        };
+
+        let _ = &frame; // suppress unused warning in non-firecracker builds
+
+        // Convert bitmap to new branches.
+        let new_branches = if let Some(ref oracle) = self.oracle {
+            crate::bitmap::bitmap_to_new_branches(&response.bitmap, &self.branch_index, oracle)
+        } else {
+            Vec::new()
+        };
+
+        // Map exit code to status.
+        let status = match response.exit_code {
+            0 => ExecutionStatus::Pass,
+            code if code >= 128 => ExecutionStatus::Crash,
+            _ => ExecutionStatus::Fail,
+        };
+
+        let duration_ms = start.elapsed().as_millis() as u64;
+
+        Ok(ExecutionResult {
+            seed_id: seed.id,
+            status,
+            new_branches,
+            trace: None,
+            duration_ms,
+            stdout: String::from_utf8_lossy(&response.stdout).to_string(),
+            stderr: String::from_utf8_lossy(&response.stderr).to_string(),
+        })
+    }
+
+    async fn snapshot(&self) -> Result<SnapshotId> {
+        let client = self.client();
+        let snap_file = self
+            .work_dir
+            .join(format!("snap_{}.bin", SnapshotId::new().0));
+        let mem_file = self
+            .work_dir
+            .join(format!("snap_{}.mem", SnapshotId::new().0));
+        client.create_snapshot(&snap_file, &mem_file).await?;
+        let id = SnapshotId::new();
+        Ok(id)
+    }
+
+    async fn restore(&self, _id: SnapshotId) -> Result<()> {
+        let snap = self
+            .snapshot
+            .lock()
+            .map_err(|e| ApexError::Sandbox(format!("snapshot lock poisoned: {e}")))?
+            .clone()
+            .ok_or_else(|| ApexError::Sandbox("no snapshot available".into()))?;
+        let client = self.client();
+        client
+            .load_snapshot(&snap.snap_file, &snap.mem_file)
+            .await?;
+        Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // -----------------------------------------------------------------------
+    // Vsock frame tests
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn encode_vsock_frame_empty_data() {
+        let frame = encode_vsock_frame(&[]);
+        assert_eq!(frame, vec![0, 0, 0, 0]); // 4-byte zero length
+    }
+
+    #[test]
+    fn encode_vsock_frame_with_data() {
+        let frame = encode_vsock_frame(&[0xAA, 0xBB, 0xCC]);
+        assert_eq!(frame.len(), 7); // 4 + 3
+        assert_eq!(&frame[..4], &[0, 0, 0, 3]); // big-endian 3
+        assert_eq!(&frame[4..], &[0xAA, 0xBB, 0xCC]);
+    }
+
+    #[test]
+    fn vsock_response_roundtrip() {
+        let resp = VsockResponse {
+            bitmap: vec![1, 0, 1, 0, 1],
+            exit_code: 0,
+            stdout: b"hello".to_vec(),
+            stderr: b"warn".to_vec(),
+        };
+        let encoded = encode_vsock_response(&resp);
+        let decoded = decode_vsock_response(&encoded).unwrap();
+        assert_eq!(decoded, resp);
+    }
+
+    #[test]
+    fn vsock_response_empty_fields() {
+        let resp = VsockResponse {
+            bitmap: vec![],
+            exit_code: 42,
+            stdout: vec![],
+            stderr: vec![],
+        };
+        let encoded = encode_vsock_response(&resp);
+        let decoded = decode_vsock_response(&encoded).unwrap();
+        assert_eq!(decoded, resp);
+    }
+
+    #[test]
+    fn vsock_response_nonzero_exit() {
+        let resp = VsockResponse {
+            bitmap: vec![0xFF],
+            exit_code: 137,
+            stdout: b"out".to_vec(),
+            stderr: b"killed".to_vec(),
+        };
+        let encoded = encode_vsock_response(&resp);
+        let decoded = decode_vsock_response(&encoded).unwrap();
+        assert_eq!(decoded.exit_code, 137);
+        assert_eq!(decoded.stderr, b"killed");
+    }
+
+    #[test]
+    fn decode_vsock_response_truncated_header() {
+        let result = decode_vsock_response(&[0, 0]);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn decode_vsock_response_truncated_bitmap() {
+        // Claims 10 bytes of bitmap but only provides 2
+        let mut data = vec![];
+        data.extend_from_slice(&10u32.to_be_bytes());
+        data.extend_from_slice(&[1, 2]);
+        let result = decode_vsock_response(&data);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn decode_vsock_response_truncated_stdout() {
+        let mut data = vec![];
+        data.extend_from_slice(&0u32.to_be_bytes()); // bitmap_len = 0
+        data.extend_from_slice(&0u32.to_be_bytes()); // exit_code = 0
+        data.extend_from_slice(&5u32.to_be_bytes()); // stdout_len = 5
+                                                     // No actual stdout data
+        let result = decode_vsock_response(&data);
+        assert!(result.is_err());
+    }
+
+    // -----------------------------------------------------------------------
+    // FcClient tests
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn fc_client_stores_socket_path() {
+        let client = FcClient::new(PathBuf::from("/run/fc/vm0.sock"));
+        assert_eq!(client.socket_path, PathBuf::from("/run/fc/vm0.sock"));
+    }
+
+    #[test]
+    fn default_rootfs_path_structure() {
+        let path = FirecrackerSandbox::default_rootfs(Language::Python);
+        let path_str = path.to_string_lossy();
+        assert!(
+            path_str.contains(".apex/rootfs/python/rootfs.ext4")
+                || path_str.contains("/tmp/.apex/rootfs/python/rootfs.ext4"),
+            "default rootfs path should include .apex/rootfs/<lang>/rootfs.ext4: {path_str}"
+        );
+    }
+
+    #[test]
+    fn default_rootfs_per_language() {
+        let py = FirecrackerSandbox::default_rootfs(Language::Python);
+        let js = FirecrackerSandbox::default_rootfs(Language::JavaScript);
+        let rs = FirecrackerSandbox::default_rootfs(Language::Rust);
+
+        assert!(py.to_string_lossy().contains("/python/"));
+        assert!(js.to_string_lossy().contains("/javascript/"));
+        assert!(rs.to_string_lossy().contains("/rust/"));
+        // All should end with rootfs.ext4
+        assert_eq!(py.file_name().unwrap(), "rootfs.ext4");
+        assert_eq!(js.file_name().unwrap(), "rootfs.ext4");
+        assert_eq!(rs.file_name().unwrap(), "rootfs.ext4");
+    }
+
+    #[test]
+    fn new_sets_defaults() {
+        let sb = FirecrackerSandbox::new(Language::Python, PathBuf::from("/tmp/fc-work"));
+        assert_eq!(sb.language, Language::Python);
+        assert_eq!(sb.work_dir, PathBuf::from("/tmp/fc-work"));
+        assert_eq!(sb.pool_size, 4);
+        assert!(sb.snapshot.lock().unwrap().is_none());
+    }
+
+    #[test]
+    fn with_rootfs_overrides_default() {
+        let sb = FirecrackerSandbox::new(Language::Python, PathBuf::from("/tmp"))
+            .with_rootfs(PathBuf::from("/custom/rootfs.ext4"));
+        assert_eq!(sb.rootfs, PathBuf::from("/custom/rootfs.ext4"));
+    }
+
+    #[test]
+    fn with_pool_size_overrides_default() {
+        let sb = FirecrackerSandbox::new(Language::Python, PathBuf::from("/tmp")).with_pool_size(8);
+        assert_eq!(sb.pool_size, 8);
+    }
+
+    #[test]
+    fn socket_path_under_work_dir() {
+        let sb = FirecrackerSandbox::new(Language::Python, PathBuf::from("/var/run/apex"));
+        assert_eq!(
+            sb.socket_path(),
+            PathBuf::from("/var/run/apex/firecracker.sock")
+        );
+    }
+
+    #[test]
+    fn client_uses_correct_socket() {
+        let sb = FirecrackerSandbox::new(Language::Rust, PathBuf::from("/work"));
+        let client = sb.client();
+        assert_eq!(client.socket_path, PathBuf::from("/work/firecracker.sock"));
+    }
+
+    #[test]
+    fn language_returns_configured() {
+        use apex_core::traits::Sandbox;
+        let sb = FirecrackerSandbox::new(Language::JavaScript, PathBuf::from("/tmp"));
+        assert_eq!(sb.language(), Language::JavaScript);
+    }
+
+    #[test]
+    fn builder_methods_chainable() {
+        let sb = FirecrackerSandbox::new(Language::C, PathBuf::from("/tmp"))
+            .with_rootfs(PathBuf::from("/rootfs.ext4"))
+            .with_pool_size(2);
+        assert_eq!(sb.rootfs, PathBuf::from("/rootfs.ext4"));
+        assert_eq!(sb.pool_size, 2);
+    }
+
+    #[test]
+    fn dirs_next_home_reads_env() {
+        // dirs_next_home returns HOME env var as PathBuf
+        let home = std::env::var("HOME").ok().map(PathBuf::from);
+        assert_eq!(super::dirs_next_home(), home);
+    }
+
+    #[tokio::test]
+    async fn fc_client_put_machine_config_stub_succeeds() {
+        let client = FcClient::new(PathBuf::from("/tmp/test.sock"));
+        let result = client.put_machine_config(2, 256).await;
+        // Without firecracker feature, this is a stub that always succeeds
+        #[cfg(not(feature = "firecracker"))]
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn fc_client_put_rootfs_stub_succeeds() {
+        let client = FcClient::new(PathBuf::from("/tmp/test.sock"));
+        let result = client.put_rootfs(&PathBuf::from("/rootfs.ext4")).await;
+        #[cfg(not(feature = "firecracker"))]
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn fc_client_start_stub_succeeds() {
+        let client = FcClient::new(PathBuf::from("/tmp/test.sock"));
+        let result = client.start().await;
+        #[cfg(not(feature = "firecracker"))]
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn fc_client_create_snapshot_stub_succeeds() {
+        let client = FcClient::new(PathBuf::from("/tmp/test.sock"));
+        let result = client
+            .create_snapshot(&PathBuf::from("/snap.bin"), &PathBuf::from("/snap.mem"))
+            .await;
+        #[cfg(not(feature = "firecracker"))]
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn fc_client_load_snapshot_stub_succeeds() {
+        let client = FcClient::new(PathBuf::from("/tmp/test.sock"));
+        let result = client
+            .load_snapshot(&PathBuf::from("/snap.bin"), &PathBuf::from("/snap.mem"))
+            .await;
+        #[cfg(not(feature = "firecracker"))]
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn prepare_fails_when_rootfs_missing() {
+        let sb = FirecrackerSandbox::new(Language::Python, PathBuf::from("/tmp/fc-test-work"))
+            .with_rootfs(PathBuf::from("/nonexistent/rootfs.ext4"));
+        let result = sb.prepare().await;
+        assert!(result.is_err());
+        let msg = format!("{}", result.unwrap_err());
+        assert!(msg.contains("rootfs not found"), "error: {msg}");
+    }
+
+    #[tokio::test]
+    async fn prepare_succeeds_with_real_rootfs() {
+        let tmp = tempfile::tempdir().unwrap();
+        let rootfs = tmp.path().join("rootfs.ext4");
+        std::fs::write(&rootfs, b"fake rootfs").unwrap();
+
+        let work_dir = tmp.path().join("work");
+        let sb = FirecrackerSandbox::new(Language::Python, work_dir.clone()).with_rootfs(rootfs);
+        let result = sb.prepare().await;
+        assert!(result.is_ok());
+
+        // Snapshot should be set after prepare
+        assert!(sb.snapshot.lock().unwrap().is_some());
+        // work_dir should have been created
+        assert!(work_dir.exists());
+    }
+
+    #[tokio::test]
+    async fn run_fails_when_not_prepared() {
+        use apex_core::traits::Sandbox;
+        let sb = FirecrackerSandbox::new(Language::Python, PathBuf::from("/tmp/fc-work"));
+        let seed = InputSeed::new(b"test".to_vec(), apex_core::types::SeedOrigin::Corpus);
+        let result = sb.run(&seed).await;
+        assert!(result.is_err());
+        let msg = format!("{}", result.unwrap_err());
+        assert!(msg.contains("not prepared"), "error: {msg}");
+    }
+
+    #[tokio::test]
+    async fn run_succeeds_after_prepare() {
+        use apex_core::traits::Sandbox;
+        let tmp = tempfile::tempdir().unwrap();
+        let rootfs = tmp.path().join("rootfs.ext4");
+        std::fs::write(&rootfs, b"fake").unwrap();
+
+        let work_dir = tmp.path().join("work");
+        let sb = FirecrackerSandbox::new(Language::Python, work_dir).with_rootfs(rootfs);
+        sb.prepare().await.unwrap();
+
+        let seed = InputSeed::new(b"data".to_vec(), apex_core::types::SeedOrigin::Corpus);
+        let result = sb.run(&seed).await.unwrap();
+        assert_eq!(result.status, ExecutionStatus::Pass);
+        assert!(result.new_branches.is_empty());
+    }
+
+    #[tokio::test]
+    async fn snapshot_trait_method_succeeds() {
+        // The trait snapshot() method creates a new snapshot via the stub client
+        use apex_core::traits::Sandbox;
+        let sb = FirecrackerSandbox::new(Language::Rust, PathBuf::from("/tmp/fc-snap"));
+        let result = sb.snapshot().await;
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn restore_fails_without_snapshot() {
+        use apex_core::traits::Sandbox;
+        let sb = FirecrackerSandbox::new(Language::Rust, PathBuf::from("/tmp/fc-restore"));
+        let result = sb.restore(SnapshotId::new()).await;
+        assert!(result.is_err());
+        let msg = format!("{}", result.unwrap_err());
+        assert!(msg.contains("no snapshot"), "error: {msg}");
+    }
+
+    #[tokio::test]
+    async fn restore_succeeds_after_prepare() {
+        use apex_core::traits::Sandbox;
+        let tmp = tempfile::tempdir().unwrap();
+        let rootfs = tmp.path().join("rootfs.ext4");
+        std::fs::write(&rootfs, b"fake").unwrap();
+
+        let work_dir = tmp.path().join("work");
+        let sb = FirecrackerSandbox::new(Language::Python, work_dir).with_rootfs(rootfs);
+        sb.prepare().await.unwrap();
+
+        let result = sb.restore(SnapshotId::new()).await;
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn snapshot_struct_fields() {
+        let snap = Snapshot {
+            id: SnapshotId::new(),
+            snap_file: PathBuf::from("/snap.bin"),
+            mem_file: PathBuf::from("/snap.mem"),
+        };
+        assert_eq!(snap.snap_file, PathBuf::from("/snap.bin"));
+        assert_eq!(snap.mem_file, PathBuf::from("/snap.mem"));
+    }
+
+    #[test]
+    fn snapshot_clone() {
+        let snap = Snapshot {
+            id: SnapshotId::new(),
+            snap_file: PathBuf::from("/snap.bin"),
+            mem_file: PathBuf::from("/snap.mem"),
+        };
+        let cloned = snap.clone();
+        assert_eq!(cloned.snap_file, snap.snap_file);
+        assert_eq!(cloned.mem_file, snap.mem_file);
+        assert_eq!(cloned.id, snap.id);
+    }
+
+    #[test]
+    fn encode_vsock_frame_large_data() {
+        let data = vec![0xABu8; 1000];
+        let frame = encode_vsock_frame(&data);
+        assert_eq!(frame.len(), 4 + 1000);
+        let len = u32::from_be_bytes([frame[0], frame[1], frame[2], frame[3]]);
+        assert_eq!(len, 1000);
+        assert!(frame[4..].iter().all(|&b| b == 0xAB));
+    }
+
+    #[test]
+    fn vsock_response_large_bitmap() {
+        let bitmap = vec![0x55u8; 65536];
+        let resp = VsockResponse {
+            bitmap: bitmap.clone(),
+            exit_code: 0,
+            stdout: b"ok".to_vec(),
+            stderr: vec![],
+        };
+        let encoded = encode_vsock_response(&resp);
+        let decoded = decode_vsock_response(&encoded).unwrap();
+        assert_eq!(decoded.bitmap.len(), 65536);
+        assert_eq!(decoded, resp);
+    }
+
+    #[test]
+    fn decode_vsock_response_truncated_exit_code() {
+        // Valid bitmap (len=2, data=[1,2]) but then truncated before exit_code
+        let mut data = vec![];
+        data.extend_from_slice(&2u32.to_be_bytes());
+        data.extend_from_slice(&[1, 2]);
+        // No exit_code follows — only 2 bytes of bitmap after the length
+        let result = decode_vsock_response(&data);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn decode_vsock_response_truncated_stderr() {
+        // Valid bitmap + exit_code + stdout, but truncate before stderr data
+        let mut data = vec![];
+        data.extend_from_slice(&1u32.to_be_bytes()); // bitmap_len = 1
+        data.push(0xFF); // bitmap
+        data.extend_from_slice(&0u32.to_be_bytes()); // exit_code = 0
+        data.extend_from_slice(&2u32.to_be_bytes()); // stdout_len = 2
+        data.extend_from_slice(b"ok"); // stdout
+        data.extend_from_slice(&5u32.to_be_bytes()); // stderr_len = 5
+        data.extend_from_slice(b"er"); // only 2 of 5 bytes
+        let result = decode_vsock_response(&data);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn decode_vsock_response_empty_input() {
+        let result = decode_vsock_response(&[]);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn exit_code_to_status_mapping() {
+        // exit 0 = Pass
+        assert_eq!(
+            match 0u32 {
+                0 => ExecutionStatus::Pass,
+                c if c >= 128 => ExecutionStatus::Crash,
+                _ => ExecutionStatus::Fail,
+            },
+            ExecutionStatus::Pass
+        );
+        // exit 1 = Fail
+        assert_eq!(
+            match 1u32 {
+                0 => ExecutionStatus::Pass,
+                c if c >= 128 => ExecutionStatus::Crash,
+                _ => ExecutionStatus::Fail,
+            },
+            ExecutionStatus::Fail
+        );
+        // exit 137 (SIGKILL) = Crash
+        assert_eq!(
+            match 137u32 {
+                0 => ExecutionStatus::Pass,
+                c if c >= 128 => ExecutionStatus::Crash,
+                _ => ExecutionStatus::Fail,
+            },
+            ExecutionStatus::Crash
+        );
+    }
+
+    #[test]
+    fn with_coverage_builder() {
+        let tmp = tempfile::tempdir().unwrap();
+        let oracle = Arc::new(CoverageOracle::new());
+        let b0 = BranchId::new(1, 10, 0, 0);
+        let sb = FirecrackerSandbox::new(Language::Python, tmp.path().to_path_buf())
+            .with_coverage(Arc::clone(&oracle), vec![b0.clone()]);
+        assert!(sb.oracle.is_some());
+        assert_eq!(sb.branch_index.len(), 1);
+    }
+
+    use proptest::prelude::*;
+
+    proptest! {
+        #[test]
+        fn prop_vsock_roundtrip(
+            bitmap in proptest::collection::vec(any::<u8>(), 0..256),
+            exit_code in any::<u32>(),
+            stdout in proptest::collection::vec(any::<u8>(), 0..256),
+            stderr in proptest::collection::vec(any::<u8>(), 0..256),
+        ) {
+            let resp = VsockResponse { bitmap, exit_code, stdout, stderr };
+            let encoded = encode_vsock_response(&resp);
+            let decoded = decode_vsock_response(&encoded).unwrap();
+            prop_assert_eq!(decoded, resp);
+        }
+
+        #[test]
+        fn prop_encode_vsock_frame_length(data in proptest::collection::vec(any::<u8>(), 0..1024)) {
+            let frame = encode_vsock_frame(&data);
+            prop_assert_eq!(frame.len(), data.len() + 4);
+        }
+
+        /// Fuzz-like test: random bytes should never panic decode_vsock_response.
+        #[test]
+        fn prop_decode_vsock_never_panics(data in proptest::collection::vec(any::<u8>(), 0..512)) {
+            // Should return Ok or Err, never panic
+            let _ = decode_vsock_response(&data);
+        }
+
+        /// Fuzz-like test: truncated valid frames should error gracefully.
+        #[test]
+        fn prop_decode_vsock_truncated(
+            bitmap in proptest::collection::vec(any::<u8>(), 0..64),
+            exit_code in any::<u32>(),
+            stdout in proptest::collection::vec(any::<u8>(), 0..64),
+            stderr in proptest::collection::vec(any::<u8>(), 0..64),
+            truncate_at in 0usize..256,
+        ) {
+            let resp = VsockResponse { bitmap, exit_code, stdout, stderr };
+            let encoded = encode_vsock_response(&resp);
+            let truncated = if truncate_at < encoded.len() {
+                &encoded[..truncate_at]
+            } else {
+                &encoded
+            };
+            // Should return Ok (if not truncated) or Err (if truncated), never panic
+            let _ = decode_vsock_response(truncated);
+        }
+    }
+}

@@ -1,0 +1,25 @@
+[package]
+name = "apex-lang"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Language-specific test runners for APEX"
+
+[features]
+wasm-instrument = []
+
+[dependencies]
+apex-core = { path = "../apex-core" }
+tokio = { version = "1", features = ["full"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+thiserror = "1"
+tracing = "0.1"
+async-trait = "0.1"
+
+[dev-dependencies]
+tempfile = "3"
+mockall = { workspace = true }
+tokio = { version = "1", features = ["full", "test-util"] }

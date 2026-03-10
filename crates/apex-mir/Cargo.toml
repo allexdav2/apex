@@ -1,0 +1,15 @@
+[package]
+name = "apex-mir"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Mid-level IR parsing and control-flow analysis for APEX"
+
+[dependencies]
+apex-core = { path = "../apex-core" }
+serde = { workspace = true }
+
+[dev-dependencies]
+proptest = { workspace = true }

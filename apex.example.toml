@@ -1,0 +1,43 @@
+# APEX Configuration — apex.toml
+# Copy to your project root as `apex.toml`.
+# All values shown are defaults; omit sections to use defaults.
+
+[coverage]
+target = 1.0            # Coverage target ratio (0.0–1.0)
+min_ratchet = 0.8       # Minimum for `apex ratchet` CI gate
+
+[fuzz]
+corpus_max = 10000      # Maximum corpus entries (LRU eviction)
+mutations_per_input = 8 # Mutated inputs per scheduler tick
+stall_iterations = 50   # Iterations without new coverage → stop
+seed_len_min = 1        # Random seed minimum length (bootstrap)
+seed_len_max = 64       # Random seed maximum length (bootstrap)
+
+[fuzz.scheduler]
+floor = 0.01            # MOpt minimum EMA yield (prevents zero weights)
+alpha = 0.1             # MOpt EMA smoothing factor
+
+[concolic]
+max_rounds = 5          # Maximum concolic exploration rounds
+
+[agent]
+stall_threshold = 10    # Iterations without improvement → stall
+max_rounds = 3          # Maximum AI agent rounds
+max_refinement_rounds = 3
+source_context_lines = 15   # Lines of context around uncovered branches
+max_files_per_round = 3     # Source files per agent prompt
+
+[sandbox]
+process_timeout_ms = 10000  # Subprocess timeout (ms)
+python_timeout_ms = 30000   # Python test sandbox timeout (ms)
+command_timeout_ms = 30000  # General command timeout (ms)
+
+[symbolic]
+max_depth = 64          # Max constraint chain depth
+
+[instrument]
+bitmap_size = 65536     # Coverage bitmap size (edges)
+
+[logging]
+level = "info"          # Log level: trace, debug, info, warn, error
+format = "text"         # Output format: text, json

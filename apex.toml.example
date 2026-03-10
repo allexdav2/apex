@@ -1,0 +1,52 @@
+# APEX configuration file
+# Copy to apex.toml in your project root and adjust as needed.
+
+[target]
+# Root directory of the repository to test.
+root = "."
+
+# Language: python | javascript | java | c | rust
+language = "python"
+
+# Override the default test command (optional).
+# test_command = ["pytest", "-q", "--tb=short"]
+
+[coverage]
+# Minimum coverage target (0.0–1.0).
+target = 0.9
+
+# Branches matching these patterns will be suppressed (not counted as gaps).
+suppress = [
+    # "src/debug_utils.py:*",
+]
+
+[strategy]
+# Strategies to use in order of priority: baseline | fuzz | agent | concolic
+strategies = ["baseline"]
+
+# How many consecutive iterations with no new coverage before switching strategy.
+stall_threshold = 10
+
+# Optional wall-clock deadline in seconds.
+# deadline_secs = 3600
+
+[agent]
+# Claude model to use for test generation.
+model = "claude-opus-4-6"
+
+# Maximum number of agent rounds per stall.
+max_rounds = 3
+
+# Maximum refinement attempts per failing candidate.
+max_refinements = 3
+
+# Directory to write generated test files.
+output_dir = "tests/apex_generated"
+
+[sandbox]
+# Timeout per test run in milliseconds.
+timeout_ms = 10000
+
+[logging]
+# Log level: trace | debug | info | warn | error
+level = "info"

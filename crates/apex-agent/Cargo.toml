@@ -1,0 +1,21 @@
+[package]
+name = "apex-agent"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "AI agent orchestration and test refinement for APEX"
+
+[dependencies]
+apex-core = { path = "../apex-core" }
+apex-coverage = { path = "../apex-coverage" }
+apex-symbolic = { path = "../apex-symbolic" }
+tracing = "0.1"
+futures = "0.3"
+async-trait = "0.1"
+
+[dev-dependencies]
+tempfile = "3"
+tokio = { workspace = true }
+mockall = { workspace = true }

@@ -1,0 +1,22 @@
+[package]
+name = "apex-rpc"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "gRPC distributed coordination for APEX"
+
+[dependencies]
+apex-core = { path = "../apex-core" }
+apex-coverage = { path = "../apex-coverage" }
+serde = { version = "1", features = ["derive"] }
+thiserror = "1"
+tonic = "0.11"
+prost = "0.12"
+tokio = { version = "1", features = ["full"] }
+uuid = { version = "1", features = ["v4"] }
+tracing = "0.1"
+
+[build-dependencies]
+tonic-build = "0.11"

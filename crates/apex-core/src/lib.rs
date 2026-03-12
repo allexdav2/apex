@@ -6,6 +6,7 @@ pub mod agent_report;
 pub mod command;
 pub mod config;
 pub mod error;
+pub mod fixture_runner;
 pub mod traits;
 pub mod types;
 

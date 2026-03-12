@@ -66,6 +66,14 @@ enum Commands {
     Lint(LintArgs),
     /// Behavioral diff between current and base branch.
     Diff(DiffArgs),
+    /// Detect flaky tests via execution path divergence.
+    FlakyDetect(FlakyDetectArgs),
+    /// Exercised vs static complexity per function.
+    Complexity(ComplexityArgs),
+    /// Generate behavioral documentation from execution traces.
+    Docs(DocsArgs),
+    /// Map attack surface from entry-point reachability.
+    AttackSurface(AttackSurfaceArgs),
 }
 
 #[derive(Parser, Clone)]
@@ -234,6 +242,74 @@ struct DiffArgs {
     strict: bool,
 }
 
+#[derive(Parser)]
+struct FlakyDetectArgs {
+    /// Path to the target repository.
+    #[arg(long, short)]
+    target: PathBuf,
+
+    /// Programming language of the target.
+    #[arg(long, short, value_enum)]
+    lang: LangArg,
+
+    /// Number of repetitions per test (default 5).
+    #[arg(long, default_value = "5")]
+    runs: usize,
+
+    /// Number of parallel test runners.
+    #[arg(long, default_value = "4")]
+    parallel: usize,
+
+    /// Output format.
+    #[arg(long, default_value = "text")]
+    output_format: OutputFormat,
+}
+
+#[derive(Parser)]
+struct ComplexityArgs {
+    /// Path to the target repository.
+    #[arg(long, short)]
+    target: PathBuf,
+
+    /// Output format.
+    #[arg(long, default_value = "text")]
+    output_format: OutputFormat,
+}
+
+#[derive(Parser)]
+struct DocsArgs {
+    /// Path to the target repository.
+    #[arg(long, short)]
+    target: PathBuf,
+
+    /// Write output to a file instead of stdout.
+    #[arg(long, short)]
+    output: Option<PathBuf>,
+
+    /// Output format: text (markdown) or json.
+    #[arg(long, default_value = "text")]
+    output_format: OutputFormat,
+}
+
+#[derive(Parser)]
+struct AttackSurfaceArgs {
+    /// Path to the target repository.
+    #[arg(long, short)]
+    target: PathBuf,
+
+    /// Programming language of the target.
+    #[arg(long, short, value_enum)]
+    lang: LangArg,
+
+    /// Pattern matching entry-point tests (e.g., "test_api", "test_http").
+    #[arg(long)]
+    entry_pattern: String,
+
+    /// Output format.
+    #[arg(long, default_value = "text")]
+    output_format: OutputFormat,
+}
+
 #[derive(Clone, Copy, ValueEnum)]
 enum OutputFormat {
     Text,
@@ -299,6 +375,10 @@ async fn main() -> Result<()> {
         Commands::DeadCode(args) => run_dead_code(args).await,
         Commands::Lint(args) => run_lint(args, &cfg).await,
         Commands::Diff(args) => run_diff(args).await,
+        Commands::FlakyDetect(args) => run_flaky_detect(args).await,
+        Commands::Complexity(args) => run_complexity(args).await,
+        Commands::Docs(args) => run_docs(args).await,
+        Commands::AttackSurface(args) => run_attack_surface(args).await,
     }
 }
 
@@ -1996,5 +2076,257 @@ fn scopeguard_worktree(
             .current_dir(&repo)
             .output();
     })
+}
+
+// ---------------------------------------------------------------------------
+// `apex flaky-detect`
+// ---------------------------------------------------------------------------
+
+async fn run_flaky_detect(args: FlakyDetectArgs) -> Result<()> {
+    let lang: Language = args.lang.into();
+    let target_path = args.target.canonicalize()?;
+
+    if !matches!(lang, Language::Python) {
+        return Err(color_eyre::eyre::eyre!(
+            "flaky-detect currently supports Python only"
+        ));
+    }
+
+    eprintln!(
+        "Running each test {} times to detect flakiness...",
+        args.runs
+    );
+
+    // Enumerate tests
+    let test_names = apex_index::python::enumerate_python_tests(&target_path)
+        .await
+        .map_err(|e| color_eyre::eyre::eyre!("enumerate tests: {e}"))?;
+
+    eprintln!("Found {} tests, running {} repetitions each", test_names.len(), args.runs);
+
+    // Run N times
+    let mut all_runs = Vec::with_capacity(args.runs);
+    for run_idx in 0..args.runs {
+        eprintln!("  Run {}/{}...", run_idx + 1, args.runs);
+        let traces = apex_index::python::run_python_per_test(
+            &target_path,
+            &test_names,
+            args.parallel,
+            run_idx * test_names.len(),
+        )
+        .await
+        .map_err(|e| color_eyre::eyre::eyre!("run {}: {e}", run_idx + 1))?;
+        all_runs.push(traces);
+    }
+
+    // Load file_paths from index or build inline
+    let file_paths = if let Ok(index) = load_index(&target_path) {
+        index.file_paths
+    } else {
+        HashMap::new()
+    };
+
+    let flaky = apex_index::analysis::detect_flaky_tests(&all_runs, &file_paths);
+
+    match args.output_format {
+        OutputFormat::Json => {
+            println!("{}", serde_json::to_string_pretty(&flaky)?);
+        }
+        OutputFormat::Text => {
+            if flaky.is_empty() {
+                println!("No flaky tests detected across {} runs.", args.runs);
+            } else {
+                println!(
+                    "Flaky tests detected ({} of {}):\n",
+                    flaky.len(),
+                    test_names.len()
+                );
+                for f in &flaky {
+                    println!("  {} — {} divergent branches", f.test_name, f.divergent_branches.len());
+                    for db in &f.divergent_branches {
+                        let path = db
+                            .file_path
+                            .as_ref()
+                            .map(|p| p.display().to_string())
+                            .unwrap_or_else(|| format!("<{:016x}>", db.branch.file_id));
+                        let dir = if db.branch.direction == 0 {
+                            "true"
+                        } else {
+                            "false"
+                        };
+                        println!(
+                            "    {}:{} [{}] — hit {}/{} runs",
+                            path, db.branch.line, dir, db.hit_ratio, f.total_runs
+                        );
+                    }
+                    println!();
+                }
+            }
+        }
+    }
+
+    Ok(())
+}
+
+// ---------------------------------------------------------------------------
+// `apex complexity`
+// ---------------------------------------------------------------------------
+
+async fn run_complexity(args: ComplexityArgs) -> Result<()> {
+    let target_path = args.target.canonicalize()?;
+    let index = load_index(&target_path)?;
+
+    let results = apex_index::analysis::analyze_complexity(&index, &target_path);
+
+    match args.output_format {
+        OutputFormat::Json => {
+            println!("{}", serde_json::to_string_pretty(&results)?);
+        }
+        OutputFormat::Text => {
+            println!("Exercised vs Static Complexity:\n");
+            println!(
+                "{:<40} {:>8} {:>8} {:>7} {}",
+                "Function", "Static", "Exerc.", "Ratio", "Classification"
+            );
+            println!("{}", "-".repeat(85));
+            for r in &results {
+                println!(
+                    "{:<40} {:>8} {:>8} {:>6.0}% {}",
+                    format!("{}:{} {}", r.file_path.display(), r.line, r.function_name),
+                    r.static_complexity,
+                    r.exercised_complexity,
+                    r.exercise_ratio * 100.0,
+                    r.classification
+                );
+            }
+            println!("\nTotal: {} functions analyzed", results.len());
+
+            let under_tested: Vec<_> = results.iter().filter(|r| r.exercise_ratio < 0.5).collect();
+            if !under_tested.is_empty() {
+                println!(
+                    "\n{} functions are under-tested (<50% of branches exercised)",
+                    under_tested.len()
+                );
+            }
+        }
+    }
+
+    Ok(())
+}
+
+// ---------------------------------------------------------------------------
+// `apex docs`
+// ---------------------------------------------------------------------------
+
+async fn run_docs(args: DocsArgs) -> Result<()> {
+    let target_path = args.target.canonicalize()?;
+    let index = load_index(&target_path)?;
+
+    let docs = apex_index::analysis::generate_docs(&index, &target_path);
+
+    let output = match args.output_format {
+        OutputFormat::Json => serde_json::to_string_pretty(&docs)?,
+        OutputFormat::Text => {
+            let mut buf = String::new();
+            use std::fmt::Write;
+            writeln!(buf, "# Behavioral Documentation\n").ok();
+            writeln!(
+                buf,
+                "Generated from {} tests covering {} branches ({:.1}% coverage)\n",
+                index.traces.len(),
+                index.covered_branches,
+                index.coverage_percent()
+            )
+            .ok();
+
+            for doc in &docs {
+                writeln!(
+                    buf,
+                    "## `{}` ({} line {})\n",
+                    doc.function_name,
+                    doc.file_path.display(),
+                    doc.line
+                )
+                .ok();
+                writeln!(
+                    buf,
+                    "Tested by {} tests, {} distinct execution paths:\n",
+                    doc.total_tests,
+                    doc.paths.len()
+                )
+                .ok();
+
+                for (i, path) in doc.paths.iter().enumerate() {
+                    writeln!(
+                        buf,
+                        "- **Path {}** ({:.0}% of tests, {} branches): `{}`",
+                        i + 1,
+                        path.frequency_pct,
+                        path.branch_count,
+                        path.representative_test
+                    )
+                    .ok();
+                }
+                writeln!(buf).ok();
+            }
+
+            buf
+        }
+    };
+
+    if let Some(path) = args.output {
+        std::fs::write(&path, &output)?;
+        eprintln!("Docs written to {}", path.display());
+    } else {
+        print!("{output}");
+    }
+
+    Ok(())
+}
+
+// ---------------------------------------------------------------------------
+// `apex attack-surface`
+// ---------------------------------------------------------------------------
+
+async fn run_attack_surface(args: AttackSurfaceArgs) -> Result<()> {
+    let target_path = args.target.canonicalize()?;
+    let index = load_index(&target_path)?;
+
+    let report =
+        apex_index::analysis::analyze_attack_surface(&index, &args.entry_pattern);
+
+    match args.output_format {
+        OutputFormat::Json => {
+            println!("{}", serde_json::to_string_pretty(&report)?);
+        }
+        OutputFormat::Text => {
+            println!("Attack Surface Analysis\n");
+            println!("  Entry pattern:       \"{}\"", report.entry_pattern);
+            println!("  Matching tests:      {}", report.entry_tests);
+            println!(
+                "  Reachable branches:  {} / {} ({:.1}%)",
+                report.reachable_branches, report.total_branches, report.attack_surface_pct
+            );
+            println!("  Reachable files:     {}\n", report.reachable_files);
+
+            if report.entry_tests == 0 {
+                println!("No tests match the entry pattern. Try a broader pattern.");
+                return Ok(());
+            }
+
+            println!("Reachable files (by branch count):");
+            for f in &report.reachable_file_details {
+                println!(
+                    "  {} — {} / {} branches reachable ({:.0}%)",
+                    f.file_path.display(),
+                    f.reachable_branches,
+                    f.total_branches_in_file,
+                    f.coverage_pct
+                );
+            }
+        }
+    }
+
+    Ok(())
 }
 

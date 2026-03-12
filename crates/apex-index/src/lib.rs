@@ -1,3 +1,4 @@
+pub mod analysis;
 pub mod python;
 pub mod types;
 

@@ -47,7 +47,7 @@ pub async fn build_python_index(
     info!(target = %target_root.display(), "building Python branch index");
 
     // 1. Enumerate tests
-    let test_names = enumerate_tests(&target_root).await?;
+    let test_names = enumerate_python_tests(&target_root).await?;
     info!(count = test_names.len(), "discovered tests");
 
     if test_names.is_empty() {
@@ -59,7 +59,7 @@ pub async fn build_python_index(
     info!(total = all_branches.len(), "total branches discovered");
 
     // 3. Run each test individually and collect traces
-    let traces = run_per_test_coverage(&target_root, &test_names, parallelism).await?;
+    let traces = run_per_test_coverage(&target_root, &test_names, parallelism, 0).await?;
 
     // 4. Build profiles and index
     let profiles = BranchIndex::build_profiles(&traces);
@@ -93,7 +93,8 @@ pub async fn build_python_index(
 // Test enumeration
 // ---------------------------------------------------------------------------
 
-async fn enumerate_tests(
+/// Enumerate all Python tests via `pytest --collect-only`.
+pub async fn enumerate_python_tests(
     target_root: &Path,
 ) -> Result<Vec<String>, Box<dyn std::error::Error + Send + Sync>> {
     let output = tokio::process::Command::new("python3")
@@ -177,10 +178,22 @@ async fn run_full_coverage(
 // Per-test coverage
 // ---------------------------------------------------------------------------
 
+/// Run each test individually with instrumentation and collect per-test traces.
+/// `idx_offset` offsets temp file names to avoid collisions across multiple invocations.
+pub async fn run_python_per_test(
+    target_root: &Path,
+    test_names: &[String],
+    parallelism: usize,
+    idx_offset: usize,
+) -> Result<Vec<TestTrace>, Box<dyn std::error::Error + Send + Sync>> {
+    run_per_test_coverage(target_root, test_names, parallelism, idx_offset).await
+}
+
 async fn run_per_test_coverage(
     target_root: &Path,
     test_names: &[String],
     parallelism: usize,
+    idx_offset: usize,
 ) -> Result<Vec<TestTrace>, Box<dyn std::error::Error + Send + Sync>> {
     use tokio::sync::Semaphore;
     use std::sync::Arc;
@@ -192,7 +205,7 @@ async fn run_per_test_coverage(
         let sem = semaphore.clone();
         let root = target_root.to_path_buf();
         let name = test_name.clone();
-        let idx = i;
+        let idx = i + idx_offset;
 
         let handle = tokio::spawn(async move {
             let _permit = sem.acquire().await.unwrap();

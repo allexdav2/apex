@@ -40,21 +40,25 @@ export LLVM_PROFDATA=/opt/homebrew/opt/llvm/bin/llvm-profdata
 
 ### Slash Commands
 
-Run these directly in Claude Code:
+Start here:
+
+```
+/apex                — project dashboard: health, metrics, recommendations
+```
+
+Then dig deeper:
 
 | Command | What it does |
 |---------|-------------|
+| `/apex` | **Main entrypoint** — dashboard with deploy score, key findings, and recommended actions |
 | `/apex-run` | Full autonomous coverage loop — measures gaps, writes tests, selects strategies, re-measures |
-| `/apex-run /path/to/project python 5 0.95` | Run against a specific project with language, rounds, and target |
-| `/apex-status` | Show coverage table for the workspace |
-| `/apex-status apex-fuzz` | Coverage for a specific crate |
-| `/apex-gaps` | List the top uncovered regions with explanations and suggested tests |
-| `/apex-gaps apex-coverage` | Gaps in a specific crate |
-| `/apex-generate apex-fuzz` | Generate tests targeting uncovered branches in a crate |
-| `/apex-ci 0.8` | CI coverage gate — fails if below threshold |
 | `/apex-index` | Build per-test branch index for intelligence commands |
 | `/apex-intel` | Full SDLC intelligence report — test quality, risk, dead code, hotpaths, contracts |
-| `/apex-deploy` | Deployment readiness check — aggregate confidence score with GO/CAUTION/BLOCK recommendation |
+| `/apex-deploy` | Deployment readiness check — aggregate confidence score with GO/CAUTION/BLOCK |
+| `/apex-status` | Show coverage table for the workspace |
+| `/apex-gaps` | List the top uncovered regions with explanations and suggested tests |
+| `/apex-generate apex-fuzz` | Generate tests targeting uncovered branches in a crate |
+| `/apex-ci 0.8` | CI coverage gate — fails if below threshold |
 
 ### Agents (auto-invoked)
 

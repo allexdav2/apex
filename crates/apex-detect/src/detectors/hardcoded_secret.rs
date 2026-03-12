@@ -4,7 +4,7 @@ use regex::Regex;
 use std::sync::LazyLock;
 use uuid::Uuid;
 
-use super::util::{is_comment, is_test_file};
+use super::util::{in_test_block, is_comment, is_test_file};
 use crate::context::AnalysisContext;
 use crate::finding::{Finding, FindingCategory, Severity};
 use crate::Detector;
@@ -149,6 +149,11 @@ impl Detector for HardcodedSecretDetector {
 
                 // Skip comments
                 if is_comment(trimmed, ctx.language) {
+                    continue;
+                }
+
+                // Skip lines inside #[cfg(test)] blocks (Rust)
+                if in_test_block(source, line_num) {
                     continue;
                 }
 

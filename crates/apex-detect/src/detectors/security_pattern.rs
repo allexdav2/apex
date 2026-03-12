@@ -141,6 +141,183 @@ const PYTHON_SECURITY_PATTERNS: &[SecurityPattern] = &[
     },
 ];
 
+const JS_SECURITY_PATTERNS: &[SecurityPattern] = &[
+    SecurityPattern {
+        sink: "eval(",
+        description: "eval() — arbitrary code execution if input is user-controlled",
+        category: FindingCategory::Injection,
+        base_severity: Severity::Critical,
+        user_input_indicators: &["req.", "request", "params", "query", "body", "input", "argv"],
+        sanitization_indicators: &[],
+    },
+    SecurityPattern {
+        sink: "Function(",
+        description: "new Function() — dynamic code generation, equivalent to eval",
+        category: FindingCategory::Injection,
+        base_severity: Severity::Critical,
+        user_input_indicators: &["req.", "request", "params", "query", "body", "input"],
+        sanitization_indicators: &[],
+    },
+    SecurityPattern {
+        sink: "child_process.exec(",
+        description: "child_process.exec — command injection via shell",
+        category: FindingCategory::Injection,
+        base_severity: Severity::Critical,
+        user_input_indicators: &["req.", "request", "params", "query", "body", "input", "${", "`"],
+        sanitization_indicators: &["escape", "sanitize", "execFile"],
+    },
+    SecurityPattern {
+        sink: "innerHTML",
+        description: "innerHTML assignment — XSS if content includes user input",
+        category: FindingCategory::Injection,
+        base_severity: Severity::High,
+        user_input_indicators: &["req.", "request", "user", "input", "query", "param", "response"],
+        sanitization_indicators: &["sanitize", "escape", "DOMPurify", "encode", "textContent"],
+    },
+    SecurityPattern {
+        sink: "dangerouslySetInnerHTML",
+        description: "dangerouslySetInnerHTML — XSS, React's escape hatch for raw HTML",
+        category: FindingCategory::Injection,
+        base_severity: Severity::High,
+        user_input_indicators: &["user", "input", "props", "state", "data", "response"],
+        sanitization_indicators: &["sanitize", "DOMPurify", "bleach"],
+    },
+    SecurityPattern {
+        sink: "document.write(",
+        description: "document.write() — XSS if content includes user input",
+        category: FindingCategory::Injection,
+        base_severity: Severity::High,
+        user_input_indicators: &["user", "input", "location", "search", "hash", "referrer"],
+        sanitization_indicators: &["escape", "encode", "sanitize"],
+    },
+    SecurityPattern {
+        sink: "vm.runIn",
+        description: "vm.runInContext/vm.runInNewContext — sandbox escape risk",
+        category: FindingCategory::Injection,
+        base_severity: Severity::High,
+        user_input_indicators: &["req.", "request", "user", "input"],
+        sanitization_indicators: &[],
+    },
+];
+
+const RUBY_SECURITY_PATTERNS: &[SecurityPattern] = &[
+    SecurityPattern {
+        sink: "eval(",
+        description: "eval() — arbitrary code execution",
+        category: FindingCategory::Injection,
+        base_severity: Severity::Critical,
+        user_input_indicators: &["params", "request", "input", "gets", "ARGV"],
+        sanitization_indicators: &[],
+    },
+    SecurityPattern {
+        sink: "instance_eval",
+        description: "instance_eval — arbitrary code execution in object context",
+        category: FindingCategory::Injection,
+        base_severity: Severity::Critical,
+        user_input_indicators: &["params", "request", "input", "gets"],
+        sanitization_indicators: &[],
+    },
+    SecurityPattern {
+        sink: "class_eval",
+        description: "class_eval — arbitrary code execution in class context",
+        category: FindingCategory::Injection,
+        base_severity: Severity::Critical,
+        user_input_indicators: &["params", "request", "input"],
+        sanitization_indicators: &[],
+    },
+    SecurityPattern {
+        sink: "send(",
+        description: "send() — arbitrary method invocation if argument is user-controlled",
+        category: FindingCategory::Injection,
+        base_severity: Severity::High,
+        user_input_indicators: &["params", "request", "input", "gets"],
+        sanitization_indicators: &["whitelist", "allow_list", "permitted", "include?"],
+    },
+    SecurityPattern {
+        sink: "constantize",
+        description: "constantize — arbitrary class instantiation from user string",
+        category: FindingCategory::Injection,
+        base_severity: Severity::High,
+        user_input_indicators: &["params", "request", "input"],
+        sanitization_indicators: &["whitelist", "allow_list", "permitted", "include?"],
+    },
+    SecurityPattern {
+        sink: ".html_safe",
+        description: ".html_safe — XSS if content includes user input",
+        category: FindingCategory::Injection,
+        base_severity: Severity::High,
+        user_input_indicators: &["params", "user", "input", "request", "@"],
+        sanitization_indicators: &["sanitize", "strip_tags", "escape", "h("],
+    },
+    SecurityPattern {
+        sink: "Marshal.load",
+        description: "Marshal.load — arbitrary code execution on untrusted data",
+        category: FindingCategory::Injection,
+        base_severity: Severity::Critical,
+        user_input_indicators: &["request", "file", "socket", "params", "upload"],
+        sanitization_indicators: &[],
+    },
+    SecurityPattern {
+        sink: "YAML.load(",
+        description: "YAML.load — arbitrary code execution without safe_load",
+        category: FindingCategory::Injection,
+        base_severity: Severity::High,
+        user_input_indicators: &["request", "file", "params"],
+        sanitization_indicators: &["safe_load", "safe_load_file", "permitted_classes"],
+    },
+    SecurityPattern {
+        sink: ".where(",
+        description: "ActiveRecord .where() with potential string interpolation — SQL injection",
+        category: FindingCategory::Injection,
+        base_severity: Severity::High,
+        user_input_indicators: &["#{", "params", "request", "input", "+"],
+        sanitization_indicators: &["sanitize_sql", "?", "placeholder", "where("],
+    },
+];
+
+const C_SECURITY_PATTERNS: &[SecurityPattern] = &[
+    SecurityPattern {
+        sink: "gets(",
+        description: "gets() — unbounded read, guaranteed buffer overflow",
+        category: FindingCategory::MemorySafety,
+        base_severity: Severity::Critical,
+        user_input_indicators: &[], // always dangerous
+        sanitization_indicators: &[],
+    },
+    SecurityPattern {
+        sink: "strcpy(",
+        description: "strcpy() — no bounds checking, use strncpy or strlcpy",
+        category: FindingCategory::MemorySafety,
+        base_severity: Severity::High,
+        user_input_indicators: &["argv", "stdin", "fgets", "recv", "read(", "getenv"],
+        sanitization_indicators: &["strlen", "sizeof", "strlcpy", "strncpy"],
+    },
+    SecurityPattern {
+        sink: "sprintf(",
+        description: "sprintf() — no bounds checking, use snprintf",
+        category: FindingCategory::MemorySafety,
+        base_severity: Severity::High,
+        user_input_indicators: &["argv", "stdin", "fgets", "recv", "getenv", "%s"],
+        sanitization_indicators: &["snprintf"],
+    },
+    SecurityPattern {
+        sink: "strcat(",
+        description: "strcat() — no bounds checking, use strncat or strlcat",
+        category: FindingCategory::MemorySafety,
+        base_severity: Severity::High,
+        user_input_indicators: &["argv", "stdin", "fgets", "recv", "getenv"],
+        sanitization_indicators: &["strncat", "strlcat", "strlen"],
+    },
+    SecurityPattern {
+        sink: "system(",
+        description: "system() — command injection if argument contains user input",
+        category: FindingCategory::Injection,
+        base_severity: Severity::Critical,
+        user_input_indicators: &["argv", "stdin", "fgets", "recv", "getenv", "sprintf"],
+        sanitization_indicators: &["escape", "sanitize"],
+    },
+];
+
 const CONTEXT_WINDOW: usize = 3;
 
 fn has_indicator(lines: &[&str], line_num: usize, indicators: &[&str]) -> bool {
@@ -193,6 +370,9 @@ fn patterns_for_language(lang: Language) -> &'static [SecurityPattern] {
     match lang {
         Language::Python => PYTHON_SECURITY_PATTERNS,
         Language::Rust => RUST_SECURITY_PATTERNS,
+        Language::JavaScript => JS_SECURITY_PATTERNS,
+        Language::Ruby => RUBY_SECURITY_PATTERNS,
+        Language::C => C_SECURITY_PATTERNS,
         _ => &[],
     }
 }
@@ -411,11 +591,89 @@ mod tests {
     async fn no_findings_for_unsupported_language() {
         let mut files = HashMap::new();
         files.insert(
-            PathBuf::from("src/main.js"),
+            PathBuf::from("src/main.wasm"),
             "eval('alert(1)');\n".into(),
+        );
+        let ctx = make_ctx(files, Language::Wasm);
+        let findings = SecurityPatternDetector.analyze(&ctx).await.unwrap();
+        assert!(findings.is_empty());
+    }
+
+    #[tokio::test]
+    async fn js_eval_with_user_input_is_critical() {
+        let mut files = HashMap::new();
+        files.insert(
+            PathBuf::from("src/handler.js"),
+            "function handle(req) {\n    const result = eval(req.body.code);\n    return result;\n}\n".into(),
         );
         let ctx = make_ctx(files, Language::JavaScript);
         let findings = SecurityPatternDetector.analyze(&ctx).await.unwrap();
-        assert!(findings.is_empty());
+        assert_eq!(findings.len(), 1);
+        assert_eq!(findings[0].severity, Severity::Critical);
+    }
+
+    #[tokio::test]
+    async fn js_innerhtml_with_user_data_is_high() {
+        let mut files = HashMap::new();
+        files.insert(
+            PathBuf::from("src/render.js"),
+            "function render(userData) {\n    el.innerHTML = userData;\n}\n".into(),
+        );
+        let ctx = make_ctx(files, Language::JavaScript);
+        let findings = SecurityPatternDetector.analyze(&ctx).await.unwrap();
+        assert_eq!(findings.len(), 1);
+        assert_eq!(findings[0].severity, Severity::High);
+    }
+
+    #[tokio::test]
+    async fn ruby_eval_with_params_is_critical() {
+        let mut files = HashMap::new();
+        files.insert(
+            PathBuf::from("app/controllers/calc_controller.rb"),
+            "def calculate\n  result = eval(params[:expr])\n  render json: result\nend\n".into(),
+        );
+        let ctx = make_ctx(files, Language::Ruby);
+        let findings = SecurityPatternDetector.analyze(&ctx).await.unwrap();
+        assert_eq!(findings.len(), 1);
+        assert_eq!(findings[0].severity, Severity::Critical);
+    }
+
+    #[tokio::test]
+    async fn ruby_marshal_from_request_is_critical() {
+        let mut files = HashMap::new();
+        files.insert(
+            PathBuf::from("app/services/deserialize.rb"),
+            "def load_data(request)\n  Marshal.load(request.body)\nend\n".into(),
+        );
+        let ctx = make_ctx(files, Language::Ruby);
+        let findings = SecurityPatternDetector.analyze(&ctx).await.unwrap();
+        assert_eq!(findings.len(), 1);
+        assert_eq!(findings[0].severity, Severity::Critical);
+    }
+
+    #[tokio::test]
+    async fn c_gets_is_always_critical() {
+        let mut files = HashMap::new();
+        files.insert(
+            PathBuf::from("src/main.c"),
+            "int main() {\n    char buf[64];\n    gets(buf);\n}\n".into(),
+        );
+        let ctx = make_ctx(files, Language::C);
+        let findings = SecurityPatternDetector.analyze(&ctx).await.unwrap();
+        assert_eq!(findings.len(), 1);
+        assert_eq!(findings[0].severity, Severity::Critical);
+    }
+
+    #[tokio::test]
+    async fn c_strcpy_without_user_input_is_medium() {
+        let mut files = HashMap::new();
+        files.insert(
+            PathBuf::from("src/util.c"),
+            "void copy(char *dst, const char *src) {\n    strcpy(dst, src);\n}\n".into(),
+        );
+        let ctx = make_ctx(files, Language::C);
+        let findings = SecurityPatternDetector.analyze(&ctx).await.unwrap();
+        assert_eq!(findings.len(), 1);
+        assert_eq!(findings[0].severity, Severity::Medium);
     }
 }

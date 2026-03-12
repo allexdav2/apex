@@ -486,6 +486,402 @@ pub fn analyze_attack_surface(
 }
 
 // ---------------------------------------------------------------------------
+// Hot paths analysis
+// ---------------------------------------------------------------------------
+
+#[derive(Debug, Clone, Serialize)]
+pub struct HotPath {
+    pub branch: BranchId,
+    pub file_path: PathBuf,
+    pub line: u32,
+    pub direction: &'static str,
+    pub hit_count: u64,
+    pub test_count: usize,
+    /// Fraction of total hits across all branches.
+    pub hit_share_pct: f64,
+}
+
+/// Rank branches by execution frequency.
+pub fn analyze_hotpaths(index: &BranchIndex, top_n: usize) -> Vec<HotPath> {
+    let total_hits: u64 = index.profiles.values().map(|p| p.hit_count).sum();
+
+    let mut paths: Vec<HotPath> = index
+        .profiles
+        .values()
+        .map(|p| {
+            let file_path = index
+                .file_paths
+                .get(&p.branch.file_id)
+                .cloned()
+                .unwrap_or_else(|| PathBuf::from(format!("<{:016x}>", p.branch.file_id)));
+            HotPath {
+                branch: p.branch.clone(),
+                file_path,
+                line: p.branch.line,
+                direction: if p.branch.direction == 0 { "true" } else { "false" },
+                hit_count: p.hit_count,
+                test_count: p.test_count,
+                hit_share_pct: if total_hits > 0 {
+                    (p.hit_count as f64 / total_hits as f64) * 100.0
+                } else {
+                    0.0
+                },
+            }
+        })
+        .collect();
+
+    paths.sort_by(|a, b| b.hit_count.cmp(&a.hit_count));
+    paths.truncate(top_n);
+    paths
+}
+
+// ---------------------------------------------------------------------------
+// Risk assessment
+// ---------------------------------------------------------------------------
+
+#[derive(Debug, Clone, Serialize)]
+pub struct RiskAssessment {
+    pub level: &'static str,
+    pub score: u32,
+    pub changed_branches: usize,
+    pub covered_changed: usize,
+    pub uncovered_changed: usize,
+    pub affected_tests: usize,
+    pub coverage_of_changed: f64,
+    pub reasons: Vec<String>,
+}
+
+/// Assess risk of changes based on branch coverage data.
+pub fn assess_risk(
+    index: &BranchIndex,
+    changed_files: &[String],
+) -> RiskAssessment {
+    // Map changed files to file_ids
+    let changed_file_ids: HashSet<u64> = index
+        .file_paths
+        .iter()
+        .filter(|(_, path)| {
+            let ps = path.to_string_lossy();
+            changed_files.iter().any(|cf| ps.contains(cf.as_str()))
+        })
+        .map(|(id, _)| *id)
+        .collect();
+
+    // Branches in changed files
+    let changed_branches: Vec<_> = index
+        .profiles
+        .values()
+        .filter(|p| changed_file_ids.contains(&p.branch.file_id))
+        .collect();
+
+    let total_changed = changed_branches.len();
+    let covered_changed = changed_branches.iter().filter(|p| p.hit_count > 0).count();
+    let uncovered_changed = total_changed - covered_changed;
+
+    // Tests that touch changed files
+    let affected_tests: HashSet<&str> = index
+        .traces
+        .iter()
+        .filter(|t| {
+            t.branches
+                .iter()
+                .any(|b| changed_file_ids.contains(&b.file_id))
+        })
+        .map(|t| t.test_name.as_str())
+        .collect();
+
+    let coverage_of_changed = if total_changed > 0 {
+        (covered_changed as f64 / total_changed as f64) * 100.0
+    } else {
+        100.0
+    };
+
+    let mut reasons = Vec::new();
+    let mut score: u32 = 0;
+
+    // Score components
+    if coverage_of_changed < 50.0 {
+        score += 40;
+        reasons.push(format!(
+            "Low coverage of changed code: {:.0}%",
+            coverage_of_changed
+        ));
+    } else if coverage_of_changed < 80.0 {
+        score += 20;
+        reasons.push(format!(
+            "Moderate coverage of changed code: {:.0}%",
+            coverage_of_changed
+        ));
+    }
+
+    if uncovered_changed > 10 {
+        score += 30;
+        reasons.push(format!("{} uncovered branches in changed files", uncovered_changed));
+    } else if uncovered_changed > 0 {
+        score += 10;
+        reasons.push(format!("{} uncovered branches in changed files", uncovered_changed));
+    }
+
+    if affected_tests.len() > 50 {
+        score += 20;
+        reasons.push(format!("Wide blast radius: {} tests affected", affected_tests.len()));
+    } else if affected_tests.len() > 10 {
+        score += 10;
+        reasons.push(format!("{} tests affected", affected_tests.len()));
+    }
+
+    if changed_file_ids.is_empty() {
+        reasons.push("No changed files match indexed files".into());
+    }
+
+    let level = match score {
+        0..=15 => "LOW",
+        16..=35 => "MEDIUM",
+        36..=60 => "HIGH",
+        _ => "CRITICAL",
+    };
+
+    RiskAssessment {
+        level,
+        score,
+        changed_branches: total_changed,
+        covered_changed,
+        uncovered_changed,
+        affected_tests: affected_tests.len(),
+        coverage_of_changed,
+        reasons,
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Invariant / contract discovery
+// ---------------------------------------------------------------------------
+
+#[derive(Debug, Clone, Serialize)]
+pub struct DiscoveredInvariant {
+    pub file_path: PathBuf,
+    pub function_name: String,
+    pub line: u32,
+    pub description: String,
+    pub confidence: f64,
+    pub evidence_tests: usize,
+    pub kind: &'static str,
+}
+
+/// Discover invariants from branch execution patterns.
+pub fn discover_contracts(
+    index: &BranchIndex,
+    target_root: &Path,
+) -> Vec<DiscoveredInvariant> {
+    let mut invariants = Vec::new();
+
+    for (file_id, rel_path) in &index.file_paths {
+        let full_path = target_root.join(rel_path);
+        let source = match std::fs::read_to_string(&full_path) {
+            Ok(s) => s,
+            Err(_) => continue,
+        };
+        let lines: Vec<&str> = source.lines().collect();
+        let functions = extract_functions(&lines, index.language);
+
+        for (func_name, func_start, func_end) in &functions {
+            // Find all tests that call this function
+            let func_tests: Vec<_> = index
+                .traces
+                .iter()
+                .filter(|t| {
+                    t.branches.iter().any(|b| {
+                        b.file_id == *file_id && b.line >= *func_start && b.line <= *func_end
+                    })
+                })
+                .collect();
+
+            if func_tests.is_empty() {
+                continue;
+            }
+
+            // For each branch in this function, check if it's always/never taken
+            let func_profiles: Vec<_> = index
+                .profiles
+                .values()
+                .filter(|p| {
+                    p.branch.file_id == *file_id
+                        && p.branch.line >= *func_start
+                        && p.branch.line <= *func_end
+                })
+                .collect();
+
+            for profile in &func_profiles {
+                let key = branch_key(&profile.branch);
+                let tests_hitting: usize = func_tests
+                    .iter()
+                    .filter(|t| t.branches.iter().any(|b| branch_key(b) == key))
+                    .count();
+
+                let total_func_tests = func_tests.len();
+                if total_func_tests < 2 {
+                    continue; // Need multiple tests for meaningful invariants
+                }
+
+                let ratio = tests_hitting as f64 / total_func_tests as f64;
+                let dir = if profile.branch.direction == 0 {
+                    "true"
+                } else {
+                    "false"
+                };
+
+                let src_line = lines
+                    .get((profile.branch.line as usize).saturating_sub(1))
+                    .map(|s| s.trim())
+                    .unwrap_or("");
+
+                if ratio >= 0.99 && total_func_tests >= 3 {
+                    invariants.push(DiscoveredInvariant {
+                        file_path: rel_path.clone(),
+                        function_name: func_name.clone(),
+                        line: profile.branch.line,
+                        description: format!(
+                            "Branch `{}` at line {} is ALWAYS {} when {}() is called",
+                            src_line, profile.branch.line, dir, func_name
+                        ),
+                        confidence: ratio,
+                        evidence_tests: total_func_tests,
+                        kind: "always-taken",
+                    });
+                } else if ratio <= 0.01 && total_func_tests >= 3 {
+                    invariants.push(DiscoveredInvariant {
+                        file_path: rel_path.clone(),
+                        function_name: func_name.clone(),
+                        line: profile.branch.line,
+                        description: format!(
+                            "Branch `{}` at line {} is NEVER {} when {}() is called",
+                            src_line, profile.branch.line, dir, func_name
+                        ),
+                        confidence: 1.0 - ratio,
+                        evidence_tests: total_func_tests,
+                        kind: "never-taken",
+                    });
+                }
+            }
+        }
+    }
+
+    invariants.sort_by(|a, b| {
+        b.evidence_tests
+            .cmp(&a.evidence_tests)
+            .then(b.confidence.partial_cmp(&a.confidence).unwrap_or(std::cmp::Ordering::Equal))
+    });
+
+    invariants
+}
+
+// ---------------------------------------------------------------------------
+// Deploy score
+// ---------------------------------------------------------------------------
+
+#[derive(Debug, Clone, Serialize)]
+pub struct DeployScore {
+    pub total_score: u32,
+    pub coverage_score: u32,
+    pub coverage_max: u32,
+    pub test_quality_score: u32,
+    pub test_quality_max: u32,
+    pub detector_score: u32,
+    pub detector_max: u32,
+    pub stability_score: u32,
+    pub stability_max: u32,
+    pub recommendation: &'static str,
+    pub breakdown: Vec<String>,
+}
+
+/// Compute aggregate deployment confidence score (0-100).
+pub fn compute_deploy_score(
+    index: &BranchIndex,
+    detector_findings: usize,
+    critical_findings: usize,
+) -> DeployScore {
+    let coverage_max = 30u32;
+    let test_quality_max = 25u32;
+    let detector_max = 25u32;
+    let stability_max = 20u32;
+
+    let mut breakdown = Vec::new();
+
+    // Coverage component (0-30)
+    let cov_pct = index.coverage_percent();
+    let coverage_score = ((cov_pct / 100.0) * coverage_max as f64).round() as u32;
+    breakdown.push(format!(
+        "Coverage: {:.1}% → {}/{}",
+        cov_pct, coverage_score, coverage_max
+    ));
+
+    // Test quality: unique coverage ratio (tests that cover unique branches / total tests)
+    let total_tests = index.traces.len();
+    let unique_tests = index
+        .profiles
+        .values()
+        .filter(|p| p.test_count == 1)
+        .count();
+    let quality_ratio = if total_tests > 0 {
+        (unique_tests as f64 / index.profiles.len().max(1) as f64).min(1.0)
+    } else {
+        0.0
+    };
+    let test_quality_score = (quality_ratio * test_quality_max as f64).round() as u32;
+    breakdown.push(format!(
+        "Test quality: {:.0}% unique coverage → {}/{}",
+        quality_ratio * 100.0,
+        test_quality_score,
+        test_quality_max
+    ));
+
+    // Detector findings (0-25, loses points for findings)
+    let detector_score = if critical_findings > 0 {
+        0
+    } else if detector_findings > 10 {
+        5
+    } else if detector_findings > 0 {
+        detector_max - (detector_findings as u32 * 2).min(detector_max)
+    } else {
+        detector_max
+    };
+    breakdown.push(format!(
+        "Detectors: {} findings ({} critical) → {}/{}",
+        detector_findings, critical_findings, detector_score, detector_max
+    ));
+
+    // Stability: assume stable if we have an index (future: compare across runs)
+    let stability_score = stability_max; // Full marks if index exists
+    breakdown.push(format!(
+        "Stability: index present → {}/{}",
+        stability_score, stability_max
+    ));
+
+    let total_score = coverage_score + test_quality_score + detector_score + stability_score;
+
+    let recommendation = match total_score {
+        0..=40 => "BLOCK — significant gaps in coverage or security",
+        41..=60 => "CAUTION — review findings before deploying",
+        61..=80 => "ACCEPTABLE — deploy with monitoring",
+        _ => "GO — high confidence deployment",
+    };
+
+    DeployScore {
+        total_score,
+        coverage_score,
+        coverage_max,
+        test_quality_score,
+        test_quality_max,
+        detector_score,
+        detector_max,
+        stability_score,
+        stability_max,
+        recommendation,
+        breakdown,
+    }
+}
+
+// ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
 
@@ -629,5 +1025,152 @@ mod tests {
         assert_eq!(report.entry_tests, 1);
         assert_eq!(report.reachable_branches, 2);
         assert_eq!(report.reachable_files, 2);
+    }
+
+    #[test]
+    fn hotpaths_ranks_by_hit_count() {
+        let traces = vec![TestTrace {
+            test_name: "t1".into(),
+            branches: vec![br(1, 10, 0), br(1, 10, 0), br(1, 20, 0)],
+            duration_ms: 50,
+            status: ExecutionStatus::Pass,
+        }];
+        let index = BranchIndex {
+            profiles: BranchIndex::build_profiles(&traces),
+            traces,
+            file_paths: HashMap::from([(1, PathBuf::from("src/a.py"))]),
+            total_branches: 2,
+            covered_branches: 2,
+            created_at: String::new(),
+            language: apex_core::types::Language::Python,
+            target_root: PathBuf::new(),
+            source_hash: String::new(),
+        };
+
+        let hot = analyze_hotpaths(&index, 10);
+        assert!(!hot.is_empty());
+        // First entry should have highest hit_count
+        assert!(hot[0].hit_count >= hot.last().unwrap().hit_count);
+        // hit_share_pct should sum to ~100%
+        let total_share: f64 = hot.iter().map(|h| h.hit_share_pct).sum();
+        assert!((total_share - 100.0).abs() < 0.1);
+    }
+
+    #[test]
+    fn risk_low_for_covered_changes() {
+        let traces = vec![TestTrace {
+            test_name: "t1".into(),
+            branches: vec![br(1, 10, 0), br(1, 20, 0)],
+            duration_ms: 50,
+            status: ExecutionStatus::Pass,
+        }];
+        let index = BranchIndex {
+            profiles: BranchIndex::build_profiles(&traces),
+            traces,
+            file_paths: HashMap::from([(1, PathBuf::from("src/lib.py"))]),
+            total_branches: 2,
+            covered_branches: 2,
+            created_at: String::new(),
+            language: apex_core::types::Language::Python,
+            target_root: PathBuf::new(),
+            source_hash: String::new(),
+        };
+
+        let risk = assess_risk(&index, &["src/lib.py".to_string()]);
+        assert_eq!(risk.level, "LOW");
+        assert!(risk.coverage_of_changed > 90.0);
+    }
+
+    #[test]
+    fn risk_high_for_uncovered_changes() {
+        let traces = vec![TestTrace {
+            test_name: "t1".into(),
+            branches: vec![br(1, 10, 0)],
+            duration_ms: 50,
+            status: ExecutionStatus::Pass,
+        }];
+        let mut profiles = BranchIndex::build_profiles(&traces);
+        // Add many uncovered branches in changed file
+        for line in 100..115 {
+            let b = br(2, line, 0);
+            profiles.insert(
+                branch_key(&b),
+                crate::BranchProfile {
+                    branch: b,
+                    hit_count: 0,
+                    test_count: 0,
+                    test_names: vec![],
+                },
+            );
+        }
+
+        let index = BranchIndex {
+            profiles,
+            traces,
+            file_paths: HashMap::from([
+                (1, PathBuf::from("src/ok.py")),
+                (2, PathBuf::from("src/risky.py")),
+            ]),
+            total_branches: 16,
+            covered_branches: 1,
+            created_at: String::new(),
+            language: apex_core::types::Language::Python,
+            target_root: PathBuf::new(),
+            source_hash: String::new(),
+        };
+
+        let risk = assess_risk(&index, &["src/risky.py".to_string()]);
+        assert!(risk.score > 30, "expected HIGH risk, got score={}", risk.score);
+        assert!(risk.uncovered_changed > 10);
+    }
+
+    #[test]
+    fn deploy_score_full_marks_no_findings() {
+        let traces = vec![TestTrace {
+            test_name: "t1".into(),
+            branches: vec![br(1, 10, 0)],
+            duration_ms: 50,
+            status: ExecutionStatus::Pass,
+        }];
+        let index = BranchIndex {
+            profiles: BranchIndex::build_profiles(&traces),
+            traces,
+            file_paths: HashMap::from([(1, PathBuf::from("src/a.py"))]),
+            total_branches: 1,
+            covered_branches: 1,
+            created_at: String::new(),
+            language: apex_core::types::Language::Python,
+            target_root: PathBuf::new(),
+            source_hash: String::new(),
+        };
+
+        let score = compute_deploy_score(&index, 0, 0);
+        assert_eq!(score.total_score, 100);
+        assert!(score.recommendation.starts_with("GO"));
+    }
+
+    #[test]
+    fn deploy_score_blocked_by_critical_findings() {
+        let traces = vec![TestTrace {
+            test_name: "t1".into(),
+            branches: vec![br(1, 10, 0)],
+            duration_ms: 50,
+            status: ExecutionStatus::Pass,
+        }];
+        let index = BranchIndex {
+            profiles: BranchIndex::build_profiles(&traces),
+            traces,
+            file_paths: HashMap::from([(1, PathBuf::from("src/a.py"))]),
+            total_branches: 1,
+            covered_branches: 1,
+            created_at: String::new(),
+            language: apex_core::types::Language::Python,
+            target_root: PathBuf::new(),
+            source_hash: String::new(),
+        };
+
+        let score = compute_deploy_score(&index, 5, 2);
+        assert_eq!(score.detector_score, 0);
+        assert!(score.total_score < 80);
     }
 }

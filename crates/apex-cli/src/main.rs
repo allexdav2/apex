@@ -19,7 +19,7 @@ use apex_instrument::{
 use apex_lang::{CRunner, JavaRunner, JavaScriptRunner, PythonRunner, WasmRunner};
 use clap::{Parser, Subcommand, ValueEnum};
 use color_eyre::Result;
-use std::{collections::HashMap, path::PathBuf, sync::Arc};
+use std::{collections::{HashMap, HashSet}, path::PathBuf, sync::Arc};
 use tracing::{debug, info, warn};
 use tracing_subscriber::EnvFilter;
 
@@ -74,6 +74,16 @@ enum Commands {
     Docs(DocsArgs),
     /// Map attack surface from entry-point reachability.
     AttackSurface(AttackSurfaceArgs),
+    /// CI gate: fail on unexpected behavioral changes vs base branch.
+    RegressionCheck(RegressionCheckArgs),
+    /// Assess change risk from branch coverage data.
+    Risk(RiskArgs),
+    /// Rank branches by execution frequency (hot paths).
+    Hotpaths(HotpathsArgs),
+    /// Discover invariants from branch execution patterns.
+    Contracts(ContractsArgs),
+    /// Aggregate deployment confidence score (0-100).
+    DeployScore(DeployScoreArgs),
 }
 
 #[derive(Parser, Clone)]
@@ -310,6 +320,89 @@ struct AttackSurfaceArgs {
     output_format: OutputFormat,
 }
 
+#[derive(Parser)]
+struct RegressionCheckArgs {
+    /// Path to the target repository.
+    #[arg(long, short)]
+    target: PathBuf,
+
+    /// Programming language of the target.
+    #[arg(long, short, value_enum)]
+    lang: LangArg,
+
+    /// Git ref to compare against (e.g., main, HEAD~1).
+    #[arg(long)]
+    base: String,
+
+    /// Comma-separated list of test patterns to ignore (e.g., flaky tests).
+    #[arg(long, value_delimiter = ',')]
+    allow: Vec<String>,
+
+    /// Output format.
+    #[arg(long, default_value = "text")]
+    output_format: OutputFormat,
+}
+
+#[derive(Parser)]
+struct RiskArgs {
+    /// Path to the target repository.
+    #[arg(long, short)]
+    target: PathBuf,
+
+    /// Comma-separated list of changed files (relative to target root).
+    #[arg(long, value_delimiter = ',')]
+    changed_files: Vec<String>,
+
+    /// Output format.
+    #[arg(long, default_value = "text")]
+    output_format: OutputFormat,
+}
+
+#[derive(Parser)]
+struct HotpathsArgs {
+    /// Path to the target repository.
+    #[arg(long, short)]
+    target: PathBuf,
+
+    /// Number of top hot paths to show.
+    #[arg(long, default_value = "20")]
+    top: usize,
+
+    /// Output format.
+    #[arg(long, default_value = "text")]
+    output_format: OutputFormat,
+}
+
+#[derive(Parser)]
+struct ContractsArgs {
+    /// Path to the target repository.
+    #[arg(long, short)]
+    target: PathBuf,
+
+    /// Output format.
+    #[arg(long, default_value = "text")]
+    output_format: OutputFormat,
+}
+
+#[derive(Parser)]
+struct DeployScoreArgs {
+    /// Path to the target repository.
+    #[arg(long, short)]
+    target: PathBuf,
+
+    /// Number of detector findings (from `apex audit`).
+    #[arg(long, default_value = "0")]
+    detector_findings: usize,
+
+    /// Number of critical findings (from `apex audit`).
+    #[arg(long, default_value = "0")]
+    critical_findings: usize,
+
+    /// Output format.
+    #[arg(long, default_value = "text")]
+    output_format: OutputFormat,
+}
+
 #[derive(Clone, Copy, ValueEnum)]
 enum OutputFormat {
     Text,
@@ -379,6 +472,11 @@ async fn main() -> Result<()> {
         Commands::Complexity(args) => run_complexity(args).await,
         Commands::Docs(args) => run_docs(args).await,
         Commands::AttackSurface(args) => run_attack_surface(args).await,
+        Commands::RegressionCheck(args) => run_regression_check(args).await,
+        Commands::Risk(args) => run_risk(args).await,
+        Commands::Hotpaths(args) => run_hotpaths(args).await,
+        Commands::Contracts(args) => run_contracts(args).await,
+        Commands::DeployScore(args) => run_deploy_score(args).await,
     }
 }
 
@@ -2279,6 +2377,292 @@ async fn run_docs(args: DocsArgs) -> Result<()> {
         eprintln!("Docs written to {}", path.display());
     } else {
         print!("{output}");
+    }
+
+    Ok(())
+}
+
+// ---------------------------------------------------------------------------
+// `apex attack-surface`
+// ---------------------------------------------------------------------------
+
+// ---------------------------------------------------------------------------
+// `apex regression-check`
+// ---------------------------------------------------------------------------
+
+async fn run_regression_check(args: RegressionCheckArgs) -> Result<()> {
+    let target_path = args.target.canonicalize()?;
+    let lang: Language = args.lang.into();
+
+    // Build current index
+    info!("building index for HEAD");
+    let head_index = load_index(&target_path)?;
+
+    // Build base index via worktree
+    let worktree_dir = target_path.join(format!(".apex-regression-{}", std::process::id()));
+    let status = std::process::Command::new("git")
+        .args(["worktree", "add", "--quiet"])
+        .arg(&worktree_dir)
+        .arg(&args.base)
+        .current_dir(&target_path)
+        .status()?;
+
+    if !status.success() {
+        return Err(color_eyre::eyre::eyre!(
+            "git worktree add failed for base ref '{}'",
+            args.base
+        ));
+    }
+
+    let _guard = scopeguard::guard((), |_| {
+        let _ = std::process::Command::new("git")
+            .args(["worktree", "remove", "--force"])
+            .arg(&worktree_dir)
+            .current_dir(&target_path)
+            .status();
+    });
+
+    info!("building index for base ref '{}'", args.base);
+    let base_index_path = worktree_dir.join(".apex/index.json");
+
+    // Run indexing on base worktree
+    let base_index = if base_index_path.exists() {
+        apex_index::BranchIndex::load(&base_index_path)?
+    } else {
+        // Build index in base worktree
+        match lang {
+            Language::Python => {
+                apex_index::python::build_python_index(&worktree_dir, 4)
+                    .await
+                    .map_err(|e| color_eyre::eyre::eyre!("{e}"))?
+            }
+            _ => {
+                return Err(color_eyre::eyre::eyre!(
+                    "regression-check currently supports Python only"
+                ));
+            }
+        }
+    };
+
+    // Compare per-test branch sets
+    let mut regressions = Vec::new();
+    for head_trace in &head_index.traces {
+        if args.allow.iter().any(|pat| head_trace.test_name.contains(pat)) {
+            continue;
+        }
+
+        let base_trace = base_index
+            .traces
+            .iter()
+            .find(|t| t.test_name == head_trace.test_name);
+
+        if let Some(base) = base_trace {
+            let head_set: HashSet<String> = head_trace
+                .branches
+                .iter()
+                .map(|b| apex_index::types::branch_key(b))
+                .collect();
+            let base_set: HashSet<String> = base
+                .branches
+                .iter()
+                .map(|b| apex_index::types::branch_key(b))
+                .collect();
+
+            let gained: Vec<_> = head_set.difference(&base_set).cloned().collect();
+            let lost: Vec<_> = base_set.difference(&head_set).cloned().collect();
+
+            if !gained.is_empty() || !lost.is_empty() {
+                regressions.push(serde_json::json!({
+                    "test": head_trace.test_name,
+                    "gained_branches": gained.len(),
+                    "lost_branches": lost.len(),
+                }));
+            }
+        }
+    }
+
+    let exit_code = if regressions.is_empty() { 0 } else { 1 };
+
+    match args.output_format {
+        OutputFormat::Json => {
+            println!(
+                "{}",
+                serde_json::to_string_pretty(&serde_json::json!({
+                    "base": args.base,
+                    "regressions": regressions,
+                    "pass": regressions.is_empty(),
+                }))?
+            );
+        }
+        OutputFormat::Text => {
+            if regressions.is_empty() {
+                println!("Regression check PASSED — no behavioral changes detected vs {}", args.base);
+            } else {
+                println!(
+                    "Regression check FAILED — {} tests show behavioral changes vs {}\n",
+                    regressions.len(),
+                    args.base
+                );
+                for r in &regressions {
+                    println!(
+                        "  {} — gained {} branches, lost {} branches",
+                        r["test"], r["gained_branches"], r["lost_branches"]
+                    );
+                }
+            }
+        }
+    }
+
+    if exit_code != 0 {
+        std::process::exit(1);
+    }
+
+    Ok(())
+}
+
+// ---------------------------------------------------------------------------
+// `apex risk`
+// ---------------------------------------------------------------------------
+
+async fn run_risk(args: RiskArgs) -> Result<()> {
+    let target_path = args.target.canonicalize()?;
+    let index = load_index(&target_path)?;
+
+    let assessment = apex_index::analysis::assess_risk(&index, &args.changed_files);
+
+    match args.output_format {
+        OutputFormat::Json => {
+            println!("{}", serde_json::to_string_pretty(&assessment)?);
+        }
+        OutputFormat::Text => {
+            println!("Risk Assessment: {}\n", assessment.level);
+            println!("  Score:                  {}/100", assessment.score);
+            println!("  Changed branches:       {}", assessment.changed_branches);
+            println!(
+                "  Covered:                {} ({:.1}%)",
+                assessment.covered_changed, assessment.coverage_of_changed
+            );
+            println!("  Uncovered:              {}", assessment.uncovered_changed);
+            println!("  Affected tests:         {}", assessment.affected_tests);
+
+            if !assessment.reasons.is_empty() {
+                println!("\nReasons:");
+                for r in &assessment.reasons {
+                    println!("  - {r}");
+                }
+            }
+        }
+    }
+
+    Ok(())
+}
+
+// ---------------------------------------------------------------------------
+// `apex hotpaths`
+// ---------------------------------------------------------------------------
+
+async fn run_hotpaths(args: HotpathsArgs) -> Result<()> {
+    let target_path = args.target.canonicalize()?;
+    let index = load_index(&target_path)?;
+
+    let hot = apex_index::analysis::analyze_hotpaths(&index, args.top);
+
+    match args.output_format {
+        OutputFormat::Json => {
+            println!("{}", serde_json::to_string_pretty(&hot)?);
+        }
+        OutputFormat::Text => {
+            println!(
+                "Top {} Hot Paths ({} total branches)\n",
+                hot.len(),
+                index.profiles.len()
+            );
+            for (i, h) in hot.iter().enumerate() {
+                println!(
+                    "  {:>3}. {}:{}  dir={}  hits={}  share={:.1}%  tests={}",
+                    i + 1,
+                    h.file_path.display(),
+                    h.line,
+                    h.direction,
+                    h.hit_count,
+                    h.hit_share_pct,
+                    h.test_count
+                );
+            }
+        }
+    }
+
+    Ok(())
+}
+
+// ---------------------------------------------------------------------------
+// `apex contracts`
+// ---------------------------------------------------------------------------
+
+async fn run_contracts(args: ContractsArgs) -> Result<()> {
+    let target_path = args.target.canonicalize()?;
+    let index = load_index(&target_path)?;
+
+    let invariants = apex_index::analysis::discover_contracts(&index, &target_path);
+
+    match args.output_format {
+        OutputFormat::Json => {
+            println!("{}", serde_json::to_string_pretty(&invariants)?);
+        }
+        OutputFormat::Text => {
+            if invariants.is_empty() {
+                println!("No invariants discovered (need 3+ tests per function for detection).");
+                return Ok(());
+            }
+
+            println!("Discovered Invariants ({} found)\n", invariants.len());
+            for inv in &invariants {
+                println!(
+                    "  [{}] {}:{} in {}()",
+                    inv.kind,
+                    inv.file_path.display(),
+                    inv.line,
+                    inv.function_name
+                );
+                println!("    {}", inv.description);
+                println!(
+                    "    confidence={:.0}%  evidence={} tests\n",
+                    inv.confidence * 100.0,
+                    inv.evidence_tests
+                );
+            }
+        }
+    }
+
+    Ok(())
+}
+
+// ---------------------------------------------------------------------------
+// `apex deploy-score`
+// ---------------------------------------------------------------------------
+
+async fn run_deploy_score(args: DeployScoreArgs) -> Result<()> {
+    let target_path = args.target.canonicalize()?;
+    let index = load_index(&target_path)?;
+
+    let score = apex_index::analysis::compute_deploy_score(
+        &index,
+        args.detector_findings,
+        args.critical_findings,
+    );
+
+    match args.output_format {
+        OutputFormat::Json => {
+            println!("{}", serde_json::to_string_pretty(&score)?);
+        }
+        OutputFormat::Text => {
+            println!("Deploy Score: {}/100\n", score.total_score);
+            println!("  {}\n", score.recommendation);
+            println!("Breakdown:");
+            for line in &score.breakdown {
+                println!("  {line}");
+            }
+        }
     }
 
     Ok(())

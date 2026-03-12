@@ -7,9 +7,9 @@ List uncovered code regions and explain what tests would cover them.
 /apex-gaps [crate-or-file]
 ```
 Examples:
-- `/apex-gaps apex-coverage` -- gaps in apex-coverage crate
-- `/apex-gaps crates/apex-fuzz/src/mutators.rs` -- gaps in one file
-- `/apex-gaps` -- top 5 most-impactful gaps across workspace
+- `/apex-gaps apex-coverage` — gaps in apex-coverage crate
+- `/apex-gaps crates/apex-fuzz/src/mutators.rs` — gaps in one file
+- `/apex-gaps` — top 5 most-impactful gaps across workspace
 
 ## Instructions
 
@@ -18,7 +18,7 @@ Examples:
 2. Filter segments to: `has_count=true`, `is_region_entry=true`, `is_gap=false`, `count=0`.
    If `$ARGUMENTS` given, filter to matching filename.
 
-3. For each uncovered region, read the surrounding source (+/-3 lines) and explain:
+3. For each uncovered region, read the surrounding source (±3 lines) and explain:
    - What the code does
    - Why it's likely uncovered (error path? unused feature? race condition?)
    - A concrete test that would cover it

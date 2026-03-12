@@ -24,7 +24,7 @@ tools: Bash(cargo *), Bash(python3 *), Bash(pip *), Read, Glob, Write, Edit
 
 # APEX Runner
 
-You run APEX (`/Users/ad/prj/bcov`) against target repositories using a multi-round agent loop.
+You run APEX against target repositories using a multi-round agent loop.
 
 ## Architecture
 
@@ -53,20 +53,10 @@ The agent picks the right strategy based on each gap's `difficulty` and `suggest
 ### When to use each strategy
 
 - **Source-level tests** (easy/medium): Most gaps. Agent writes `.rs`/`.py`/`.js` test files targeting specific uncovered branches. This is the primary strategy.
-- **Fuzz** (`--strategy fuzz`): C/Rust binary targets with compiled fuzz harnesses. Generates random byte mutations to explore paths. Good for: parser code, binary protocols, crash discovery.
-- **Driller** (`--strategy driller`): When fuzz gets stuck at complex branch conditions (checksums, magic bytes, multi-field validation). Uses Z3 SMT solver to compute exact inputs that satisfy the constraint.
-- **Concolic** (`--strategy concolic`): Python targets with complex conditionals. Traces execution symbolically, collects path constraints, solves for new inputs that flip branches.
-- **All** (`--strategy all`): Runs fuzz + concolic together. Use when you want maximum automated exploration before writing manual tests.
-
-### Strategy mixing across rounds
-
-```
-Round 1: 12 easy gaps → write 12 test files (+8% coverage)
-Round 2: 5 medium gaps → write 5 test files (+3% coverage)
-Round 3: 3 hard gaps → run fuzz on 2, driller on 1 (+1.5% coverage)
-Round 4: stall on source tests → try concolic on Python paths (+0.3%)
-Round 5: remaining gaps all blocked → stop
-```
+- **Fuzz** (`--strategy fuzz`): C/Rust binary targets with compiled fuzz harnesses. Generates random byte mutations to explore paths.
+- **Driller** (`--strategy driller`): When fuzz gets stuck at complex branch conditions (checksums, magic bytes, multi-field validation). Uses Z3 SMT solver.
+- **Concolic** (`--strategy concolic`): Python targets with complex conditionals. Traces execution symbolically, collects path constraints.
+- **All** (`--strategy all`): Runs fuzz + concolic together.
 
 ## Prerequisites Check
 
@@ -77,54 +67,54 @@ Before every run, verify:
 cargo llvm-cov --version 2>&1
 
 # 2. LLVM tools available
-ls /opt/homebrew/opt/llvm/bin/llvm-cov /opt/homebrew/opt/llvm/bin/llvm-profdata 2>&1
+ls ${LLVM_COV:-/opt/homebrew/opt/llvm/bin/llvm-cov} ${LLVM_PROFDATA:-/opt/homebrew/opt/llvm/bin/llvm-profdata} 2>&1
 
 # 3. APEX binary built
-cargo build --bin apex --manifest-path /Users/ad/prj/bcov/Cargo.toml 2>&1 | tail -3
+cargo build --bin apex --manifest-path $APEX_HOME/Cargo.toml 2>&1 | tail -3
 ```
 
 ## CLI Commands
 
 **Measure + JSON gap report (primary agent command):**
 ```bash
-LLVM_COV=/opt/homebrew/opt/llvm/bin/llvm-cov \
-LLVM_PROFDATA=/opt/homebrew/opt/llvm/bin/llvm-profdata \
-cargo run --bin apex --manifest-path /Users/ad/prj/bcov/Cargo.toml -- \
+LLVM_COV=${LLVM_COV:-/opt/homebrew/opt/llvm/bin/llvm-cov} \
+LLVM_PROFDATA=${LLVM_PROFDATA:-/opt/homebrew/opt/llvm/bin/llvm-profdata} \
+cargo run --bin apex --manifest-path $APEX_HOME/Cargo.toml -- \
   run --target <PATH> --lang <LANG> --strategy agent \
   --output-format json 2>/dev/null
 ```
 
 **Fuzz strategy (C/Rust binary targets):**
 ```bash
-LLVM_COV=/opt/homebrew/opt/llvm/bin/llvm-cov \
-LLVM_PROFDATA=/opt/homebrew/opt/llvm/bin/llvm-profdata \
-cargo run --bin apex --manifest-path /Users/ad/prj/bcov/Cargo.toml -- \
+LLVM_COV=${LLVM_COV:-/opt/homebrew/opt/llvm/bin/llvm-cov} \
+LLVM_PROFDATA=${LLVM_PROFDATA:-/opt/homebrew/opt/llvm/bin/llvm-profdata} \
+cargo run --bin apex --manifest-path $APEX_HOME/Cargo.toml -- \
   run --target <PATH> --lang rust --strategy fuzz \
   --fuzz-iters 10000 --rounds 1
 ```
 
 **Driller strategy (constraint-solving):**
 ```bash
-LLVM_COV=/opt/homebrew/opt/llvm/bin/llvm-cov \
-LLVM_PROFDATA=/opt/homebrew/opt/llvm/bin/llvm-profdata \
-cargo run --bin apex --manifest-path /Users/ad/prj/bcov/Cargo.toml -- \
+LLVM_COV=${LLVM_COV:-/opt/homebrew/opt/llvm/bin/llvm-cov} \
+LLVM_PROFDATA=${LLVM_PROFDATA:-/opt/homebrew/opt/llvm/bin/llvm-profdata} \
+cargo run --bin apex --manifest-path $APEX_HOME/Cargo.toml -- \
   run --target <PATH> --lang rust --strategy driller \
   --rounds 1
 ```
 
 **Concolic strategy (Python only):**
 ```bash
-cargo run --bin apex --manifest-path /Users/ad/prj/bcov/Cargo.toml -- \
+cargo run --bin apex --manifest-path $APEX_HOME/Cargo.toml -- \
   run --target <PATH> --lang python --strategy concolic \
   --rounds 1
 ```
 
 **Self-hosted (APEX on APEX):**
 ```bash
-LLVM_COV=/opt/homebrew/opt/llvm/bin/llvm-cov \
-LLVM_PROFDATA=/opt/homebrew/opt/llvm/bin/llvm-profdata \
-cargo run --bin apex --manifest-path /Users/ad/prj/bcov/Cargo.toml -- \
-  run --target /Users/ad/prj/bcov --lang rust \
+LLVM_COV=${LLVM_COV:-/opt/homebrew/opt/llvm/bin/llvm-cov} \
+LLVM_PROFDATA=${LLVM_PROFDATA:-/opt/homebrew/opt/llvm/bin/llvm-profdata} \
+cargo run --bin apex --manifest-path $APEX_HOME/Cargo.toml -- \
+  run --target $APEX_HOME --lang rust \
   --strategy agent --output-format json 2>/dev/null
 ```
 
@@ -173,10 +163,45 @@ After each round, print:
 | `No such file: apex_target` | Fuzz strategy needs a compiled binary target, not a Cargo workspace |
 | `solver timeout` | Driller hit a complex constraint — increase timeout or skip to fuzz |
 
+## Post-Run Intelligence
+
+After coverage improvement rounds complete, suggest intelligence analysis:
+
+```bash
+# Build per-test branch index (unlocks all intelligence commands)
+cargo run --bin apex --manifest-path $APEX_HOME/Cargo.toml -- \
+  index --target <TARGET> --lang <LANG> --parallel 4
+
+# Deploy readiness check
+cargo run --bin apex --manifest-path $APEX_HOME/Cargo.toml -- \
+  deploy-score --target <TARGET>
+
+# Find minimal test set
+cargo run --bin apex --manifest-path $APEX_HOME/Cargo.toml -- \
+  test-optimize --target <TARGET>
+```
+
+Available intelligence commands (all require `apex index` first):
+- `test-optimize` — minimal covering test set
+- `test-prioritize` — order tests by changed-file relevance
+- `flaky-detect` — find nondeterministic tests
+- `dead-code` — never-executed branches
+- `lint` — runtime-prioritized findings
+- `complexity` — exercised vs static complexity
+- `diff` — behavioral diff vs base branch
+- `regression-check` — CI gate for behavioral changes
+- `risk` — change risk assessment
+- `hotpaths` — execution frequency ranking
+- `contracts` — invariant discovery
+- `deploy-score` — deployment confidence (0-100)
+- `docs` — behavioral documentation
+- `attack-surface` — entry-point reachability
+- `verify-boundaries` — auth gate verification
+
 ## Output Interpretation
 
 After a run, interpret results:
 - Report baseline coverage %
 - Explain which files have the most gaps
 - For JSON output: parse gaps, select strategy per gap, execute
-- **Bug report**: If bugs are found, log them with class, location, and message. Report bug counts per class (crash, assertion_failure, timeout, oom_kill) and prioritize crashes.
+- **Bug report**: If bugs are found, log them with class, location, and message.

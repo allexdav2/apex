@@ -1,19 +1,19 @@
 # APEX Generate Tests
 
-Generate Rust tests for a specific crate or file, targeting uncovered branches.
+Generate tests for a specific crate or file, targeting uncovered branches.
 
 ## Usage
 ```
 /apex-generate <crate-or-file>
 ```
 Examples:
-- `/apex-generate apex-coverage` -- generate tests for the oracle
-- `/apex-generate apex-fuzz/src/mutators.rs` -- generate tests for mutators
-- `/apex-generate apex-agent` -- generate tests for the agent orchestrator
+- `/apex-generate apex-coverage` — generate tests for the oracle
+- `/apex-generate apex-fuzz/src/mutators.rs` — generate tests for mutators
+- `/apex-generate apex-agent` — generate tests for the agent orchestrator
 
 ## Instructions
 
-1. Identify the target from `$ARGUMENTS` (required -- ask if missing).
+1. Identify the target from `$ARGUMENTS` (required — ask if missing).
 
 2. Read the source file completely to understand:
    - All public functions
@@ -35,4 +35,4 @@ Examples:
 - Use `#[tokio::test]` for async functions
 - Mock external I/O (HTTP, filesystem) with temp dirs and fake data
 - For oracle tests: construct `BranchId` values directly
-- Keep tests fast -- no real network calls, no sleeping
+- Keep tests fast — no real network calls, no sleeping

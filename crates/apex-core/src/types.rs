@@ -174,6 +174,138 @@ impl std::str::FromStr for Language {
 }
 
 // ---------------------------------------------------------------------------
+// Feature support matrix
+// ---------------------------------------------------------------------------
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct FeatureSupport {
+    pub name: String,
+    pub status: FeatureStatus,
+    pub tool: String,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum FeatureStatus {
+    Full,
+    Partial,
+    Missing,
+    NotApplicable,
+}
+
+impl std::fmt::Display for FeatureStatus {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            FeatureStatus::Full => write!(f, "full"),
+            FeatureStatus::Partial => write!(f, "partial"),
+            FeatureStatus::Missing => write!(f, "missing"),
+            FeatureStatus::NotApplicable => write!(f, "n/a"),
+        }
+    }
+}
+
+impl Language {
+    pub fn supported_features(&self) -> Vec<FeatureSupport> {
+        fn feat(name: &str, status: FeatureStatus, tool: &str) -> FeatureSupport {
+            FeatureSupport {
+                name: name.into(),
+                status,
+                tool: tool.into(),
+            }
+        }
+
+        use FeatureStatus::*;
+
+        match self {
+            Language::Python => vec![
+                feat("instrumentation", Full, "coverage.py"),
+                feat("test-runner", Full, "pytest"),
+                feat("dep-install", Full, "pip"),
+                feat("dep-audit", Full, "pip-audit"),
+                feat("security-patterns", Full, "12-patterns"),
+                feat("unsafe-analysis", NotApplicable, ""),
+                feat("path-normalize", Full, "static"),
+                feat("concolic", Full, "taint+boundary"),
+                feat("fuzz", Full, "generic"),
+                feat("sandbox", Full, "pytest-runner"),
+            ],
+            Language::JavaScript => vec![
+                feat("instrumentation", Full, "istanbul"),
+                feat("test-runner", Full, "jest"),
+                feat("dep-install", Full, "npm"),
+                feat("dep-audit", Full, "npm-audit"),
+                feat("security-patterns", Full, "dom-xss"),
+                feat("unsafe-analysis", NotApplicable, ""),
+                feat("path-normalize", Full, "static"),
+                feat("concolic", Missing, ""),
+                feat("fuzz", Full, "generic"),
+                feat("sandbox", Full, "jest-runner"),
+            ],
+            Language::Java => vec![
+                feat("instrumentation", Full, "jacoco"),
+                feat("test-runner", Full, "junit"),
+                feat("dep-install", Partial, "maven"),
+                feat("dep-audit", Missing, ""),
+                feat("security-patterns", Partial, "runtime-exec"),
+                feat("unsafe-analysis", NotApplicable, ""),
+                feat("path-normalize", NotApplicable, ""),
+                feat("concolic", Missing, ""),
+                feat("fuzz", Full, "generic"),
+                feat("sandbox", Full, "junit"),
+            ],
+            Language::Rust => vec![
+                feat("instrumentation", Full, "cargo-llvm-cov"),
+                feat("test-runner", Full, "cargo-test"),
+                feat("dep-install", Full, "cargo"),
+                feat("dep-audit", Full, "cargo-audit"),
+                feat("security-patterns", Full, "cmd-injection"),
+                feat("unsafe-analysis", Full, "cargo-geiger"),
+                feat("path-normalize", Full, "static"),
+                feat("concolic", Missing, ""),
+                feat("fuzz", Full, "generic+libafl"),
+                feat("sandbox", Full, "cargo-test"),
+            ],
+            Language::C => vec![
+                feat("instrumentation", Partial, "sancov"),
+                feat("test-runner", Partial, "custom"),
+                feat("dep-install", Partial, "make"),
+                feat("dep-audit", NotApplicable, ""),
+                feat("security-patterns", Partial, "buffer"),
+                feat("unsafe-analysis", NotApplicable, ""),
+                feat("path-normalize", NotApplicable, ""),
+                feat("concolic", Missing, ""),
+                feat("fuzz", Full, "generic+sancov"),
+                feat("sandbox", Partial, "process"),
+            ],
+            Language::Wasm => vec![
+                feat("instrumentation", Partial, "wasm-opt"),
+                feat("test-runner", Partial, "custom"),
+                feat("dep-install", Partial, "wasm-pack"),
+                feat("dep-audit", NotApplicable, ""),
+                feat("security-patterns", Partial, "minimal"),
+                feat("unsafe-analysis", NotApplicable, ""),
+                feat("path-normalize", NotApplicable, ""),
+                feat("concolic", Missing, ""),
+                feat("fuzz", Full, "generic"),
+                feat("sandbox", Partial, "process"),
+            ],
+            Language::Ruby => vec![
+                feat("instrumentation", Missing, ""),
+                feat("test-runner", Missing, ""),
+                feat("dep-install", Missing, ""),
+                feat("dep-audit", Missing, ""),
+                feat("security-patterns", Partial, "eval"),
+                feat("unsafe-analysis", NotApplicable, ""),
+                feat("path-normalize", NotApplicable, ""),
+                feat("concolic", Missing, ""),
+                feat("fuzz", Full, "generic"),
+                feat("sandbox", Missing, ""),
+            ],
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
 // Target
 // ---------------------------------------------------------------------------
 
@@ -903,5 +1035,41 @@ mod tests {
         assert_eq!(summary.total, 0);
         assert!(summary.by_class.is_empty());
         assert!(summary.reports.is_empty());
+    }
+
+    // -----------------------------------------------------------------------
+    // Feature support matrix
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn python_has_instrumentation() {
+        let features = Language::Python.supported_features();
+        let instr = features.iter().find(|f| f.name == "instrumentation").unwrap();
+        assert_eq!(instr.status, FeatureStatus::Full);
+        assert_eq!(instr.tool, "coverage.py");
+    }
+
+    #[test]
+    fn ruby_instrumentation_missing() {
+        let features = Language::Ruby.supported_features();
+        let instr = features.iter().find(|f| f.name == "instrumentation").unwrap();
+        assert_eq!(instr.status, FeatureStatus::Missing);
+    }
+
+    #[test]
+    fn all_languages_have_security_patterns() {
+        for lang in [Language::Python, Language::JavaScript, Language::Java, Language::Rust, Language::C] {
+            let features = lang.supported_features();
+            let sec = features.iter().find(|f| f.name == "security-patterns").unwrap();
+            assert_ne!(sec.status, FeatureStatus::Missing);
+        }
+    }
+
+    #[test]
+    fn feature_count_consistent() {
+        let py_count = Language::Python.supported_features().len();
+        for lang in [Language::JavaScript, Language::Java, Language::Rust, Language::C, Language::Wasm, Language::Ruby] {
+            assert_eq!(lang.supported_features().len(), py_count, "all languages should have the same number of features");
+        }
     }
 }

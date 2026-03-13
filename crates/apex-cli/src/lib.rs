@@ -92,6 +92,8 @@ pub enum Commands {
     Contracts(ContractsArgs),
     /// Aggregate deployment confidence score (0-100).
     DeployScore(DeployScoreArgs),
+    /// Show per-language feature support matrix.
+    Features(FeaturesArgs),
 }
 
 #[derive(Parser, Clone)]
@@ -438,6 +440,17 @@ pub struct DeployScoreArgs {
     pub output_format: OutputFormat,
 }
 
+#[derive(Parser)]
+pub struct FeaturesArgs {
+    /// Show features for a specific language (omit to show all).
+    #[arg(long, short, value_enum)]
+    pub lang: Option<LangArg>,
+
+    /// Output format: text (ASCII table) or json.
+    #[arg(long, default_value = "text")]
+    pub output_format: OutputFormat,
+}
+
 #[derive(Clone, Copy, ValueEnum)]
 pub enum OutputFormat {
     Text,
@@ -495,6 +508,7 @@ pub async fn run_cli(cli: Cli, cfg: &ApexConfig) -> Result<()> {
         Commands::Hotpaths(args) => run_hotpaths(args).await,
         Commands::Contracts(args) => run_contracts(args).await,
         Commands::DeployScore(args) => run_deploy_score(args).await,
+        Commands::Features(args) => run_features(args),
     }
 }
 
@@ -2515,6 +2529,78 @@ async fn run_attack_surface(args: AttackSurfaceArgs) -> Result<()> {
         }
     }
 
+    Ok(())
+}
+
+// ---------------------------------------------------------------------------
+// `apex features`
+// ---------------------------------------------------------------------------
+
+fn run_features(args: FeaturesArgs) -> Result<()> {
+    let languages: Vec<Language> = if let Some(lang_arg) = args.lang {
+        vec![lang_arg.into()]
+    } else {
+        vec![
+            Language::Python,
+            Language::JavaScript,
+            Language::Java,
+            Language::Rust,
+            Language::C,
+            Language::Wasm,
+            Language::Ruby,
+        ]
+    };
+
+    match args.output_format {
+        OutputFormat::Json => {
+            let mut map = serde_json::Map::new();
+            for lang in &languages {
+                let features = lang.supported_features();
+                map.insert(lang.to_string(), serde_json::to_value(&features)?);
+            }
+            println!("{}", serde_json::to_string_pretty(&map)?);
+        }
+        OutputFormat::Text => {
+            let feature_names: Vec<String> = Language::Python
+                .supported_features()
+                .iter()
+                .map(|f| f.name.clone())
+                .collect();
+
+            // Header row
+            print!("{:<20}", "Feature");
+            for lang in &languages {
+                print!(" {:<15}", lang.to_string());
+            }
+            println!();
+
+            // Separator
+            print!("{}", "-".repeat(20));
+            for _ in &languages {
+                print!(" {}", "-".repeat(15));
+            }
+            println!();
+
+            // Data rows
+            for feat_name in &feature_names {
+                print!("{:<20}", feat_name);
+                for lang in &languages {
+                    let features = lang.supported_features();
+                    if let Some(f) = features.iter().find(|f| f.name == *feat_name) {
+                        let cell = if f.tool.is_empty() {
+                            f.status.to_string()
+                        } else {
+                            format!("{} ({})", f.status, f.tool)
+                        };
+                        print!(" {:<15}", cell);
+                    } else {
+                        print!(" {:<15}", "-");
+                    }
+                }
+                println!();
+            }
+        }
+    }
     Ok(())
 }
 

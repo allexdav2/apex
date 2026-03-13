@@ -1,0 +1,11 @@
+[package]
+name = "apex-cpg"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Code Property Graph (AST + CFG + REACHING_DEF) with taint analysis for APEX"
+
+[dependencies]
+serde = { workspace = true }

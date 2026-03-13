@@ -224,6 +224,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "apex-cpg"
+version = "0.1.0"
+dependencies = [
+ "serde",
+]
+
+[[package]]
 name = "apex-detect"
 version = "0.1.0"
 dependencies = [

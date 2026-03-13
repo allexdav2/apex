@@ -17,6 +17,7 @@ members = [
     "crates/apex-cli",
     "crates/apex-mir",
     "crates/apex-index",
+    "crates/apex-cpg",
 ]
 
 [workspace.package]

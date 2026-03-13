@@ -106,6 +106,18 @@ impl LlmSynthesizer {
         LlmSynthesizer { config }
     }
 
+    /// Format the uncovered lines description for a coverage gap.
+    ///
+    /// Returns either "line X" (single line) or "lines X, Y, Z" (multiple lines).
+    fn format_uncovered_lines(gap: &CoverageGap) -> String {
+        if gap.uncovered_lines.is_empty() {
+            format!("line {}", gap.target_line)
+        } else {
+            let parts: Vec<String> = gap.uncovered_lines.iter().map(|l| l.to_string()).collect();
+            format!("lines {}", parts.join(", "))
+        }
+    }
+
     /// Build the initial prompt messages for a coverage gap.
     ///
     /// Follows CoverUp's structure:
@@ -127,12 +139,7 @@ impl LlmSynthesizer {
             .map(|n| format!(" (function `{n}`)"))
             .unwrap_or_default();
 
-        let uncovered = if gap.uncovered_lines.is_empty() {
-            format!("line {}", gap.target_line)
-        } else {
-            let parts: Vec<String> = gap.uncovered_lines.iter().map(|l| l.to_string()).collect();
-            format!("lines {}", parts.join(", "))
-        };
+        let uncovered = Self::format_uncovered_lines(gap);
 
         let user_content = format!(
             "File: {file}{fn_hint}\n\
@@ -170,12 +177,7 @@ impl LlmSynthesizer {
     ///
     /// Mirrors CoverUp: "The test runs but lines X still don't execute."
     pub fn missing_coverage_prompt(&self, gap: &CoverageGap) -> LlmMessage {
-        let lines_desc = if gap.uncovered_lines.is_empty() {
-            format!("line {}", gap.target_line)
-        } else {
-            let parts: Vec<String> = gap.uncovered_lines.iter().map(|l| l.to_string()).collect();
-            format!("lines {}", parts.join(", "))
-        };
+        let lines_desc = Self::format_uncovered_lines(gap);
 
         LlmMessage {
             role: LlmRole::User,

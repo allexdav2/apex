@@ -24,6 +24,16 @@ pub fn extract_segment(source: &str, target_line: u32, context_lines: u32) -> Co
     let lines: Vec<&str> = source.lines().collect();
     let total = lines.len() as u32;
 
+    // Guard against empty input or out-of-range target line.
+    if lines.is_empty() || target_line == 0 || target_line > total {
+        return CodeSegment {
+            code: String::new(),
+            start_line: 0,
+            end_line: 0,
+            tagged_lines: vec![],
+        };
+    }
+
     // Clamp to valid range (1-based → 0-based internally).
     let target_0 = target_line.saturating_sub(1);
 
@@ -139,5 +149,21 @@ mod tests {
         assert_eq!(seg.start_line, 2);
         assert_eq!(seg.end_line, 2);
         assert_eq!(seg.code, "b");
+    }
+
+    #[test]
+    fn extract_segment_empty_source() {
+        let seg = extract_segment("", 1, 5);
+        assert!(seg.code.is_empty());
+        assert_eq!(seg.start_line, 0);
+        assert_eq!(seg.end_line, 0);
+    }
+
+    #[test]
+    fn extract_segment_out_of_range() {
+        let seg = extract_segment("line1\nline2\n", 100, 5);
+        assert!(seg.code.is_empty());
+        assert_eq!(seg.start_line, 0);
+        assert_eq!(seg.end_line, 0);
     }
 }

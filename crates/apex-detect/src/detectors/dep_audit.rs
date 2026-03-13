@@ -1,5 +1,6 @@
 use apex_core::command::CommandSpec;
 use apex_core::error::{ApexError, Result};
+use apex_core::types::Language;
 use async_trait::async_trait;
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
@@ -20,6 +21,48 @@ fn advisory_line(id: &str) -> u32 {
 
 pub struct DependencyAuditDetector;
 
+impl DependencyAuditDetector {
+    async fn audit_cargo(&self, ctx: &AnalysisContext) -> Result<Vec<Finding>> {
+        let spec = CommandSpec::new("cargo", &ctx.target_root).args(["audit", "--json"]);
+
+        let output = ctx
+            .runner
+            .run_command(&spec)
+            .await
+            .map_err(|e| ApexError::Detect(format!("cargo-audit: {e}")))?;
+
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        parse_cargo_audit_output(&stdout)
+    }
+
+    async fn audit_pip(&self, ctx: &AnalysisContext) -> Result<Vec<Finding>> {
+        let spec = CommandSpec::new("pip", &ctx.target_root)
+            .args(["audit", "--format", "json", "--output", "-"]);
+
+        let output = ctx
+            .runner
+            .run_command(&spec)
+            .await
+            .map_err(|e| ApexError::Detect(format!("pip-audit: {e}")))?;
+
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        parse_pip_audit_output(&stdout)
+    }
+
+    async fn audit_npm(&self, ctx: &AnalysisContext) -> Result<Vec<Finding>> {
+        let spec = CommandSpec::new("npm", &ctx.target_root).args(["audit", "--json"]);
+
+        let output = ctx
+            .runner
+            .run_command(&spec)
+            .await
+            .map_err(|e| ApexError::Detect(format!("npm-audit: {e}")))?;
+
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        parse_npm_audit_output(&stdout)
+    }
+}
+
 #[async_trait]
 impl Detector for DependencyAuditDetector {
     fn name(&self) -> &str {
@@ -31,16 +74,12 @@ impl Detector for DependencyAuditDetector {
     }
 
     async fn analyze(&self, ctx: &AnalysisContext) -> Result<Vec<Finding>> {
-        let spec = CommandSpec::new("cargo", &ctx.target_root).args(["audit", "--json"]);
-
-        let output = ctx
-            .runner
-            .run_command(&spec)
-            .await
-            .map_err(|e| ApexError::Detect(format!("cargo-audit: {e}")))?;
-
-        let stdout = String::from_utf8_lossy(&output.stdout);
-        parse_cargo_audit_output(&stdout)
+        match ctx.language {
+            Language::Rust => self.audit_cargo(ctx).await,
+            Language::Python => self.audit_pip(ctx).await,
+            Language::JavaScript => self.audit_npm(ctx).await,
+            _ => Ok(vec![]),
+        }
     }
 }
 
@@ -152,6 +191,160 @@ pub fn parse_cargo_audit_output(raw: &str) -> Result<Vec<Finding>> {
     Ok(findings)
 }
 
+/// Parse `pip audit --format json --output -` output.
+///
+/// Format: `[{"name":"pkg","version":"1.0","vulns":[{"id":"PYSEC-XXX","fix_versions":["2.0"],"description":"..."}]}]`
+pub fn parse_pip_audit_output(raw: &str) -> Result<Vec<Finding>> {
+    if raw.trim().is_empty() {
+        return Ok(vec![]);
+    }
+
+    let parsed: serde_json::Value = serde_json::from_str(raw)
+        .map_err(|e| ApexError::Detect(format!("pip-audit JSON parse: {e}")))?;
+
+    let packages = parsed
+        .as_array()
+        .ok_or_else(|| ApexError::Detect("pip-audit: expected JSON array".into()))?;
+
+    let mut findings = Vec::new();
+
+    for pkg in packages {
+        let pkg_name = pkg["name"].as_str().unwrap_or("unknown");
+        let pkg_version = pkg["version"].as_str().unwrap_or("?");
+
+        let vulns = match pkg["vulns"].as_array() {
+            Some(v) => v,
+            None => continue,
+        };
+
+        for vuln in vulns {
+            let id = vuln["id"].as_str().unwrap_or("unknown");
+            let description = vuln["description"].as_str().unwrap_or("no description");
+            let fix_version = vuln["fix_versions"]
+                .as_array()
+                .and_then(|a| a.first())
+                .and_then(|v| v.as_str())
+                .unwrap_or("");
+
+            let fix = if !fix_version.is_empty() {
+                Some(Fix::DependencyUpgrade {
+                    package: pkg_name.into(),
+                    to: fix_version.into(),
+                })
+            } else {
+                None
+            };
+
+            findings.push(Finding {
+                id: Uuid::new_v4(),
+                detector: "dependency-audit".into(),
+                // pip-audit JSON does not include per-advisory severity; default to High.
+                severity: Severity::High,
+                category: FindingCategory::DependencyVuln,
+                file: PathBuf::from("requirements.txt"),
+                line: Some(advisory_line(id)),
+                title: format!("{pkg_name} {pkg_version} ({id})"),
+                description: description.to_string(),
+                evidence: vec![],
+                covered: true,
+                suggestion: if !fix_version.is_empty() {
+                    format!("Upgrade {pkg_name} to {fix_version}")
+                } else {
+                    "No fixed version available — consider alternative package".into()
+                },
+                explanation: None,
+                fix,
+            });
+        }
+    }
+
+    Ok(findings)
+}
+
+/// Parse `npm audit --json` output.
+///
+/// Format: `{"vulnerabilities":{"lodash":{"severity":"high","via":[{"title":"...","url":"..."}],"range":"<4.17.21"}}}`
+pub fn parse_npm_audit_output(raw: &str) -> Result<Vec<Finding>> {
+    if raw.trim().is_empty() {
+        return Ok(vec![]);
+    }
+
+    let parsed: serde_json::Value = serde_json::from_str(raw)
+        .map_err(|e| ApexError::Detect(format!("npm-audit JSON parse: {e}")))?;
+
+    let vulnerabilities = match parsed.get("vulnerabilities").and_then(|v| v.as_object()) {
+        Some(v) => v,
+        None => return Ok(vec![]),
+    };
+
+    let mut findings = Vec::new();
+
+    for (pkg_name, vuln_info) in vulnerabilities {
+        let sev_str = vuln_info["severity"].as_str().unwrap_or("medium");
+        let range = vuln_info["range"].as_str().unwrap_or("unknown range");
+
+        let severity = match sev_str {
+            "critical" => Severity::Critical,
+            "high" => Severity::High,
+            "moderate" | "medium" => Severity::Medium,
+            "low" => Severity::Low,
+            "info" => Severity::Info,
+            _ => Severity::Medium,
+        };
+
+        // Collect titles from `via` array (advisory details)
+        let via = vuln_info["via"].as_array();
+        let title = via
+            .and_then(|arr| {
+                arr.iter()
+                    .find_map(|v| v.get("title").and_then(|t| t.as_str()))
+            })
+            .unwrap_or("vulnerability");
+
+        let url = via
+            .and_then(|arr| {
+                arr.iter()
+                    .find_map(|v| v.get("url").and_then(|u| u.as_str()))
+            })
+            .unwrap_or("");
+
+        // Use package name + range as a stable dedup ID
+        let advisory_id = format!("{pkg_name}@{range}");
+
+        // npm audit includes fixAvailable as bool or {name, version} object
+        let fix = vuln_info
+            .get("fixAvailable")
+            .and_then(|f| f.as_object())
+            .and_then(|obj| obj.get("version").and_then(|v| v.as_str()))
+            .map(|version| Fix::DependencyUpgrade {
+                package: pkg_name.clone(),
+                to: version.to_string(),
+            });
+
+        findings.push(Finding {
+            id: Uuid::new_v4(),
+            detector: "dependency-audit".into(),
+            severity,
+            category: FindingCategory::DependencyVuln,
+            file: PathBuf::from("package.json"),
+            line: Some(advisory_line(&advisory_id)),
+            title: format!("{pkg_name} ({sev_str}): {title}"),
+            description: if url.is_empty() {
+                format!("Vulnerable range: {range}")
+            } else {
+                format!("Vulnerable range: {range} — {url}")
+            },
+            evidence: vec![],
+            covered: true,
+            suggestion: format!("Upgrade {pkg_name} to a version outside {range}"),
+            explanation: None,
+            fix,
+        });
+    }
+
+    Ok(findings)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -177,6 +370,22 @@ mod tests {
             runner: Arc::new(runner),
         }
     }
+
+    fn make_ctx_with_lang(runner: FixtureRunner, lang: Language) -> AnalysisContext {
+        AnalysisContext {
+            target_root: PathBuf::from("/tmp/test"),
+            language: lang,
+            oracle: Arc::new(CoverageOracle::new()),
+            file_paths: HashMap::new(),
+            known_bugs: vec![],
+            source_cache: HashMap::new(),
+            fuzz_corpus: None,
+            config: DetectConfig::default(),
+            runner: Arc::new(runner),
+        }
+    }
+
+    // ── Cargo audit tests ────────────────────────────────────────────────────
 
     #[tokio::test]
     async fn analyze_with_vulns() {
@@ -419,5 +628,175 @@ warning: 2 allowed advisories were not found in the advisory database:
         let l2 = advisory_line("RUSTSEC-2024-0999");
         // Different IDs should almost certainly produce different lines
         assert_ne!(l1, l2);
+    }
+
+    // ── pip audit tests ──────────────────────────────────────────────────────
+
+    #[test]
+    fn parse_pip_audit_json_with_vulns() {
+        let raw = r#"[{"name":"requests","version":"2.25.0","vulns":[{"id":"PYSEC-2023-74","fix_versions":["2.31.0"],"description":"Session fixation"}]}]"#;
+        let findings = parse_pip_audit_output(raw).unwrap();
+        assert_eq!(findings.len(), 1);
+        assert_eq!(findings[0].category, FindingCategory::DependencyVuln);
+        assert!(findings[0].title.contains("requests"));
+    }
+
+    #[test]
+    fn parse_pip_audit_json_no_vulns() {
+        let raw = r#"[{"name":"requests","version":"2.31.0","vulns":[]}]"#;
+        let findings = parse_pip_audit_output(raw).unwrap();
+        assert!(findings.is_empty());
+    }
+
+    #[test]
+    fn parse_pip_audit_empty() {
+        let findings = parse_pip_audit_output("").unwrap();
+        assert!(findings.is_empty());
+    }
+
+    #[test]
+    fn parse_pip_audit_empty_array() {
+        let findings = parse_pip_audit_output("[]").unwrap();
+        assert!(findings.is_empty());
+    }
+
+    #[test]
+    fn parse_pip_audit_fix_version_present() {
+        let raw = r#"[{"name":"flask","version":"1.0.0","vulns":[{"id":"PYSEC-2023-10","fix_versions":["2.0.0"],"description":"XSS vuln"}]}]"#;
+        let findings = parse_pip_audit_output(raw).unwrap();
+        assert_eq!(findings.len(), 1);
+        assert!(findings[0].fix.is_some());
+        assert!(findings[0].suggestion.contains("Upgrade"));
+        assert_eq!(findings[0].file, PathBuf::from("requirements.txt"));
+    }
+
+    #[test]
+    fn parse_pip_audit_no_fix_version() {
+        let raw = r#"[{"name":"oldlib","version":"0.1.0","vulns":[{"id":"PYSEC-2023-99","fix_versions":[],"description":"No fix"}]}]"#;
+        let findings = parse_pip_audit_output(raw).unwrap();
+        assert_eq!(findings.len(), 1);
+        assert!(findings[0].fix.is_none());
+        assert!(findings[0].suggestion.contains("No fixed version"));
+    }
+
+    #[test]
+    fn parse_pip_audit_invalid_json() {
+        let result = parse_pip_audit_output("not json");
+        assert!(result.is_err());
+    }
+
+    // ── npm audit tests ──────────────────────────────────────────────────────
+
+    #[test]
+    fn parse_npm_audit_json_with_vulns() {
+        let raw = r#"{"vulnerabilities":{"lodash":{"severity":"high","via":[{"title":"Prototype Pollution","url":"https://github.com/advisories/GHSA-1234"}],"range":"<4.17.21"}}}"#;
+        let findings = parse_npm_audit_output(raw).unwrap();
+        assert_eq!(findings.len(), 1);
+        assert!(findings[0].title.contains("lodash"));
+    }
+
+    #[test]
+    fn parse_npm_audit_json_no_vulns() {
+        let raw = r#"{"vulnerabilities":{"safe-pkg":{"severity":"low","via":[],"range":"*"}}}"#;
+        let findings = parse_npm_audit_output(raw).unwrap();
+        // Entry exists but via is empty — still a finding (severity is set)
+        assert_eq!(findings.len(), 1);
+        assert_eq!(findings[0].severity, Severity::Low);
+    }
+
+    #[test]
+    fn parse_npm_audit_empty() {
+        let findings = parse_npm_audit_output("").unwrap();
+        assert!(findings.is_empty());
+    }
+
+    #[test]
+    fn parse_npm_audit_empty_vulnerabilities() {
+        let raw = r#"{"vulnerabilities":{}}"#;
+        let findings = parse_npm_audit_output(raw).unwrap();
+        assert!(findings.is_empty());
+    }
+
+    #[test]
+    fn parse_npm_audit_severity_mapping() {
+        // Test each severity variant individually to avoid HashSet requiring Hash
+        let critical_raw =
+            r#"{"vulnerabilities":{"a":{"severity":"critical","via":[],"range":"<1.0"}}}"#;
+        let findings = parse_npm_audit_output(critical_raw).unwrap();
+        assert_eq!(findings[0].severity, Severity::Critical);
+
+        let moderate_raw =
+            r#"{"vulnerabilities":{"b":{"severity":"moderate","via":[],"range":"<2.0"}}}"#;
+        let findings = parse_npm_audit_output(moderate_raw).unwrap();
+        assert_eq!(findings[0].severity, Severity::Medium);
+
+        let info_raw =
+            r#"{"vulnerabilities":{"c":{"severity":"info","via":[],"range":"<3.0"}}}"#;
+        let findings = parse_npm_audit_output(info_raw).unwrap();
+        assert_eq!(findings[0].severity, Severity::Info);
+    }
+
+    #[test]
+    fn parse_npm_audit_file_is_package_json() {
+        let raw = r#"{"vulnerabilities":{"lodash":{"severity":"high","via":[{"title":"RCE","url":"https://example.com"}],"range":"<4.17.21"}}}"#;
+        let findings = parse_npm_audit_output(raw).unwrap();
+        assert_eq!(findings[0].file, PathBuf::from("package.json"));
+    }
+
+    #[test]
+    fn parse_npm_audit_invalid_json() {
+        let result = parse_npm_audit_output("not json");
+        assert!(result.is_err());
+    }
+
+    // ── Language dispatch tests ──────────────────────────────────────────────
+
+    #[tokio::test]
+    async fn analyze_python_uses_pip_audit() {
+        let runner = FixtureRunner::new().on("pip", CommandOutput::success(b"[]".to_vec()));
+        let ctx = make_ctx_with_lang(runner, Language::Python);
+        let findings = DependencyAuditDetector.analyze(&ctx).await.unwrap();
+        assert!(findings.is_empty());
+    }
+
+    #[tokio::test]
+    async fn analyze_javascript_uses_npm_audit() {
+        let raw = r#"{"vulnerabilities":{}}"#;
+        let runner =
+            FixtureRunner::new().on("npm", CommandOutput::success(raw.as_bytes().to_vec()));
+        let ctx = make_ctx_with_lang(runner, Language::JavaScript);
+        let findings = DependencyAuditDetector.analyze(&ctx).await.unwrap();
+        assert!(findings.is_empty());
+    }
+
+    #[tokio::test]
+    async fn analyze_unsupported_language_returns_empty() {
+        let runner = FixtureRunner::new();
+        let ctx = make_ctx_with_lang(runner, Language::Ruby);
+        let findings = DependencyAuditDetector.analyze(&ctx).await.unwrap();
+        assert!(findings.is_empty());
+    }
+
+    #[tokio::test]
+    async fn analyze_python_with_vulns() {
+        let raw = r#"[{"name":"requests","version":"2.25.0","vulns":[{"id":"PYSEC-2023-74","fix_versions":["2.31.0"],"description":"Session fixation"}]}]"#;
+        let runner =
+            FixtureRunner::new().on("pip", CommandOutput::success(raw.as_bytes().to_vec()));
+        let ctx = make_ctx_with_lang(runner, Language::Python);
+        let findings = DependencyAuditDetector.analyze(&ctx).await.unwrap();
+        assert_eq!(findings.len(), 1);
+        assert!(findings[0].title.contains("requests"));
+        assert_eq!(findings[0].category, FindingCategory::DependencyVuln);
+    }
+
+    #[tokio::test]
+    async fn analyze_javascript_with_vulns() {
+        let raw = r#"{"vulnerabilities":{"lodash":{"severity":"high","via":[{"title":"Prototype Pollution","url":"https://github.com/advisories/GHSA-1234"}],"range":"<4.17.21"}}}"#;
+        let runner =
+            FixtureRunner::new().on("npm", CommandOutput::success(raw.as_bytes().to_vec()));
+        let ctx = make_ctx_with_lang(runner, Language::JavaScript);
+        let findings = DependencyAuditDetector.analyze(&ctx).await.unwrap();
+        assert_eq!(findings.len(), 1);
+        assert!(findings[0].title.contains("lodash"));
     }
 }

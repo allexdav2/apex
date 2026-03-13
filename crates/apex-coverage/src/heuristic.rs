@@ -88,11 +88,11 @@ mod tests {
     #[test]
     fn distance_equality_close() {
         let d = branch_distance(CmpOp::Eq, 40, 42);
-        // |40 - 42| = 2, normalize(2) = 2/3, score = 1/3 ≈ 0.333
-        assert!(d > 0.0 && d < 1.0, "expected in (0, 1), got {d}");
-        // Closer values should have higher scores
+        // |40-42| = 2; normalize(2) = 2/3; score = 1 - 2/3 = 1/3
+        assert!((d - 1.0 / 3.0).abs() < 1e-9, "expected ~0.333, got {d}");
+        // Closer values should score higher
         let d_closer = branch_distance(CmpOp::Eq, 41, 42);
-        assert!(d_closer > d, "41 should be closer to 42 than 40 is");
+        assert!(d_closer > d);
     }
 
     #[test]
@@ -109,7 +109,8 @@ mod tests {
     #[test]
     fn distance_less_than_boundary() {
         let d = branch_distance(CmpOp::Lt, 10, 10);
-        assert!(d < 1.0 && d > 0.0);
+        // a-b+1 = 1; normalize(1) = 0.5; score = 1 - 0.5 = 0.5
+        assert!((d - 0.5).abs() < 1e-9, "expected 0.5, got {d}");
     }
 
     #[test]
@@ -120,7 +121,8 @@ mod tests {
     #[test]
     fn distance_greater_than_not_satisfied() {
         let d = branch_distance(CmpOp::Gt, 5, 10);
-        assert!(d < 1.0 && d > 0.0);
+        // b-a+1 = 6; normalize(6) = 6/7; score = 1 - 6/7 = 1/7
+        assert!((d - 1.0 / 7.0).abs() < 1e-9, "expected ~0.143, got {d}");
     }
 
     #[test]

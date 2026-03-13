@@ -867,4 +867,14 @@ mod tests {
             *args
         );
     }
+
+    #[test]
+    fn test_instrument_script_has_source_filter() {
+        // The embedded script must pass --source or --omit to coverage.py
+        let script = include_str!("scripts/apex_instrument.py");
+        assert!(
+            script.contains("--source") || script.contains("--omit"),
+            "apex_instrument.py must filter source vs test files"
+        );
+    }
 }

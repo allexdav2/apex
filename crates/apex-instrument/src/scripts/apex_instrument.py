@@ -28,6 +28,22 @@ import tempfile
 DATA_FILE = ".apex_coverage"
 JSON_OUT = ".apex_coverage.json"
 
+OMIT_PATTERNS = "tests/*,test/*,*_test.py,*_tests.py,conftest.py,setup.py,noxfile.py"
+
+
+def detect_source_dir():
+    """Auto-detect the source package directory."""
+    cwd = os.getcwd()
+    # Convention 1: src/ layout (PEP 517)
+    if os.path.isdir(os.path.join(cwd, "src")):
+        return "src"
+    # Convention 2: single top-level package (same name as directory)
+    project_name = os.path.basename(cwd).replace("-", "_")
+    if os.path.isdir(os.path.join(cwd, project_name)):
+        return project_name
+    # Fallback: measure all files but rely on --omit to exclude test paths
+    return "."
+
 
 def main():
     if len(sys.argv) < 2:
@@ -37,11 +53,12 @@ def main():
     cmd = sys.argv[1:]
 
     # Run under coverage.py
-    run_result = subprocess.run(
-        [sys.executable, "-m", "coverage", "run", "--branch",
-         f"--data-file={DATA_FILE}"] + cmd,
-        capture_output=False,
-    )
+    source_dir = detect_source_dir()
+    coverage_args = [sys.executable, "-m", "coverage", "run", "--branch",
+                     f"--data-file={DATA_FILE}",
+                     f"--source={source_dir}",
+                     f"--omit={OMIT_PATTERNS}"]
+    run_result = subprocess.run(coverage_args + cmd, capture_output=False)
 
     # Export to JSON
     subprocess.run(

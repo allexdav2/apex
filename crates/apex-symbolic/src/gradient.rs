@@ -89,7 +89,7 @@ impl GradientSolver {
         for _ in 0..self.max_iterations {
             // Compute gradient via finite differences
             let d_plus = comparison_distance(op, value.saturating_add(1), target);
-            let d_minus = comparison_distance(op, value.saturating_add(-1), target);
+            let d_minus = comparison_distance(op, value.saturating_sub(1), target);
 
             // Choose direction that reduces distance
             let (next_value, next_distance) = if d_plus < d_minus {
@@ -100,12 +100,12 @@ impl GradientSolver {
             } else if d_minus < d_plus {
                 // Negative direction is better
                 let step = self.find_step_size(op, value, target, -1);
-                let v = value.saturating_add(-step);
+                let v = value.saturating_sub(step);
                 (v, comparison_distance(op, v, target))
             } else {
                 // Equal gradients — try both with step 1
                 let v_plus = value.saturating_add(1);
-                let v_minus = value.saturating_add(-1);
+                let v_minus = value.saturating_sub(1);
                 let d_p = comparison_distance(op, v_plus, target);
                 let d_m = comparison_distance(op, v_minus, target);
                 if d_p <= d_m {
@@ -171,6 +171,8 @@ impl GradientSolver {
 
 impl Solver for GradientSolver {
     fn solve(&self, constraints: &[String], negate_last: bool) -> Result<Option<InputSeed>> {
+        // Note: only the last constraint is considered; earlier path constraints are ignored.
+        // The portfolio solver falls back to Z3 for path-feasible solutions.
         if constraints.is_empty() {
             return Ok(None);
         }
@@ -194,7 +196,7 @@ impl Solver for GradientSolver {
         match result {
             Some(value) => {
                 // Encode as JSON: {"var_name": value}
-                let json = format!("{{\"{}\": {}}}", var_name, value);
+                let json = format!("{{\"{var_name}\": {value}}}");
                 Ok(Some(InputSeed::new(json.into_bytes(), SeedOrigin::Symbolic)))
             }
             None => Ok(None),
@@ -225,6 +227,8 @@ fn negate_op(op: CmpOp) -> CmpOp {
 /// Parse a simple SMTLIB2 comparison constraint.
 /// Handles: "(> x 5)", "(= x 42)", "(< x -3)", "(>= x 0)", "(<= x 100)", "(!= x 7)"
 /// Returns (op, variable_name, target_value) or None for complex constraints.
+///
+/// Note: assumes variable is always on the left (e.g. `(> x 5)`, not `(> 5 x)`).
 fn parse_simple_comparison(s: &str) -> Option<(CmpOp, String, i64)> {
     let s = s.trim();
     let s = s.strip_prefix('(')?.strip_suffix(')')?;
@@ -375,8 +379,11 @@ mod tests {
         let result = solver.solve(&["(> x 5)".to_string()], true).unwrap();
         assert!(result.is_some());
         let json: String = String::from_utf8(result.unwrap().data.to_vec()).unwrap();
-        // The value should satisfy x <= 5
         assert!(json.contains("\"x\""));
+        // Parse value and verify it satisfies x <= 5
+        let parsed: serde_json::Value = serde_json::from_str(&json).unwrap();
+        let val = parsed["x"].as_i64().unwrap();
+        assert!(val <= 5, "negate_last should produce x <= 5, got x = {val}");
     }
 
     #[test]

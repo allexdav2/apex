@@ -92,6 +92,7 @@ pub fn parse_geiger_output(json_str: &str, target_pkg: &str) -> Result<Vec<Findi
                     suggestion: "Audit unsafe blocks for memory safety, add targeted fuzz tests".into(),
                     explanation: None,
                     fix: None,
+                    cwe_ids: vec![],
                 });
             }
         }

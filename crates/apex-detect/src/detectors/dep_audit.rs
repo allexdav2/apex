@@ -150,6 +150,7 @@ pub fn parse_cargo_audit_output(raw: &str) -> Result<Vec<Finding>> {
                 },
                 explanation: None,
                 fix,
+                cwe_ids: vec![],
             });
         }
     }
@@ -183,6 +184,7 @@ pub fn parse_cargo_audit_output(raw: &str) -> Result<Vec<Finding>> {
                     suggestion: format!("Review {kind} advisory for {pkg_name}: {id}"),
                     explanation: None,
                     fix: None,
+                    cwe_ids: vec![],
                 });
             }
         }
@@ -254,6 +256,7 @@ pub fn parse_pip_audit_output(raw: &str) -> Result<Vec<Finding>> {
                 },
                 explanation: None,
                 fix,
+                cwe_ids: vec![],
             });
         }
     }
@@ -339,6 +342,7 @@ pub fn parse_npm_audit_output(raw: &str) -> Result<Vec<Finding>> {
             suggestion: format!("Upgrade {pkg_name} to a version outside {range}"),
             explanation: None,
             fix,
+            cwe_ids: vec![],
         });
     }
 

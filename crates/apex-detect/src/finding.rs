@@ -21,6 +21,8 @@ pub struct Finding {
     pub explanation: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub fix: Option<Fix>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub cwe_ids: Vec<u32>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
@@ -134,6 +136,7 @@ mod tests {
             suggestion: "add error test".into(),
             explanation: None,
             fix: None,
+            cwe_ids: vec![],
         };
         let json = serde_json::to_string(&f).unwrap();
         assert!(json.contains("\"severity\":\"high\""));
@@ -262,6 +265,7 @@ mod tests {
                 file: "src/lib.rs".into(),
                 diff: "+bounds check".into(),
             }),
+            cwe_ids: vec![],
         };
         let json = serde_json::to_string(&f).unwrap();
         assert!(json.contains("\"explanation\":\"detailed explanation\""));
@@ -288,6 +292,7 @@ mod tests {
             suggestion: "initialize".into(),
             explanation: None,
             fix: None,
+            cwe_ids: vec![],
         };
         let json = serde_json::to_string(&f).unwrap();
         let f2: Finding = serde_json::from_str(&json).unwrap();
@@ -295,6 +300,50 @@ mod tests {
         assert_eq!(f2.severity, Severity::Low);
         assert_eq!(f2.category, FindingCategory::LogicBug);
         assert_eq!(f2.line, Some(42));
+    }
+
+    #[test]
+    fn finding_cwe_ids_serializes() {
+        let f = Finding {
+            id: uuid::Uuid::nil(),
+            detector: "test".into(),
+            severity: Severity::High,
+            category: FindingCategory::Injection,
+            file: PathBuf::from("src/main.rs"),
+            line: Some(1),
+            title: "cmd injection".into(),
+            description: "desc".into(),
+            evidence: vec![],
+            covered: false,
+            suggestion: "fix it".into(),
+            explanation: None,
+            fix: None,
+            cwe_ids: vec![78, 94],
+        };
+        let json = serde_json::to_string(&f).unwrap();
+        assert!(json.contains("\"cwe_ids\":[78,94]"));
+    }
+
+    #[test]
+    fn finding_empty_cwe_ids_not_serialized() {
+        let f = Finding {
+            id: uuid::Uuid::nil(),
+            detector: "test".into(),
+            severity: Severity::High,
+            category: FindingCategory::Injection,
+            file: PathBuf::from("src/main.rs"),
+            line: Some(1),
+            title: "cmd injection".into(),
+            description: "desc".into(),
+            evidence: vec![],
+            covered: false,
+            suggestion: "fix it".into(),
+            explanation: None,
+            fix: None,
+            cwe_ids: vec![],
+        };
+        let json = serde_json::to_string(&f).unwrap();
+        assert!(!json.contains("cwe_ids"));
     }
 
     #[test]

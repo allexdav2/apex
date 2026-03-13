@@ -125,6 +125,7 @@ pub fn parse_clippy_line(line: &str) -> Vec<Finding> {
         suggestion: format!("Address clippy lint: {code}"),
         explanation: None,
         fix: None,
+        cwe_ids: vec![],
     }]
 }
 

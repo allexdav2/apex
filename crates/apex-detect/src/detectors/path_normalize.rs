@@ -233,6 +233,7 @@ impl Detector for PathNormalizationDetector {
                             .into(),
                         explanation: None,
                         fix: None,
+                        cwe_ids: vec![22],
                     });
                 }
             }

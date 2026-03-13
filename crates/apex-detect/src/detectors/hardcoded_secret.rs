@@ -192,6 +192,7 @@ impl Detector for HardcodedSecretDetector {
                             suggestion: "Remove hardcoded secret and use environment variables or a secrets manager".into(),
                             explanation: None,
                             fix: None,
+                            cwe_ids: vec![798],
                         });
                         break; // One finding per line max
                     }

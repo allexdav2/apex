@@ -17,6 +17,7 @@ struct SecurityPattern {
     base_severity: Severity,
     user_input_indicators: &'static [&'static str],
     sanitization_indicators: &'static [&'static str],
+    cwe: &'static [u32],
 }
 
 const RUST_SECURITY_PATTERNS: &[SecurityPattern] = &[
@@ -29,6 +30,7 @@ const RUST_SECURITY_PATTERNS: &[SecurityPattern] = &[
             "format!", "user", "input", "request", "query", "arg(", "&str",
         ],
         sanitization_indicators: &["escape", "sanitize", "quote", "shell_escape"],
+        cwe: &[78],
     },
     SecurityPattern {
         sink: "std::process::Command",
@@ -37,6 +39,7 @@ const RUST_SECURITY_PATTERNS: &[SecurityPattern] = &[
         base_severity: Severity::Medium,
         user_input_indicators: &["format!", "user", "input", "request"],
         sanitization_indicators: &["escape", "sanitize"],
+        cwe: &[78],
     },
 ];
 
@@ -50,6 +53,7 @@ const PYTHON_SECURITY_PATTERNS: &[SecurityPattern] = &[
             "request", "input", "param", "query", "form", "argv", "stdin",
         ],
         sanitization_indicators: &["ast.literal_eval", "safe_eval"],
+        cwe: &[94],
     },
     SecurityPattern {
         sink: "exec(",
@@ -58,6 +62,7 @@ const PYTHON_SECURITY_PATTERNS: &[SecurityPattern] = &[
         base_severity: Severity::Critical,
         user_input_indicators: &["request", "input", "param", "query", "form"],
         sanitization_indicators: &[],
+        cwe: &[94],
     },
     SecurityPattern {
         sink: "pickle.load",
@@ -66,6 +71,7 @@ const PYTHON_SECURITY_PATTERNS: &[SecurityPattern] = &[
         base_severity: Severity::Critical,
         user_input_indicators: &["request", "upload", "file", "open(", "recv", "socket"],
         sanitization_indicators: &[],
+        cwe: &[502],
     },
     SecurityPattern {
         sink: "yaml.load(",
@@ -74,6 +80,7 @@ const PYTHON_SECURITY_PATTERNS: &[SecurityPattern] = &[
         base_severity: Severity::High,
         user_input_indicators: &["request", "file", "open(", "read"],
         sanitization_indicators: &["SafeLoader", "safe_load", "CSafeLoader"],
+        cwe: &[502],
     },
     SecurityPattern {
         sink: "subprocess.call(",
@@ -82,6 +89,7 @@ const PYTHON_SECURITY_PATTERNS: &[SecurityPattern] = &[
         base_severity: Severity::High,
         user_input_indicators: &["shell=True", "format(", "f\"", "request", "input", "%s"],
         sanitization_indicators: &["shlex.quote", "shlex.split", "shell=False"],
+        cwe: &[78],
     },
     SecurityPattern {
         sink: "os.system(",
@@ -90,6 +98,7 @@ const PYTHON_SECURITY_PATTERNS: &[SecurityPattern] = &[
         base_severity: Severity::High,
         user_input_indicators: &["format(", "f\"", "request", "input", "+", "%"],
         sanitization_indicators: &["shlex.quote"],
+        cwe: &[78],
     },
     SecurityPattern {
         sink: ".execute(f",
@@ -98,6 +107,7 @@ const PYTHON_SECURITY_PATTERNS: &[SecurityPattern] = &[
         base_severity: Severity::Critical,
         user_input_indicators: &[],
         sanitization_indicators: &[],
+        cwe: &[89],
     },
     SecurityPattern {
         sink: ".execute(",
@@ -106,6 +116,7 @@ const PYTHON_SECURITY_PATTERNS: &[SecurityPattern] = &[
         base_severity: Severity::High,
         user_input_indicators: &["%s", "format(", "+", "%", "f\""],
         sanitization_indicators: &["?", "%s,", "parameterize", "placeholder"],
+        cwe: &[89],
     },
     SecurityPattern {
         sink: "mark_safe(",
@@ -114,6 +125,7 @@ const PYTHON_SECURITY_PATTERNS: &[SecurityPattern] = &[
         base_severity: Severity::High,
         user_input_indicators: &["request", "user", "input", "form", "query"],
         sanitization_indicators: &["escape", "bleach", "sanitize", "strip_tags"],
+        cwe: &[79],
     },
     SecurityPattern {
         sink: "hashlib.md5(",
@@ -122,6 +134,7 @@ const PYTHON_SECURITY_PATTERNS: &[SecurityPattern] = &[
         base_severity: Severity::Medium,
         user_input_indicators: &["password", "token", "secret", "key", "auth"],
         sanitization_indicators: &[],
+        cwe: &[328],
     },
     SecurityPattern {
         sink: "hashlib.sha1(",
@@ -130,6 +143,7 @@ const PYTHON_SECURITY_PATTERNS: &[SecurityPattern] = &[
         base_severity: Severity::Medium,
         user_input_indicators: &["password", "token", "secret", "key", "auth"],
         sanitization_indicators: &[],
+        cwe: &[328],
     },
     SecurityPattern {
         sink: "verify=False",
@@ -138,6 +152,7 @@ const PYTHON_SECURITY_PATTERNS: &[SecurityPattern] = &[
         base_severity: Severity::High,
         user_input_indicators: &[],
         sanitization_indicators: &[],
+        cwe: &[295],
     },
 ];
 
@@ -151,6 +166,7 @@ const JS_SECURITY_PATTERNS: &[SecurityPattern] = &[
             "req.", "request", "params", "query", "body", "input", "argv",
         ],
         sanitization_indicators: &[],
+        cwe: &[94],
     },
     SecurityPattern {
         sink: "Function(",
@@ -159,6 +175,7 @@ const JS_SECURITY_PATTERNS: &[SecurityPattern] = &[
         base_severity: Severity::Critical,
         user_input_indicators: &["req.", "request", "params", "query", "body", "input"],
         sanitization_indicators: &[],
+        cwe: &[94],
     },
     SecurityPattern {
         sink: "child_process.exec(",
@@ -169,6 +186,7 @@ const JS_SECURITY_PATTERNS: &[SecurityPattern] = &[
             "req.", "request", "params", "query", "body", "input", "${", "`",
         ],
         sanitization_indicators: &["escape", "sanitize", "execFile"],
+        cwe: &[78],
     },
     SecurityPattern {
         sink: "innerHTML",
@@ -179,6 +197,7 @@ const JS_SECURITY_PATTERNS: &[SecurityPattern] = &[
             "req.", "request", "user", "input", "query", "param", "response",
         ],
         sanitization_indicators: &["sanitize", "escape", "DOMPurify", "encode", "textContent"],
+        cwe: &[79],
     },
     SecurityPattern {
         sink: "dangerouslySetInnerHTML",
@@ -187,6 +206,7 @@ const JS_SECURITY_PATTERNS: &[SecurityPattern] = &[
         base_severity: Severity::High,
         user_input_indicators: &["user", "input", "props", "state", "data", "response"],
         sanitization_indicators: &["sanitize", "DOMPurify", "bleach"],
+        cwe: &[79],
     },
     SecurityPattern {
         sink: "document.write(",
@@ -195,6 +215,7 @@ const JS_SECURITY_PATTERNS: &[SecurityPattern] = &[
         base_severity: Severity::High,
         user_input_indicators: &["user", "input", "location", "search", "hash", "referrer"],
         sanitization_indicators: &["escape", "encode", "sanitize"],
+        cwe: &[79],
     },
     SecurityPattern {
         sink: "vm.runIn",
@@ -203,6 +224,7 @@ const JS_SECURITY_PATTERNS: &[SecurityPattern] = &[
         base_severity: Severity::High,
         user_input_indicators: &["req.", "request", "user", "input"],
         sanitization_indicators: &[],
+        cwe: &[94],
     },
 ];
 
@@ -214,6 +236,7 @@ const RUBY_SECURITY_PATTERNS: &[SecurityPattern] = &[
         base_severity: Severity::Critical,
         user_input_indicators: &["params", "request", "input", "gets", "ARGV"],
         sanitization_indicators: &[],
+        cwe: &[94],
     },
     SecurityPattern {
         sink: "instance_eval",
@@ -222,6 +245,7 @@ const RUBY_SECURITY_PATTERNS: &[SecurityPattern] = &[
         base_severity: Severity::Critical,
         user_input_indicators: &["params", "request", "input", "gets"],
         sanitization_indicators: &[],
+        cwe: &[94],
     },
     SecurityPattern {
         sink: "class_eval",
@@ -230,6 +254,7 @@ const RUBY_SECURITY_PATTERNS: &[SecurityPattern] = &[
         base_severity: Severity::Critical,
         user_input_indicators: &["params", "request", "input"],
         sanitization_indicators: &[],
+        cwe: &[94],
     },
     SecurityPattern {
         sink: "send(",
@@ -238,6 +263,7 @@ const RUBY_SECURITY_PATTERNS: &[SecurityPattern] = &[
         base_severity: Severity::High,
         user_input_indicators: &["params", "request", "input", "gets"],
         sanitization_indicators: &["whitelist", "allow_list", "permitted", "include?"],
+        cwe: &[94],
     },
     SecurityPattern {
         sink: "constantize",
@@ -246,6 +272,7 @@ const RUBY_SECURITY_PATTERNS: &[SecurityPattern] = &[
         base_severity: Severity::High,
         user_input_indicators: &["params", "request", "input"],
         sanitization_indicators: &["whitelist", "allow_list", "permitted", "include?"],
+        cwe: &[94],
     },
     SecurityPattern {
         sink: ".html_safe",
@@ -254,6 +281,7 @@ const RUBY_SECURITY_PATTERNS: &[SecurityPattern] = &[
         base_severity: Severity::High,
         user_input_indicators: &["params", "user", "input", "request", "@"],
         sanitization_indicators: &["sanitize", "strip_tags", "escape", "h("],
+        cwe: &[79],
     },
     SecurityPattern {
         sink: "Marshal.load",
@@ -262,6 +290,7 @@ const RUBY_SECURITY_PATTERNS: &[SecurityPattern] = &[
         base_severity: Severity::Critical,
         user_input_indicators: &["request", "file", "socket", "params", "upload"],
         sanitization_indicators: &[],
+        cwe: &[502],
     },
     SecurityPattern {
         sink: "YAML.load(",
@@ -270,6 +299,7 @@ const RUBY_SECURITY_PATTERNS: &[SecurityPattern] = &[
         base_severity: Severity::High,
         user_input_indicators: &["request", "file", "params"],
         sanitization_indicators: &["safe_load", "safe_load_file", "permitted_classes"],
+        cwe: &[502],
     },
     SecurityPattern {
         sink: ".where(",
@@ -278,6 +308,7 @@ const RUBY_SECURITY_PATTERNS: &[SecurityPattern] = &[
         base_severity: Severity::High,
         user_input_indicators: &["#{", "params", "request", "input", "+"],
         sanitization_indicators: &["sanitize_sql", "?", "placeholder", "where("],
+        cwe: &[89],
     },
 ];
 
@@ -289,6 +320,7 @@ const C_SECURITY_PATTERNS: &[SecurityPattern] = &[
         base_severity: Severity::Critical,
         user_input_indicators: &[], // always dangerous
         sanitization_indicators: &[],
+        cwe: &[120],
     },
     SecurityPattern {
         sink: "strcpy(",
@@ -297,6 +329,7 @@ const C_SECURITY_PATTERNS: &[SecurityPattern] = &[
         base_severity: Severity::High,
         user_input_indicators: &["argv", "stdin", "fgets", "recv", "read(", "getenv"],
         sanitization_indicators: &["strlen", "sizeof", "strlcpy", "strncpy"],
+        cwe: &[120],
     },
     SecurityPattern {
         sink: "sprintf(",
@@ -305,6 +338,7 @@ const C_SECURITY_PATTERNS: &[SecurityPattern] = &[
         base_severity: Severity::High,
         user_input_indicators: &["argv", "stdin", "fgets", "recv", "getenv", "%s"],
         sanitization_indicators: &["snprintf"],
+        cwe: &[120],
     },
     SecurityPattern {
         sink: "strcat(",
@@ -313,6 +347,7 @@ const C_SECURITY_PATTERNS: &[SecurityPattern] = &[
         base_severity: Severity::High,
         user_input_indicators: &["argv", "stdin", "fgets", "recv", "getenv"],
         sanitization_indicators: &["strncat", "strlcat", "strlen"],
+        cwe: &[120],
     },
     SecurityPattern {
         sink: "system(",
@@ -321,6 +356,7 @@ const C_SECURITY_PATTERNS: &[SecurityPattern] = &[
         base_severity: Severity::Critical,
         user_input_indicators: &["argv", "stdin", "fgets", "recv", "getenv", "sprintf"],
         sanitization_indicators: &["escape", "sanitize"],
+        cwe: &[78],
     },
 ];
 
@@ -452,6 +488,7 @@ impl Detector for SecurityPatternDetector {
                             suggestion: "Validate and sanitize input before use".into(),
                             explanation: None,
                             fix: None,
+                            cwe_ids: pattern.cwe.to_vec(),
                         });
                         break; // One finding per line max
                     }
@@ -837,5 +874,24 @@ mod tests {
         // Both present → base stays, then downgrade for sanitization
         let sev = adjust_severity(Severity::Critical, true, true, true);
         assert_eq!(sev, Severity::High);
+    }
+
+    #[tokio::test]
+    async fn findings_include_cwe_ids() {
+        // eval pattern → CWE-94 (Code Injection)
+        let mut files = HashMap::new();
+        files.insert(
+            PathBuf::from("src/app.py"),
+            "def handle(request):\n    result = eval(request.get('expr'))\n    return result\n"
+                .into(),
+        );
+        let ctx = make_ctx(files, Language::Python);
+        let findings = SecurityPatternDetector.analyze(&ctx).await.unwrap();
+        assert_eq!(findings.len(), 1);
+        assert!(
+            findings[0].cwe_ids.contains(&94),
+            "expected CWE-94 in cwe_ids, got {:?}",
+            findings[0].cwe_ids
+        );
     }
 }

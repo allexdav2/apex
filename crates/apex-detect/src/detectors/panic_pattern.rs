@@ -154,6 +154,7 @@ impl Detector for PanicPatternDetector {
                             suggestion: "Handle error explicitly or add test for panic path".into(),
                             explanation: None,
                             fix: None,
+                            cwe_ids: vec![],
                         });
                         break; // One finding per line max
                     }

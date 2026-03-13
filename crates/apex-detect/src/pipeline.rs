@@ -224,6 +224,7 @@ mod tests {
             suggestion: "fix it".into(),
             explanation: None,
             fix: None,
+            cwe_ids: vec![],
         }
     }
 

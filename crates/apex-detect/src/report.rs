@@ -80,6 +80,7 @@ mod tests {
             suggestion: "s".into(),
             explanation: None,
             fix: None,
+            cwe_ids: vec![],
         }
     }
 

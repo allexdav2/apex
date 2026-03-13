@@ -670,6 +670,29 @@ mod tests {
         assert_eq!(oracle.best_heuristic(&b), 0.0);
     }
 
+    #[test]
+    fn test_heuristic_for_returns_full_struct() {
+        let oracle = CoverageOracle::new();
+        let b = make_branch(1, 0);
+        oracle.record_heuristic(BranchHeuristic {
+            branch_id: b.clone(),
+            score: 0.75,
+            operand_a: Some(40),
+            operand_b: Some(42),
+        });
+        let h = oracle.heuristic_for(&b).expect("should exist");
+        assert_eq!(h.score, 0.75);
+        assert_eq!(h.operand_a, Some(40));
+        assert_eq!(h.operand_b, Some(42));
+    }
+
+    #[test]
+    fn test_heuristic_for_unknown_returns_none() {
+        let oracle = CoverageOracle::new();
+        let b = make_branch(999, 0);
+        assert!(oracle.heuristic_for(&b).is_none());
+    }
+
     use proptest::prelude::*;
 
     proptest! {

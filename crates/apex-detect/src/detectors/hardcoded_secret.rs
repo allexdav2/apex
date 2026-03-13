@@ -112,9 +112,7 @@ fn is_example_file(path: &std::path::Path) -> bool {
 
 /// Returns true if the line contains a placeholder/false-positive value.
 fn contains_placeholder(line: &str) -> bool {
-    FALSE_POSITIVE_VALUES
-        .iter()
-        .any(|fp| line.contains(fp))
+    FALSE_POSITIVE_VALUES.iter().any(|fp| line.contains(fp))
 }
 
 /// Returns true if the line references an environment variable.
@@ -339,7 +337,9 @@ mod tests {
     #[test]
     fn is_example_file_variants() {
         assert!(is_example_file(std::path::Path::new("config.sample.yml")));
-        assert!(is_example_file(std::path::Path::new("settings.template.json")));
+        assert!(is_example_file(std::path::Path::new(
+            "settings.template.json"
+        )));
         assert!(is_example_file(std::path::Path::new("README.md")));
         assert!(is_example_file(std::path::Path::new("SETUP.txt")));
         assert!(is_example_file(std::path::Path::new("docs/guide.rst")));
@@ -437,7 +437,8 @@ mod tests {
         let mut files = HashMap::new();
         files.insert(
             PathBuf::from("src/lib.rs"),
-            "#[cfg(test)]\nmod tests {\n    const KEY: &str = \"AKIAIOSFODNN7ABCDEFG\";\n}\n".into(),
+            "#[cfg(test)]\nmod tests {\n    const KEY: &str = \"AKIAIOSFODNN7ABCDEFG\";\n}\n"
+                .into(),
         );
         let ctx = make_ctx(files, Language::Rust);
         let findings = HardcodedSecretDetector.analyze(&ctx).await.unwrap();

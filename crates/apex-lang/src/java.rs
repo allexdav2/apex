@@ -470,9 +470,9 @@ mod tests {
         std::fs::write(dir.path().join("pom.xml"), "").unwrap();
 
         let mut mock = MockCmd::new();
-        mock.expect_run_command().times(1).returning(|_| {
-            Ok(CommandOutput::failure(1, b"BUILD FAILURE".to_vec()))
-        });
+        mock.expect_run_command()
+            .times(1)
+            .returning(|_| Ok(CommandOutput::failure(1, b"BUILD FAILURE".to_vec())));
 
         let runner = JavaRunner::with_runner(mock);
         let result = runner.run_tests(dir.path(), &[]).await.unwrap();

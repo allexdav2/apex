@@ -586,10 +586,10 @@ mod tests {
         let unreachable = BranchState::Unreachable;
         let suppressed = BranchState::Suppressed;
 
-        let dbg_uncovered = format!("{:?}", uncovered);
-        let dbg_covered = format!("{:?}", covered);
-        let dbg_unreachable = format!("{:?}", unreachable);
-        let dbg_suppressed = format!("{:?}", suppressed);
+        let dbg_uncovered = format!("{uncovered:?}");
+        let dbg_covered = format!("{covered:?}");
+        let dbg_unreachable = format!("{unreachable:?}");
+        let dbg_suppressed = format!("{suppressed:?}");
 
         assert!(dbg_uncovered.contains("Uncovered"));
         assert!(dbg_covered.contains("Covered"));

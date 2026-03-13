@@ -1106,7 +1106,7 @@ mod tests {
             stdout: vec![],
             stderr: vec![],
         };
-        let debug = format!("{:?}", resp);
+        let debug = format!("{resp:?}");
         assert!(debug.contains("VsockResponse"));
         assert!(debug.contains("bitmap"));
         assert!(debug.contains("exit_code"));
@@ -1139,7 +1139,7 @@ mod tests {
         data.extend_from_slice(&0u32.to_be_bytes()); // bitmap_len = 0
         data.extend_from_slice(&0u32.to_be_bytes()); // exit_code = 0
         data.extend_from_slice(&0u32.to_be_bytes()); // stdout_len = 0
-        // No stderr_len at all
+                                                     // No stderr_len at all
         let result = decode_vsock_response(&data);
         assert!(result.is_err());
     }
@@ -1259,7 +1259,13 @@ mod tests {
     /// `FirecrackerSandbox::default_rootfs` always ends with `rootfs.ext4`.
     #[test]
     fn default_rootfs_always_ends_with_rootfs_ext4() {
-        for lang in [Language::Python, Language::Rust, Language::JavaScript, Language::C, Language::Java] {
+        for lang in [
+            Language::Python,
+            Language::Rust,
+            Language::JavaScript,
+            Language::C,
+            Language::Java,
+        ] {
             let path = FirecrackerSandbox::default_rootfs(lang);
             assert_eq!(path.file_name().unwrap(), "rootfs.ext4", "lang={lang}");
         }
@@ -1309,7 +1315,10 @@ mod tests {
             .with_rootfs(PathBuf::from("/no/such/rootfs.ext4"));
         let err = sb.prepare().await.unwrap_err();
         let msg = format!("{err}");
-        assert!(msg.contains("javascript") || msg.contains("JavaScript"), "error: {msg}");
+        assert!(
+            msg.contains("javascript") || msg.contains("JavaScript"),
+            "error: {msg}"
+        );
     }
 
     /// `run()` result has `seed_id` matching the input seed.
@@ -1364,7 +1373,7 @@ mod tests {
             snap_file: PathBuf::from("/snap.bin"),
             mem_file: PathBuf::from("/snap.mem"),
         };
-        let dbg = format!("{:?}", snap);
+        let dbg = format!("{snap:?}");
         assert!(dbg.contains("Snapshot"), "debug: {dbg}");
     }
 

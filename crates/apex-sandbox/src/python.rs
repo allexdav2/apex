@@ -652,8 +652,7 @@ mod tests {
         // The branch from abs_outside uses the full absolute path.
         let expected_outside = fnv1a_hash(abs_outside);
 
-        let file_ids: std::collections::HashSet<u64> =
-            branches.iter().map(|b| b.file_id).collect();
+        let file_ids: std::collections::HashSet<u64> = branches.iter().map(|b| b.file_id).collect();
         assert!(file_ids.contains(&expected_inside), "expected inside fid");
         assert!(file_ids.contains(&expected_outside), "expected outside fid");
     }

@@ -261,9 +261,7 @@ mod tests {
         // Use a conservative threshold of 80%.
         assert!(
             count_bb > iterations * 80 / 100,
-            "high-gain entry sampled {} / {} times, expected > 80%",
-            count_bb,
-            iterations
+            "high-gain entry sampled {count_bb} / {iterations} times, expected > 80%"
         );
     }
 
@@ -816,7 +814,7 @@ mod tests {
         // data.len().max(1) → empty data uses 1
         let mut c = Corpus::new(10);
         c.entries.push_back(CorpusEntry {
-            data: vec![],  // len=0 → max(1)=1
+            data: vec![], // len=0 → max(1)=1
             coverage_gain: 1,
             energy: 1.0,
             fuzz_count: 1,

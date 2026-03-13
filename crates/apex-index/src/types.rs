@@ -90,7 +90,10 @@ impl BranchIndex {
         // Dead branches = total branches - branches in any profile.
         // This method returns profiles with lowest hit counts for analysis.
         // For true dead branches, see dead_branch_ids().
-        self.profiles.values().filter(|p| p.hit_count == 0).collect()
+        self.profiles
+            .values()
+            .filter(|p| p.hit_count == 0)
+            .collect()
     }
 
     /// Get BranchIds that appear in no test trace.
@@ -108,8 +111,7 @@ impl BranchIndex {
         if let Some(parent) = path.parent() {
             std::fs::create_dir_all(parent)?;
         }
-        let json = serde_json::to_string_pretty(self)
-            .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
+        let json = serde_json::to_string_pretty(self).map_err(std::io::Error::other)?;
         std::fs::write(path, json)
     }
 
@@ -458,7 +460,10 @@ mod tests {
         let mut b = make_branch(1, 10, 0);
         b.condition_index = Some(3);
         let key = branch_key(&b);
-        assert!(key.ends_with(":3"), "expected condition_index in key, got: {key}");
+        assert!(
+            key.ends_with(":3"),
+            "expected condition_index in key, got: {key}"
+        );
 
         // Without condition_index, should end with :255
         let b2 = make_branch(1, 10, 0);
@@ -527,7 +532,10 @@ mod tests {
         std::fs::write(nm.join("dep.py"), "dep").unwrap();
 
         let h_after = hash_source_files(tmp.path(), Language::Python);
-        assert_eq!(h_baseline, h_after, "hidden/special dir files should be skipped");
+        assert_eq!(
+            h_baseline, h_after,
+            "hidden/special dir files should be skipped"
+        );
     }
 
     #[test]
@@ -764,9 +772,24 @@ mod tests {
         // Branch hit by 3 different tests -> hit_count = 3, test_count = 3
         let b = make_branch(5, 42, 0);
         let traces = vec![
-            TestTrace { test_name: "a".into(), branches: vec![b.clone()], duration_ms: 1, status: ExecutionStatus::Pass },
-            TestTrace { test_name: "b".into(), branches: vec![b.clone()], duration_ms: 1, status: ExecutionStatus::Pass },
-            TestTrace { test_name: "c".into(), branches: vec![b.clone()], duration_ms: 1, status: ExecutionStatus::Pass },
+            TestTrace {
+                test_name: "a".into(),
+                branches: vec![b.clone()],
+                duration_ms: 1,
+                status: ExecutionStatus::Pass,
+            },
+            TestTrace {
+                test_name: "b".into(),
+                branches: vec![b.clone()],
+                duration_ms: 1,
+                status: ExecutionStatus::Pass,
+            },
+            TestTrace {
+                test_name: "c".into(),
+                branches: vec![b.clone()],
+                duration_ms: 1,
+                status: ExecutionStatus::Pass,
+            },
         ];
         let profiles = BranchIndex::build_profiles(&traces);
         let key = branch_key(&b);

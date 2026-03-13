@@ -147,7 +147,9 @@ const JS_SECURITY_PATTERNS: &[SecurityPattern] = &[
         description: "eval() — arbitrary code execution if input is user-controlled",
         category: FindingCategory::Injection,
         base_severity: Severity::Critical,
-        user_input_indicators: &["req.", "request", "params", "query", "body", "input", "argv"],
+        user_input_indicators: &[
+            "req.", "request", "params", "query", "body", "input", "argv",
+        ],
         sanitization_indicators: &[],
     },
     SecurityPattern {
@@ -163,7 +165,9 @@ const JS_SECURITY_PATTERNS: &[SecurityPattern] = &[
         description: "child_process.exec — command injection via shell",
         category: FindingCategory::Injection,
         base_severity: Severity::Critical,
-        user_input_indicators: &["req.", "request", "params", "query", "body", "input", "${", "`"],
+        user_input_indicators: &[
+            "req.", "request", "params", "query", "body", "input", "${", "`",
+        ],
         sanitization_indicators: &["escape", "sanitize", "execFile"],
     },
     SecurityPattern {
@@ -171,7 +175,9 @@ const JS_SECURITY_PATTERNS: &[SecurityPattern] = &[
         description: "innerHTML assignment — XSS if content includes user input",
         category: FindingCategory::Injection,
         base_severity: Severity::High,
-        user_input_indicators: &["req.", "request", "user", "input", "query", "param", "response"],
+        user_input_indicators: &[
+            "req.", "request", "user", "input", "query", "param", "response",
+        ],
         sanitization_indicators: &["sanitize", "escape", "DOMPurify", "encode", "textContent"],
     },
     SecurityPattern {
@@ -492,7 +498,9 @@ mod tests {
         let ctx = make_ctx(files, Language::Rust);
         let findings = SecurityPatternDetector.analyze(&ctx).await.unwrap();
         assert_eq!(findings.len(), 1);
-        assert!(findings[0].severity == Severity::High || findings[0].severity == Severity::Critical);
+        assert!(
+            findings[0].severity == Severity::High || findings[0].severity == Severity::Critical
+        );
         assert_eq!(findings[0].category, FindingCategory::Injection);
     }
 
@@ -542,7 +550,8 @@ mod tests {
         let mut files = HashMap::new();
         files.insert(
             PathBuf::from("src/db.py"),
-            "def query(name):\n    cursor.execute(f\"SELECT * FROM users WHERE name='{name}'\")\n".into(),
+            "def query(name):\n    cursor.execute(f\"SELECT * FROM users WHERE name='{name}'\")\n"
+                .into(),
         );
         let ctx = make_ctx(files, Language::Python);
         let findings = SecurityPatternDetector.analyze(&ctx).await.unwrap();
@@ -591,10 +600,7 @@ mod tests {
     #[tokio::test]
     async fn no_findings_for_unsupported_language() {
         let mut files = HashMap::new();
-        files.insert(
-            PathBuf::from("src/main.wasm"),
-            "eval('alert(1)');\n".into(),
-        );
+        files.insert(PathBuf::from("src/main.wasm"), "eval('alert(1)');\n".into());
         let ctx = make_ctx(files, Language::Wasm);
         let findings = SecurityPatternDetector.analyze(&ctx).await.unwrap();
         assert!(findings.is_empty());
@@ -681,10 +687,7 @@ mod tests {
     #[tokio::test]
     async fn skips_comments_python() {
         let mut files = HashMap::new();
-        files.insert(
-            PathBuf::from("src/app.py"),
-            "# eval(request.data)\n".into(),
-        );
+        files.insert(PathBuf::from("src/app.py"), "# eval(request.data)\n".into());
         let ctx = make_ctx(files, Language::Python);
         let findings = SecurityPatternDetector.analyze(&ctx).await.unwrap();
         assert!(findings.is_empty());
@@ -755,10 +758,7 @@ mod tests {
     #[tokio::test]
     async fn multiple_findings_different_lines() {
         let mut files = HashMap::new();
-        files.insert(
-            PathBuf::from("src/bad.py"),
-            "eval(x)\nexec(y)\n".into(),
-        );
+        files.insert(PathBuf::from("src/bad.py"), "eval(x)\nexec(y)\n".into());
         let ctx = make_ctx(files, Language::Python);
         let findings = SecurityPatternDetector.analyze(&ctx).await.unwrap();
         assert_eq!(findings.len(), 2);

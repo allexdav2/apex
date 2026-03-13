@@ -7,7 +7,6 @@ use apex_core::types::{BranchId, ExecutionResult, ExecutionStatus, Language, See
 use apex_coverage::CoverageOracle;
 use std::collections::HashMap;
 use std::path::PathBuf;
-use std::sync::Arc;
 
 /// Path to the workspace root (two levels up from crates/apex-cli/).
 fn workspace_root() -> PathBuf {

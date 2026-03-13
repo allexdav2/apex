@@ -338,7 +338,7 @@ mod tests {
         let mut inst = PythonInstrumentor::new();
         inst.parse_coverage_json(&json_path, repo_root).unwrap();
 
-        for (_, path) in &inst.file_paths {
+        for path in inst.file_paths.values() {
             assert!(
                 !path.is_absolute(),
                 "expected relative path, got: {}",
@@ -636,9 +636,15 @@ mod tests {
     #[test]
     fn test_fnv1a_single_byte_values() {
         // Single-byte strings should produce unique hashes
-        let hashes: Vec<u64> = (b'a'..=b'z').map(|c| fnv1a_hash(&String::from(c as char))).collect();
+        let hashes: Vec<u64> = (b'a'..=b'z')
+            .map(|c| fnv1a_hash(&String::from(c as char)))
+            .collect();
         let unique: std::collections::HashSet<u64> = hashes.iter().cloned().collect();
-        assert_eq!(hashes.len(), unique.len(), "all single-char hashes should be unique");
+        assert_eq!(
+            hashes.len(),
+            unique.len(),
+            "all single-char hashes should be unique"
+        );
     }
 
     #[test]
@@ -785,11 +791,27 @@ mod tests {
         inst.instrument(&target).await.unwrap();
 
         let args = runner_ref.captured_args.lock().unwrap();
-        assert!(args.iter().any(|a| a == "python"), "expected 'python' in args: {:?}", *args);
-        assert!(args.iter().any(|a| a == "-m"), "expected '-m' in args: {:?}", *args);
-        assert!(args.iter().any(|a| a == "unittest"), "expected 'unittest' in args: {:?}", *args);
+        assert!(
+            args.iter().any(|a| a == "python"),
+            "expected 'python' in args: {:?}",
+            *args
+        );
+        assert!(
+            args.iter().any(|a| a == "-m"),
+            "expected '-m' in args: {:?}",
+            *args
+        );
+        assert!(
+            args.iter().any(|a| a == "unittest"),
+            "expected 'unittest' in args: {:?}",
+            *args
+        );
         // Should NOT contain "pytest" since custom command was provided
-        assert!(!args.iter().any(|a| a == "pytest"), "should not contain 'pytest': {:?}", *args);
+        assert!(
+            !args.iter().any(|a| a == "pytest"),
+            "should not contain 'pytest': {:?}",
+            *args
+        );
     }
 
     #[tokio::test]

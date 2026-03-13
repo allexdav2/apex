@@ -551,7 +551,7 @@ mod tests {
         };
         let cloned = entry.clone();
         assert_eq!(entry, cloned);
-        let _ = format!("{:?}", entry);
+        let _ = format!("{entry:?}");
     }
 
     // ------------------------------------------------------------------

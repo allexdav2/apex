@@ -527,8 +527,8 @@ mod tests {
     #[test]
     fn test_find_wasm_files_in_root() {
         let tmp = tempfile::tempdir().unwrap();
-        std::fs::write(tmp.path().join("app.wasm"), &[0u8]).unwrap();
-        std::fs::write(tmp.path().join("not_wasm.txt"), &[0u8]).unwrap();
+        std::fs::write(tmp.path().join("app.wasm"), [0u8]).unwrap();
+        std::fs::write(tmp.path().join("not_wasm.txt"), [0u8]).unwrap();
 
         let found = WasmInstrumentor::find_wasm_files(tmp.path());
         assert_eq!(found.len(), 1);
@@ -539,7 +539,7 @@ mod tests {
         let tmp = tempfile::tempdir().unwrap();
         let build_dir = tmp.path().join("build");
         std::fs::create_dir_all(&build_dir).unwrap();
-        std::fs::write(build_dir.join("module.wasm"), &[0u8]).unwrap();
+        std::fs::write(build_dir.join("module.wasm"), [0u8]).unwrap();
 
         let found = WasmInstrumentor::find_wasm_files(tmp.path());
         assert_eq!(found.len(), 1);
@@ -709,7 +709,7 @@ mod tests {
         for subdir in &["build", "dist", "out", "pkg"] {
             let dir = tmp.path().join(subdir);
             std::fs::create_dir_all(&dir).unwrap();
-            std::fs::write(dir.join(format!("{subdir}.wasm")), &[0u8]).unwrap();
+            std::fs::write(dir.join(format!("{subdir}.wasm")), [0u8]).unwrap();
         }
         let found = WasmInstrumentor::find_wasm_files(tmp.path());
         assert_eq!(found.len(), 4);
@@ -803,7 +803,7 @@ mod tests {
     fn test_count_wasm_too_short_for_magic() {
         let tmp = tempfile::tempdir().unwrap();
         let path = tmp.path().join("short.wasm");
-        std::fs::write(&path, &[0x00, 0x61]).unwrap();
+        std::fs::write(&path, [0x00, 0x61]).unwrap();
         assert_eq!(count_wasm_functions(&path), None);
     }
 

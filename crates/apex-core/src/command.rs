@@ -239,7 +239,7 @@ mod tests {
         assert!(result.is_err());
         match result.unwrap_err() {
             ApexError::Timeout(ms) => assert_eq!(ms, 100),
-            other => panic!("expected Timeout, got {:?}", other),
+            other => panic!("expected Timeout, got {other:?}"),
         }
     }
 

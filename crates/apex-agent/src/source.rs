@@ -347,11 +347,7 @@ mod tests {
         let mut file_paths = HashMap::new();
         file_paths.insert(1u64, rel);
 
-        let uncovered = vec![
-            make_branch(1, 10),
-            make_branch(1, 20),
-            make_branch(1, 30),
-        ];
+        let uncovered = vec![make_branch(1, 10), make_branch(1, 20), make_branch(1, 30)];
         let ctxs = extract_source_contexts(&uncovered, &file_paths, root);
         // All branches in the same file → one SourceContext.
         assert_eq!(ctxs.len(), 1);

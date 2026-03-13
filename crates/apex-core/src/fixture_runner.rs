@@ -102,9 +102,7 @@ mod tests {
         let runner = FixtureRunner::new().on_args(
             "cargo",
             &["audit", "--json"],
-            CommandOutput::success(
-                b"{\"vulnerabilities\":{\"found\":0,\"list\":[]}}".to_vec(),
-            ),
+            CommandOutput::success(b"{\"vulnerabilities\":{\"found\":0,\"list\":[]}}".to_vec()),
         );
         let spec = CommandSpec::new("cargo", "/tmp").args(["audit", "--json"]);
         let result = runner.run_command(&spec).await.unwrap();

@@ -219,7 +219,7 @@ mod tests {
         let inner = CountingSolver::new();
         let solver = CachingSolver::new(inner);
         for i in 0..5 {
-            let _ = solver.solve(&[format!("(> x {})", i)], false);
+            let _ = solver.solve(&[format!("(> x {i})")], false);
         }
         assert_eq!(solver.miss_count(), 5);
         assert_eq!(solver.hit_count(), 0);

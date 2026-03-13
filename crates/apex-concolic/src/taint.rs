@@ -190,9 +190,9 @@ mod tests {
         let tainted = propagate_taint(
             &["x".into()],
             &[
-                ("c".into(), vec!["b".into()]),  // b not yet tainted
-                ("b".into(), vec!["a".into()]),   // a not yet tainted
-                ("a".into(), vec!["x".into()]),   // x is tainted
+                ("c".into(), vec!["b".into()]), // b not yet tainted
+                ("b".into(), vec!["a".into()]), // a not yet tainted
+                ("a".into(), vec!["x".into()]), // x is tainted
             ],
         );
         assert!(tainted.contains("a"));
@@ -238,7 +238,7 @@ mod tests {
         assert_eq!(tb.condition, "a > b");
 
         // Test Debug derive
-        let debug_str = format!("{:?}", tb);
+        let debug_str = format!("{tb:?}");
         assert!(debug_str.contains("TaintedBranch"));
 
         // Test Clone derive
@@ -345,10 +345,7 @@ mod tests {
     #[test]
     fn propagate_taint_no_rhs_vars_does_not_propagate() {
         // lhs = f() — empty rhs → never propagates
-        let tainted = propagate_taint(
-            &["x".into()],
-            &[("z".into(), vec![])],
-        );
+        let tainted = propagate_taint(&["x".into()], &[("z".into(), vec![])]);
         assert!(!tainted.contains("z"));
     }
 
@@ -359,7 +356,7 @@ mod tests {
             tainted_vars: vec!["x".into()],
             condition: "x > 5".into(),
         };
-        let d = format!("{:?}", tb);
+        let d = format!("{tb:?}");
         assert!(d.contains("x > 5"));
     }
 
@@ -368,7 +365,11 @@ mod tests {
         // All cond_vars are not tainted → branch filtered out
         let tainted: HashSet<String> = ["x".into()].into();
         let branches = vec![
-            (BranchId::new(1, 10, 0, 0), "a > b".into(), vec!["a".into(), "b".into()]),
+            (
+                BranchId::new(1, 10, 0, 0),
+                "a > b".into(),
+                vec!["a".into(), "b".into()],
+            ),
             (BranchId::new(1, 20, 0, 0), "x > 0".into(), vec!["x".into()]),
         ];
         let filtered = filter_tainted_branches(&branches, &tainted);

@@ -385,8 +385,7 @@ mod tests {
     #[test]
     fn with_crate_name_chainable() {
         let dir = tempfile::tempdir().unwrap();
-        let synth = CargoTestSynthesizer::new(dir.path())
-            .with_crate_name("crate_a");
+        let synth = CargoTestSynthesizer::new(dir.path()).with_crate_name("crate_a");
         assert_eq!(synth.crate_name.as_deref(), Some("crate_a"));
     }
 }

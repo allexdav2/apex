@@ -403,7 +403,7 @@ mod tests {
 
         let (_, _, fps) = parse_llvm_json(json.as_bytes(), root).unwrap();
 
-        for (_, path) in &fps {
+        for path in fps.values() {
             let s = path.to_string_lossy();
             assert!(!s.contains("ops.rs"), "should skip external file: {s}");
         }

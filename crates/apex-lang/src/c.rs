@@ -1121,9 +1121,9 @@ mod tests {
 
     #[test]
     fn detect_build_system_nonexistent_path() {
-        let result = CRunner::<RealCommandRunner>::detect_build_system(
-            Path::new("/nonexistent/path/that/does/not/exist"),
-        );
+        let result = CRunner::<RealCommandRunner>::detect_build_system(Path::new(
+            "/nonexistent/path/that/does/not/exist",
+        ));
         assert!(matches!(result, BuildSystem::None));
     }
 
@@ -1160,7 +1160,10 @@ mod tests {
 
         let runner = CRunner::with_runner(mock);
         let result = runner.install_deps(dir.path()).await;
-        assert!(result.is_ok(), "nonzero autogen exit should be a warning, not an error");
+        assert!(
+            result.is_ok(),
+            "nonzero autogen exit should be a warning, not an error"
+        );
     }
 
     // ------------------------------------------------------------------
@@ -1181,7 +1184,10 @@ mod tests {
 
         let runner = CRunner::with_runner(mock);
         let result = runner.install_deps(dir.path()).await;
-        assert!(result.is_ok(), "nonzero configure exit should be a warning, not an error");
+        assert!(
+            result.is_ok(),
+            "nonzero configure exit should be a warning, not an error"
+        );
     }
 
     // ------------------------------------------------------------------
@@ -1203,9 +1209,7 @@ mod tests {
             .times(1)
             .returning(|_| Ok(CommandOutput::success(b"ok".to_vec())));
         mock.expect_run_command()
-            .withf(|spec| {
-                spec.program == "ctest" && spec.args.iter().any(|a| a == "VERBOSE=1")
-            })
+            .withf(|spec| spec.program == "ctest" && spec.args.iter().any(|a| a == "VERBOSE=1"))
             .times(1)
             .returning(|_| Ok(CommandOutput::success(b"all pass".to_vec())));
 

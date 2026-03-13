@@ -685,7 +685,12 @@ mod tests {
         mock.expect_run_command()
             .withf(|spec| spec.program == "pnpm")
             .times(1)
-            .returning(|_| Ok(CommandOutput::failure(1, b"ERR_PNPM_META_FETCH_FAIL".to_vec())));
+            .returning(|_| {
+                Ok(CommandOutput::failure(
+                    1,
+                    b"ERR_PNPM_META_FETCH_FAIL".to_vec(),
+                ))
+            });
 
         let runner = JavaScriptRunner::with_runner(mock);
         let result = runner.install_deps(dir.path()).await;
@@ -708,7 +713,12 @@ mod tests {
         mock.expect_run_command()
             .withf(|spec| spec.program == "yarn")
             .times(1)
-            .returning(|_| Ok(CommandOutput::failure(1, b"error Couldn't find package".to_vec())));
+            .returning(|_| {
+                Ok(CommandOutput::failure(
+                    1,
+                    b"error Couldn't find package".to_vec(),
+                ))
+            });
 
         let runner = JavaScriptRunner::with_runner(mock);
         let result = runner.install_deps(dir.path()).await;

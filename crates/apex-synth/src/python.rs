@@ -279,7 +279,10 @@ mod tests {
         let synth = PytestSynthesizer::new(dir.path());
         let c1 = make_candidate("def test_dup():\n    pass", vec![BranchId::new(1, 1, 0, 0)]);
         let c2 = make_candidate("def test_dup():\n    pass", vec![BranchId::new(2, 2, 0, 0)]);
-        let c3 = make_candidate("def test_other():\n    pass", vec![BranchId::new(3, 3, 0, 0)]);
+        let c3 = make_candidate(
+            "def test_other():\n    pass",
+            vec![BranchId::new(3, 3, 0, 0)],
+        );
         let results = synth.synthesize(&[c1, c2, c3]).unwrap();
         assert_eq!(results.len(), 1);
         // After dedup: 2 unique candidates, so 2 branch sets combined

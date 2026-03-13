@@ -215,7 +215,10 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let synth = JestSynthesizer::new(dir.path());
         let c1 = make_candidate("", vec![]);
-        let c2 = make_candidate("test('real', () => { expect(1).toBe(1); });", vec![BranchId::new(1, 1, 0, 0)]);
+        let c2 = make_candidate(
+            "test('real', () => { expect(1).toBe(1); });",
+            vec![BranchId::new(1, 1, 0, 0)],
+        );
         let c3 = make_candidate("   ", vec![]);
         let results = synth.synthesize(&[c1, c2, c3]).unwrap();
         // Only c2 has non-empty code

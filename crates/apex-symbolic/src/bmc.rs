@@ -127,7 +127,7 @@ mod tests {
                     "unexpected reason: {msg}"
                 );
             }
-            other => panic!("expected Unknown, got {:?}", other),
+            other => panic!("expected Unknown, got {other:?}"),
         }
     }
 
@@ -151,16 +151,16 @@ mod tests {
     #[test]
     fn reachability_result_debug() {
         let r = ReachabilityResult::Reachable("witness data".to_string());
-        let debug = format!("{:?}", r);
+        let debug = format!("{r:?}");
         assert!(debug.contains("Reachable"));
         assert!(debug.contains("witness data"));
 
         let u = ReachabilityResult::Unreachable;
-        let debug = format!("{:?}", u);
+        let debug = format!("{u:?}");
         assert!(debug.contains("Unreachable"));
 
         let k = ReachabilityResult::Unknown("reason".to_string());
-        let debug = format!("{:?}", k);
+        let debug = format!("{k:?}");
         assert!(debug.contains("Unknown"));
     }
 
@@ -209,9 +209,15 @@ mod tests {
         // direction=0 => "taken"
         let branch = BranchId::new(10, 100, 3, 0);
         let harness = prover.generate_harness(&branch, "my_fn");
-        assert!(harness.contains("taken"), "direction 0 should produce 'taken'");
+        assert!(
+            harness.contains("taken"),
+            "direction 0 should produce 'taken'"
+        );
         assert!(!harness.contains("not_taken"));
-        assert!(harness.contains("10_100_taken"), "should encode file_id and line");
+        assert!(
+            harness.contains("10_100_taken"),
+            "should encode file_id and line"
+        );
     }
 
     #[test]
@@ -220,8 +226,14 @@ mod tests {
         // direction=1 => "not_taken"
         let branch = BranchId::new(7, 50, 2, 1);
         let harness = prover.generate_harness(&branch, "other_fn");
-        assert!(harness.contains("not_taken"), "direction 1 should produce 'not_taken'");
-        assert!(!harness.contains("\"taken\""), "should not contain plain 'taken'");
+        assert!(
+            harness.contains("not_taken"),
+            "direction 1 should produce 'not_taken'"
+        );
+        assert!(
+            !harness.contains("\"taken\""),
+            "should not contain plain 'taken'"
+        );
     }
 
     #[test]

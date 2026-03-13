@@ -21,10 +21,17 @@ impl Detector for UnsafeReachabilityDetector {
     }
 
     async fn analyze(&self, ctx: &AnalysisContext) -> Result<Vec<Finding>> {
-        let spec = CommandSpec::new("cargo", &ctx.target_root)
-            .args(["geiger", "--output-format", "json", "--all-features"]);
+        let spec = CommandSpec::new("cargo", &ctx.target_root).args([
+            "geiger",
+            "--output-format",
+            "json",
+            "--all-features",
+        ]);
 
-        let output = ctx.runner.run_command(&spec).await
+        let output = ctx
+            .runner
+            .run_command(&spec)
+            .await
             .map_err(|e| ApexError::Detect(format!("cargo-geiger: {e}")))?;
 
         if output.exit_code != 0 {
@@ -130,8 +137,10 @@ mod tests {
                 }
             }]
         }"#;
-        let runner = FixtureRunner::new()
-            .on("cargo", CommandOutput::success(geiger_json.as_bytes().to_vec()));
+        let runner = FixtureRunner::new().on(
+            "cargo",
+            CommandOutput::success(geiger_json.as_bytes().to_vec()),
+        );
         let ctx = make_ctx_with_runner(runner);
         let findings = UnsafeReachabilityDetector.analyze(&ctx).await.unwrap();
         assert_eq!(findings.len(), 1);
@@ -140,8 +149,10 @@ mod tests {
 
     #[tokio::test]
     async fn analyze_geiger_not_installed() {
-        let runner = FixtureRunner::new()
-            .on("cargo", CommandOutput::failure(101, b"error: no such command: `geiger`".to_vec()));
+        let runner = FixtureRunner::new().on(
+            "cargo",
+            CommandOutput::failure(101, b"error: no such command: `geiger`".to_vec()),
+        );
         let ctx = make_ctx_with_runner(runner);
         let findings = UnsafeReachabilityDetector.analyze(&ctx).await.unwrap();
         assert!(findings.is_empty());
@@ -149,8 +160,10 @@ mod tests {
 
     #[tokio::test]
     async fn analyze_geiger_fails_with_other_error() {
-        let runner = FixtureRunner::new()
-            .on("cargo", CommandOutput::failure(1, b"some other error".to_vec()));
+        let runner = FixtureRunner::new().on(
+            "cargo",
+            CommandOutput::failure(1, b"some other error".to_vec()),
+        );
         let ctx = make_ctx_with_runner(runner);
         let result = UnsafeReachabilityDetector.analyze(&ctx).await;
         assert!(result.is_err());

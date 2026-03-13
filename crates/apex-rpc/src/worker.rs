@@ -180,7 +180,7 @@ mod tests {
         // Give the server time to bind the port
         tokio::time::sleep(std::time::Duration::from_millis(200)).await;
 
-        let worker = WorkerClient::connect(format!("http://{}", addr), "python".into())
+        let worker = WorkerClient::connect(format!("http://{addr}"), "python".into())
             .await
             .unwrap();
 
@@ -516,7 +516,7 @@ mod tests {
 
         tokio::time::sleep(std::time::Duration::from_millis(200)).await;
 
-        let worker = WorkerClient::connect(format!("http://{}", addr), "python".into())
+        let worker = WorkerClient::connect(format!("http://{addr}"), "python".into())
             .await
             .unwrap();
         Some(worker)
@@ -552,7 +552,10 @@ mod tests {
         let (count, pct) = worker
             .pull_once(10, |seed| {
                 if seed.data[0] % 2 == 0 {
-                    Some(make_result(&seed.id, vec![make_branch(seed.data[0] as u32)]))
+                    Some(make_result(
+                        &seed.id,
+                        vec![make_branch(seed.data[0] as u32)],
+                    ))
                 } else {
                     None
                 }
@@ -595,7 +598,10 @@ mod tests {
         // Request max_seeds=2, so only 2 should be processed
         let (count, _pct) = worker
             .pull_once(2, |seed| {
-                Some(make_result(&seed.id, vec![make_branch(seed.data[0] as u32)]))
+                Some(make_result(
+                    &seed.id,
+                    vec![make_branch(seed.data[0] as u32)],
+                ))
             })
             .await
             .unwrap();

@@ -409,10 +409,7 @@ mod tests {
     #[test]
     fn shim_source_uses_o_rdwr() {
         let src = coverage_shim_source();
-        assert!(
-            src.contains("O_RDWR"),
-            "shim must open SHM with O_RDWR"
-        );
+        assert!(src.contains("O_RDWR"), "shim must open SHM with O_RDWR");
     }
 
     #[test]

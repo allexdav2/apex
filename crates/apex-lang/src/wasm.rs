@@ -213,7 +213,7 @@ mod tests {
     #[test]
     fn detect_wasm_file() {
         let dir = tempfile::tempdir().unwrap();
-        std::fs::write(dir.path().join("module.wasm"), &[0x00, 0x61, 0x73, 0x6d]).unwrap();
+        std::fs::write(dir.path().join("module.wasm"), [0x00, 0x61, 0x73, 0x6d]).unwrap();
         assert!(WasmRunner::new().detect(dir.path()));
     }
 
@@ -234,8 +234,8 @@ mod tests {
     #[test]
     fn detect_multiple_wasm_files() {
         let dir = tempfile::tempdir().unwrap();
-        std::fs::write(dir.path().join("a.wasm"), &[0x00]).unwrap();
-        std::fs::write(dir.path().join("b.wasm"), &[0x00]).unwrap();
+        std::fs::write(dir.path().join("a.wasm"), [0x00]).unwrap();
+        std::fs::write(dir.path().join("b.wasm"), [0x00]).unwrap();
         assert!(WasmRunner::new().detect(dir.path()));
     }
 
@@ -259,14 +259,14 @@ mod tests {
     #[test]
     fn detect_file_without_extension() {
         let dir = tempfile::tempdir().unwrap();
-        std::fs::write(dir.path().join("noext"), &[0x00]).unwrap();
+        std::fs::write(dir.path().join("noext"), [0x00]).unwrap();
         assert!(!WasmRunner::new().detect(dir.path()));
     }
 
     #[test]
     fn detect_wasm_like_extension_no_match() {
         let dir = tempfile::tempdir().unwrap();
-        std::fs::write(dir.path().join("module.wasmt"), &[0x00]).unwrap();
+        std::fs::write(dir.path().join("module.wasmt"), [0x00]).unwrap();
         assert!(!WasmRunner::new().detect(dir.path()));
     }
 
@@ -275,7 +275,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let sub = dir.path().join("subdir");
         std::fs::create_dir_all(&sub).unwrap();
-        std::fs::write(sub.join("nested.wasm"), &[0x00]).unwrap();
+        std::fs::write(sub.join("nested.wasm"), [0x00]).unwrap();
         assert!(!WasmRunner::new().detect(dir.path()));
     }
 
@@ -284,7 +284,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         std::fs::write(dir.path().join("readme.txt"), "hello").unwrap();
         std::fs::write(dir.path().join("app.js"), "").unwrap();
-        std::fs::write(dir.path().join("mod.wasm"), &[0x00]).unwrap();
+        std::fs::write(dir.path().join("mod.wasm"), [0x00]).unwrap();
         assert!(WasmRunner::new().detect(dir.path()));
     }
 
@@ -295,7 +295,7 @@ mod tests {
     #[test]
     fn find_wasm_for_run_plain_wasm() {
         let dir = tempfile::tempdir().unwrap();
-        std::fs::write(dir.path().join("app.wasm"), &[0x00]).unwrap();
+        std::fs::write(dir.path().join("app.wasm"), [0x00]).unwrap();
         let (path, instrumented) = WasmRunner::<RealCommandRunner>::find_wasm_for_run(dir.path());
         assert!(path.is_some());
         assert!(!instrumented);
@@ -386,7 +386,7 @@ mod tests {
     #[tokio::test]
     async fn run_tests_success() {
         let dir = tempfile::tempdir().unwrap();
-        std::fs::write(dir.path().join("test.wasm"), &[0x00, 0x61, 0x73, 0x6d]).unwrap();
+        std::fs::write(dir.path().join("test.wasm"), [0x00, 0x61, 0x73, 0x6d]).unwrap();
 
         let mut mock = MockCmd::new();
         mock.expect_run_command()
@@ -403,7 +403,7 @@ mod tests {
     #[tokio::test]
     async fn run_tests_wasmtime_failure() {
         let dir = tempfile::tempdir().unwrap();
-        std::fs::write(dir.path().join("bad.wasm"), &[0x00]).unwrap();
+        std::fs::write(dir.path().join("bad.wasm"), [0x00]).unwrap();
 
         let mut mock = MockCmd::new();
         mock.expect_run_command().times(1).returning(|_| {
@@ -423,7 +423,7 @@ mod tests {
     #[tokio::test]
     async fn run_tests_command_not_found() {
         let dir = tempfile::tempdir().unwrap();
-        std::fs::write(dir.path().join("mod.wasm"), &[0x00]).unwrap();
+        std::fs::write(dir.path().join("mod.wasm"), [0x00]).unwrap();
 
         let mut mock = MockCmd::new();
         mock.expect_run_command().times(1).returning(|_| {
@@ -443,7 +443,7 @@ mod tests {
     #[tokio::test]
     async fn run_tests_with_extra_args() {
         let dir = tempfile::tempdir().unwrap();
-        std::fs::write(dir.path().join("m.wasm"), &[0x00]).unwrap();
+        std::fs::write(dir.path().join("m.wasm"), [0x00]).unwrap();
 
         let mut mock = MockCmd::new();
         mock.expect_run_command()
@@ -623,13 +623,12 @@ mod tests {
     #[tokio::test]
     async fn run_tests_wasm_path_passed_as_arg() {
         let dir = tempfile::tempdir().unwrap();
-        std::fs::write(dir.path().join("my_module.wasm"), &[0x00]).unwrap();
+        std::fs::write(dir.path().join("my_module.wasm"), [0x00]).unwrap();
 
         let mut mock = MockCmd::new();
         mock.expect_run_command()
             .withf(|spec| {
-                spec.program == "wasmtime"
-                    && spec.args.iter().any(|a| a.contains("my_module.wasm"))
+                spec.program == "wasmtime" && spec.args.iter().any(|a| a.contains("my_module.wasm"))
             })
             .times(1)
             .returning(|_| Ok(CommandOutput::success(b"ok".to_vec())));

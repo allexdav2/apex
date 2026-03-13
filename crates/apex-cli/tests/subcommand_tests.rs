@@ -1,4 +1,4 @@
-use apex_cli::{Cli, run_cli};
+use apex_cli::{run_cli, Cli};
 use apex_core::config::ApexConfig;
 use clap::Parser;
 use tempfile::TempDir;

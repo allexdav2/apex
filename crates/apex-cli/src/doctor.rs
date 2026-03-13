@@ -520,7 +520,7 @@ mod tests {
     #[test]
     fn status_debug() {
         let s = Status::Ok("1.0".into());
-        let d = format!("{:?}", s);
+        let d = format!("{s:?}");
         assert!(d.contains("Ok"));
     }
 
@@ -778,7 +778,7 @@ mod tests {
         let c = check_required(&runner, "mytool", "My tool", "nonexistent_99", &[]).await;
         match c.status {
             Status::Fail(msg) => assert!(msg.contains("mytool")),
-            other => panic!("expected Fail, got {:?}", other),
+            other => panic!("expected Fail, got {other:?}"),
         }
     }
 
@@ -788,7 +788,7 @@ mod tests {
         let c = check_optional(&runner, "mytool", "My tool", "nonexistent_99", &[]).await;
         match c.status {
             Status::Warn(msg) => assert!(msg.contains("mytool")),
-            other => panic!("expected Warn, got {:?}", other),
+            other => panic!("expected Warn, got {other:?}"),
         }
     }
 
@@ -797,7 +797,7 @@ mod tests {
         let c = check_env_optional("test", "Test", "APEX_NOT_SET_XYZ").await;
         match c.status {
             Status::Warn(msg) => assert!(msg.contains("APEX_NOT_SET_XYZ")),
-            other => panic!("expected Warn, got {:?}", other),
+            other => panic!("expected Warn, got {other:?}"),
         }
     }
 
@@ -806,7 +806,7 @@ mod tests {
         let c = check_env_optional("home", "Home", "HOME").await;
         match c.status {
             Status::Ok(msg) => assert!(msg.contains("chars")),
-            other => panic!("expected Ok, got {:?}", other),
+            other => panic!("expected Ok, got {other:?}"),
         }
     }
 
@@ -944,7 +944,7 @@ mod tests {
         assert_eq!(c.description, "Rust compiler");
         match c.status {
             Status::Ok(v) => assert_eq!(v, "rustc 1.75.0"),
-            other => panic!("expected Ok, got {:?}", other),
+            other => panic!("expected Ok, got {other:?}"),
         }
     }
 
@@ -954,7 +954,7 @@ mod tests {
         let c = check_required(&runner, "rust", "Rust compiler", "rustc", &["--version"]).await;
         match c.status {
             Status::Fail(msg) => assert!(msg.contains("rust")),
-            other => panic!("expected Fail, got {:?}", other),
+            other => panic!("expected Fail, got {other:?}"),
         }
     }
 
@@ -971,7 +971,7 @@ mod tests {
         let c = check_optional(&runner, "node", "Node.js runtime", "node", &["--version"]).await;
         match c.status {
             Status::Ok(v) => assert_eq!(v, "v18.17.1"),
-            other => panic!("expected Ok, got {:?}", other),
+            other => panic!("expected Ok, got {other:?}"),
         }
     }
 
@@ -981,7 +981,7 @@ mod tests {
         let c = check_optional(&runner, "node", "Node.js runtime", "node", &["--version"]).await;
         match c.status {
             Status::Warn(msg) => assert!(msg.contains("node")),
-            other => panic!("expected Warn, got {:?}", other),
+            other => panic!("expected Warn, got {other:?}"),
         }
     }
 

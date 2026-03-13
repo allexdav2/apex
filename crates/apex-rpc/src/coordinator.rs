@@ -592,7 +592,7 @@ mod tests {
         let proto = ProtoBranchId {
             file_id: u64::MAX,
             line: u32::MAX,
-            col: 65535,    // max u16
+            col: 65535,     // max u16
             direction: 255, // max u8
         };
         let core = proto_to_core_branch(&proto);
@@ -727,10 +727,30 @@ mod tests {
                     seed_id: "s1".into(),
                     status: "pass".into(),
                     new_branches: vec![
-                        ProtoBranchId { file_id: 1, line: 1, col: 0, direction: 0 },
-                        ProtoBranchId { file_id: 1, line: 2, col: 0, direction: 0 },
-                        ProtoBranchId { file_id: 1, line: 3, col: 0, direction: 0 },
-                        ProtoBranchId { file_id: 1, line: 4, col: 0, direction: 0 },
+                        ProtoBranchId {
+                            file_id: 1,
+                            line: 1,
+                            col: 0,
+                            direction: 0,
+                        },
+                        ProtoBranchId {
+                            file_id: 1,
+                            line: 2,
+                            col: 0,
+                            direction: 0,
+                        },
+                        ProtoBranchId {
+                            file_id: 1,
+                            line: 3,
+                            col: 0,
+                            direction: 0,
+                        },
+                        ProtoBranchId {
+                            file_id: 1,
+                            line: 4,
+                            col: 0,
+                            direction: 0,
+                        },
                     ],
                     duration_ms: 10,
                     stdout: String::new(),

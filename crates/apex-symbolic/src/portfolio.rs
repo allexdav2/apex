@@ -254,10 +254,8 @@ mod tests {
     #[test]
     fn portfolio_error_before_sat_propagates() {
         // Error solver first, SAT solver second — error should propagate
-        let solvers: Vec<Box<dyn Solver>> = vec![
-            Box::new(ErrorSolver),
-            Box::new(SatSolver::new(vec![99])),
-        ];
+        let solvers: Vec<Box<dyn Solver>> =
+            vec![Box::new(ErrorSolver), Box::new(SatSolver::new(vec![99]))];
         let portfolio = PortfolioSolver::new(solvers, Duration::from_secs(5));
         let result = portfolio.solve(&["x > 0".to_string()], false);
         assert!(result.is_err());
@@ -277,9 +275,7 @@ mod tests {
 
     #[test]
     fn portfolio_solve_batch_mixed_results() {
-        let solvers: Vec<Box<dyn Solver>> = vec![
-            Box::new(NullSolver::new("null")),
-        ];
+        let solvers: Vec<Box<dyn Solver>> = vec![Box::new(NullSolver::new("null"))];
         let portfolio = PortfolioSolver::new(solvers, Duration::from_secs(5));
         let sets = vec![
             vec!["a".to_string()],
@@ -292,9 +288,7 @@ mod tests {
 
     #[test]
     fn portfolio_solve_batch_with_sat_solver() {
-        let solvers: Vec<Box<dyn Solver>> = vec![
-            Box::new(SatSolver::new(vec![1, 2])),
-        ];
+        let solvers: Vec<Box<dyn Solver>> = vec![Box::new(SatSolver::new(vec![1, 2]))];
         let portfolio = PortfolioSolver::new(solvers, Duration::from_secs(5));
         let sets = vec![vec!["x > 0".to_string()], vec!["y < 5".to_string()]];
         let results = portfolio.solve_batch(&sets, false);

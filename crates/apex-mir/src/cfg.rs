@@ -379,31 +379,52 @@ mod tests {
     fn branch_count_with_call_terminators() {
         let mut f = MirFunction::new("calls");
         // Call with both destination and cleanup = 2 edges
-        f.add_block(vec![], Terminator::Call {
-            func: "foo".into(),
-            destination: Some(1),
-            cleanup: Some(2),
-        });
+        f.add_block(
+            vec![],
+            Terminator::Call {
+                func: "foo".into(),
+                destination: Some(1),
+                cleanup: Some(2),
+            },
+        );
         // Call with only destination = 1 edge
-        f.add_block(vec![], Terminator::Call {
-            func: "bar".into(),
-            destination: Some(3),
-            cleanup: None,
-        });
+        f.add_block(
+            vec![],
+            Terminator::Call {
+                func: "bar".into(),
+                destination: Some(3),
+                cleanup: None,
+            },
+        );
         // Call with neither = 0 edges
-        f.add_block(vec![], Terminator::Call {
-            func: "baz".into(),
-            destination: None,
-            cleanup: None,
-        });
+        f.add_block(
+            vec![],
+            Terminator::Call {
+                func: "baz".into(),
+                destination: None,
+                cleanup: None,
+            },
+        );
         assert_eq!(f.branch_count(), 3);
     }
 
     #[test]
     fn branch_count_with_drop_terminators() {
         let mut f = MirFunction::new("drops");
-        f.add_block(vec![], Terminator::Drop { target: 1, unwind: Some(2) }); // 2
-        f.add_block(vec![], Terminator::Drop { target: 3, unwind: None }); // 1
+        f.add_block(
+            vec![],
+            Terminator::Drop {
+                target: 1,
+                unwind: Some(2),
+            },
+        ); // 2
+        f.add_block(
+            vec![],
+            Terminator::Drop {
+                target: 3,
+                unwind: None,
+            },
+        ); // 1
         assert_eq!(f.branch_count(), 3);
     }
 
@@ -433,17 +454,23 @@ mod tests {
         f.add_block(
             vec![
                 Statement::StorageLive("_1".into()),
-                Statement::Assign { place: "_0".into(), rvalue: "_1".into() },
+                Statement::Assign {
+                    place: "_0".into(),
+                    rvalue: "_1".into(),
+                },
                 Statement::StorageDead("_1".into()),
                 Statement::Nop,
             ],
             Terminator::Goto { target: 1 },
         );
-        f.add_block(vec![], Terminator::SwitchInt {
-            discriminant: "_0".into(),
-            targets: vec![(0, 2), (1, 3)],
-            otherwise: 4,
-        });
+        f.add_block(
+            vec![],
+            Terminator::SwitchInt {
+                discriminant: "_0".into(),
+                targets: vec![(0, 2), (1, 3)],
+                otherwise: 4,
+            },
+        );
         f.add_block(vec![], Terminator::Return);
         f.add_block(vec![], Terminator::Unreachable);
         f.add_block(vec![], Terminator::Abort);
@@ -468,14 +495,32 @@ mod tests {
             Terminator::Unreachable,
             Terminator::Abort,
             Terminator::Goto { target: 1 },
-            Terminator::SwitchInt { discriminant: "_x".into(), targets: vec![], otherwise: 0 },
-            Terminator::Call { func: "f".into(), destination: Some(1), cleanup: Some(2) },
-            Terminator::Call { func: "g".into(), destination: None, cleanup: None },
-            Terminator::Drop { target: 1, unwind: Some(2) },
-            Terminator::Drop { target: 1, unwind: None },
+            Terminator::SwitchInt {
+                discriminant: "_x".into(),
+                targets: vec![],
+                otherwise: 0,
+            },
+            Terminator::Call {
+                func: "f".into(),
+                destination: Some(1),
+                cleanup: Some(2),
+            },
+            Terminator::Call {
+                func: "g".into(),
+                destination: None,
+                cleanup: None,
+            },
+            Terminator::Drop {
+                target: 1,
+                unwind: Some(2),
+            },
+            Terminator::Drop {
+                target: 1,
+                unwind: None,
+            },
         ];
         for t in &terminators {
-            let d = format!("{:?}", t);
+            let d = format!("{t:?}");
             assert!(!d.is_empty());
         }
     }
@@ -486,10 +531,13 @@ mod tests {
             Statement::Nop,
             Statement::StorageLive("_1".into()),
             Statement::StorageDead("_2".into()),
-            Statement::Assign { place: "_0".into(), rvalue: "val".into() },
+            Statement::Assign {
+                place: "_0".into(),
+                rvalue: "val".into(),
+            },
         ];
         for s in &stmts {
-            let d = format!("{:?}", s);
+            let d = format!("{s:?}");
             assert!(!d.is_empty());
         }
     }
@@ -501,11 +549,29 @@ mod tests {
             Terminator::Unreachable,
             Terminator::Abort,
             Terminator::Goto { target: 1 },
-            Terminator::SwitchInt { discriminant: "_x".into(), targets: vec![(0, 1)], otherwise: 2 },
-            Terminator::Call { func: "f".into(), destination: Some(1), cleanup: Some(2) },
-            Terminator::Call { func: "g".into(), destination: None, cleanup: None },
-            Terminator::Drop { target: 1, unwind: Some(2) },
-            Terminator::Drop { target: 1, unwind: None },
+            Terminator::SwitchInt {
+                discriminant: "_x".into(),
+                targets: vec![(0, 1)],
+                otherwise: 2,
+            },
+            Terminator::Call {
+                func: "f".into(),
+                destination: Some(1),
+                cleanup: Some(2),
+            },
+            Terminator::Call {
+                func: "g".into(),
+                destination: None,
+                cleanup: None,
+            },
+            Terminator::Drop {
+                target: 1,
+                unwind: Some(2),
+            },
+            Terminator::Drop {
+                target: 1,
+                unwind: None,
+            },
         ];
         for t in &terminators {
             let c = t.clone();
@@ -519,7 +585,10 @@ mod tests {
             Statement::Nop,
             Statement::StorageLive("_1".into()),
             Statement::StorageDead("_2".into()),
-            Statement::Assign { place: "_0".into(), rvalue: "val".into() },
+            Statement::Assign {
+                place: "_0".into(),
+                rvalue: "val".into(),
+            },
         ];
         for s in &stmts {
             let _ = s.clone();
@@ -544,7 +613,7 @@ mod tests {
         };
         let bb2 = bb.clone();
         assert_eq!(bb2.id, 42);
-        let d = format!("{:?}", bb);
+        let d = format!("{bb:?}");
         assert!(d.contains("BasicBlock"));
     }
 
@@ -552,7 +621,7 @@ mod tests {
     fn mir_function_debug() {
         let mut f = MirFunction::new("debug_test");
         f.add_block(vec![], Terminator::Return);
-        let d = format!("{:?}", f);
+        let d = format!("{f:?}");
         assert!(d.contains("MirFunction"));
         assert!(d.contains("debug_test"));
     }
@@ -574,22 +643,66 @@ mod tests {
     #[test]
     fn branch_count_all_terminator_types() {
         let mut f = MirFunction::new("all_types");
-        f.add_block(vec![], Terminator::Return);          // 0
-        f.add_block(vec![], Terminator::Unreachable);     // 0
-        f.add_block(vec![], Terminator::Abort);           // 0
+        f.add_block(vec![], Terminator::Return); // 0
+        f.add_block(vec![], Terminator::Unreachable); // 0
+        f.add_block(vec![], Terminator::Abort); // 0
         f.add_block(vec![], Terminator::Goto { target: 0 }); // 1
-        f.add_block(vec![], Terminator::SwitchInt {       // 3
-            discriminant: "_0".into(),
-            targets: vec![(0, 0), (1, 0)],
-            otherwise: 0,
-        });
-        f.add_block(vec![], Terminator::Drop { target: 0, unwind: Some(0) }); // 2
-        f.add_block(vec![], Terminator::Drop { target: 0, unwind: None }); // 1
-        f.add_block(vec![], Terminator::Call { func: "f".into(), destination: Some(0), cleanup: Some(0) }); // 2
-        f.add_block(vec![], Terminator::Call { func: "f".into(), destination: Some(0), cleanup: None }); // 1
-        f.add_block(vec![], Terminator::Call { func: "f".into(), destination: None, cleanup: Some(0) }); // 1
-        f.add_block(vec![], Terminator::Call { func: "f".into(), destination: None, cleanup: None }); // 0
-        // Total: 0+0+0+1+3+2+1+2+1+1+0 = 11
+        f.add_block(
+            vec![],
+            Terminator::SwitchInt {
+                // 3
+                discriminant: "_0".into(),
+                targets: vec![(0, 0), (1, 0)],
+                otherwise: 0,
+            },
+        );
+        f.add_block(
+            vec![],
+            Terminator::Drop {
+                target: 0,
+                unwind: Some(0),
+            },
+        ); // 2
+        f.add_block(
+            vec![],
+            Terminator::Drop {
+                target: 0,
+                unwind: None,
+            },
+        ); // 1
+        f.add_block(
+            vec![],
+            Terminator::Call {
+                func: "f".into(),
+                destination: Some(0),
+                cleanup: Some(0),
+            },
+        ); // 2
+        f.add_block(
+            vec![],
+            Terminator::Call {
+                func: "f".into(),
+                destination: Some(0),
+                cleanup: None,
+            },
+        ); // 1
+        f.add_block(
+            vec![],
+            Terminator::Call {
+                func: "f".into(),
+                destination: None,
+                cleanup: Some(0),
+            },
+        ); // 1
+        f.add_block(
+            vec![],
+            Terminator::Call {
+                func: "f".into(),
+                destination: None,
+                cleanup: None,
+            },
+        ); // 0
+           // Total: 0+0+0+1+3+2+1+2+1+1+0 = 11
         assert_eq!(f.branch_count(), 11);
     }
 }

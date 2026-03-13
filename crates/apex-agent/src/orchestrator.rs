@@ -1422,8 +1422,13 @@ mod tests {
         struct NeverStrategy;
         #[async_trait::async_trait]
         impl Strategy for NeverStrategy {
-            fn name(&self) -> &str { "never" }
-            async fn suggest_inputs(&self, _ctx: &ExplorationContext) -> apex_core::error::Result<Vec<InputSeed>> {
+            fn name(&self) -> &str {
+                "never"
+            }
+            async fn suggest_inputs(
+                &self,
+                _ctx: &ExplorationContext,
+            ) -> apex_core::error::Result<Vec<InputSeed>> {
                 Ok(vec![])
             }
             async fn observe(&self, _result: &ExecutionResult) -> apex_core::error::Result<()> {
@@ -1452,8 +1457,13 @@ mod tests {
         struct EmptyStrategy;
         #[async_trait::async_trait]
         impl Strategy for EmptyStrategy {
-            fn name(&self) -> &str { "empty" }
-            async fn suggest_inputs(&self, _ctx: &ExplorationContext) -> apex_core::error::Result<Vec<InputSeed>> {
+            fn name(&self) -> &str {
+                "empty"
+            }
+            async fn suggest_inputs(
+                &self,
+                _ctx: &ExplorationContext,
+            ) -> apex_core::error::Result<Vec<InputSeed>> {
                 Ok(vec![])
             }
             async fn observe(&self, _result: &ExecutionResult) -> apex_core::error::Result<()> {
@@ -1510,7 +1520,10 @@ mod tests {
             monitor.record(i, 100);
         }
         drop(monitor);
-        assert_eq!(cluster.monitor_action(), crate::monitor::MonitorAction::SwitchStrategy);
+        assert_eq!(
+            cluster.monitor_action(),
+            crate::monitor::MonitorAction::SwitchStrategy
+        );
     }
 
     /// `monitor_action()` returns AgentCycle after many stalls.
@@ -1527,7 +1540,10 @@ mod tests {
             monitor.record(i, 50);
         }
         drop(monitor);
-        assert_eq!(cluster.monitor_action(), crate::monitor::MonitorAction::AgentCycle);
+        assert_eq!(
+            cluster.monitor_action(),
+            crate::monitor::MonitorAction::AgentCycle
+        );
     }
 
     /// `monitor_action()` returns Stop after very many stalls.
@@ -1544,7 +1560,10 @@ mod tests {
             monitor.record(i, 10);
         }
         drop(monitor);
-        assert_eq!(cluster.monitor_action(), crate::monitor::MonitorAction::Stop);
+        assert_eq!(
+            cluster.monitor_action(),
+            crate::monitor::MonitorAction::Stop
+        );
     }
 
     /// `bug_summary()` reports correct total after bugs are recorded.
@@ -1559,7 +1578,9 @@ mod tests {
         }
         #[async_trait::async_trait]
         impl Strategy for OneShotCrash {
-            fn name(&self) -> &str { "crash-strategy" }
+            fn name(&self) -> &str {
+                "crash-strategy"
+            }
             async fn suggest_inputs(
                 &self,
                 _ctx: &ExplorationContext,
@@ -1569,7 +1590,10 @@ mod tests {
                     Ok(Vec::new())
                 } else {
                     *f = true;
-                    Ok(vec![InputSeed::new(b"c".to_vec(), apex_core::types::SeedOrigin::Fuzzer)])
+                    Ok(vec![InputSeed::new(
+                        b"c".to_vec(),
+                        apex_core::types::SeedOrigin::Fuzzer,
+                    )])
                 }
             }
             async fn observe(&self, _result: &ExecutionResult) -> apex_core::error::Result<()> {
@@ -1578,7 +1602,9 @@ mod tests {
         }
 
         let cluster = AgentCluster::new(oracle, Arc::new(CrashSandbox), test_target())
-            .with_strategy(Box::new(OneShotCrash { fired: std::sync::Mutex::new(false) }))
+            .with_strategy(Box::new(OneShotCrash {
+                fired: std::sync::Mutex::new(false),
+            }))
             .with_config(OrchestratorConfig {
                 coverage_target: 1.0,
                 deadline_secs: Some(5),
@@ -1597,9 +1623,18 @@ mod tests {
         struct Noop(&'static str);
         #[async_trait::async_trait]
         impl Strategy for Noop {
-            fn name(&self) -> &str { self.0 }
-            async fn suggest_inputs(&self, _: &ExplorationContext) -> apex_core::error::Result<Vec<InputSeed>> { Ok(vec![]) }
-            async fn observe(&self, _: &ExecutionResult) -> apex_core::error::Result<()> { Ok(()) }
+            fn name(&self) -> &str {
+                self.0
+            }
+            async fn suggest_inputs(
+                &self,
+                _: &ExplorationContext,
+            ) -> apex_core::error::Result<Vec<InputSeed>> {
+                Ok(vec![])
+            }
+            async fn observe(&self, _: &ExecutionResult) -> apex_core::error::Result<()> {
+                Ok(())
+            }
         }
 
         let oracle = Arc::new(CoverageOracle::new());
@@ -1639,8 +1674,8 @@ mod tests {
             stall_threshold: 5,
         };
         let oracle = Arc::new(CoverageOracle::new());
-        let cluster = AgentCluster::new(oracle, Arc::new(StubSandbox), test_target())
-            .with_config(cfg);
+        let cluster =
+            AgentCluster::new(oracle, Arc::new(StubSandbox), test_target()).with_config(cfg);
         assert!(cluster.config.deadline_secs.is_none());
     }
 

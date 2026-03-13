@@ -473,7 +473,11 @@ mod tests {
     #[tokio::test]
     async fn install_deps_setup_py_editable_install() {
         let dir = tempfile::tempdir().unwrap();
-        std::fs::write(dir.path().join("setup.py"), "from setuptools import setup; setup()").unwrap();
+        std::fs::write(
+            dir.path().join("setup.py"),
+            "from setuptools import setup; setup()",
+        )
+        .unwrap();
 
         let mut mock = MockCmd::new();
         // pip3 install -e .
@@ -495,7 +499,11 @@ mod tests {
     #[tokio::test]
     async fn install_deps_setup_py_editable_install_fails() {
         let dir = tempfile::tempdir().unwrap();
-        std::fs::write(dir.path().join("setup.py"), "from setuptools import setup; setup()").unwrap();
+        std::fs::write(
+            dir.path().join("setup.py"),
+            "from setuptools import setup; setup()",
+        )
+        .unwrap();
 
         let mut mock = MockCmd::new();
         mock.expect_run_command()

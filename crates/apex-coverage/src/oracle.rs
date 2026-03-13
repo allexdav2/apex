@@ -327,7 +327,7 @@ mod tests {
         assert!(!oracle.mark_covered(&b, seed)); // third hit
         match oracle.state_of(&b) {
             Some(BranchState::Covered { hit_count, .. }) => assert_eq!(hit_count, 3),
-            other => panic!("expected Covered, got {:?}", other),
+            other => panic!("expected Covered, got {other:?}"),
         }
     }
 
@@ -462,10 +462,7 @@ mod tests {
         oracle.suppress(&b);
         // Attempting to mark_covered on Suppressed hits the `_ => false` arm
         assert!(!oracle.mark_covered(&b, SeedId::new()));
-        assert!(matches!(
-            oracle.state_of(&b),
-            Some(BranchState::Suppressed)
-        ));
+        assert!(matches!(oracle.state_of(&b), Some(BranchState::Suppressed)));
     }
 
     #[test]
@@ -612,7 +609,7 @@ mod tests {
                 oracle.mark_covered(b, seed);
             }
             let pct = oracle.coverage_percent();
-            prop_assert!(pct >= 0.0 && pct <= 100.0);
+            prop_assert!((0.0..=100.0).contains(&pct));
         }
 
         #[test]

@@ -56,7 +56,7 @@ mod tests {
             config: DetectConfig::default(),
             runner: Arc::new(apex_core::command::RealCommandRunner),
         };
-        let dbg = format!("{:?}", ctx);
+        let dbg = format!("{ctx:?}");
         assert!(dbg.contains("AnalysisContext"));
         assert!(dbg.contains("/tmp/test"));
         assert!(dbg.contains("Python"));
@@ -79,7 +79,7 @@ mod tests {
             config: DetectConfig::default(),
             runner: Arc::new(apex_core::command::RealCommandRunner),
         };
-        let dbg = format!("{:?}", ctx);
+        let dbg = format!("{ctx:?}");
         assert!(dbg.contains("None"));
     }
 }

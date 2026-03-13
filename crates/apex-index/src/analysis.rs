@@ -42,10 +42,7 @@ pub fn detect_flaky_tests(
     for run in runs {
         for trace in run {
             let keys: HashSet<String> = trace.branches.iter().map(branch_key).collect();
-            test_runs
-                .entry(&trace.test_name)
-                .or_default()
-                .push(keys);
+            test_runs.entry(&trace.test_name).or_default().push(keys);
         }
     }
 
@@ -80,7 +77,7 @@ pub fn detect_flaky_tests(
                     DivergentBranch {
                         branch: BranchId::new(file_id, line, 0, direction),
                         file_path: file_paths.get(&file_id).cloned(),
-                        hit_ratio: format!("{}/{}", hits, total_runs),
+                        hit_ratio: format!("{hits}/{total_runs}"),
                     }
                 })
                 .collect();
@@ -118,10 +115,7 @@ pub struct FunctionComplexity {
 }
 
 /// Analyze exercised vs static complexity per function.
-pub fn analyze_complexity(
-    index: &BranchIndex,
-    target_root: &Path,
-) -> Vec<FunctionComplexity> {
+pub fn analyze_complexity(index: &BranchIndex, target_root: &Path) -> Vec<FunctionComplexity> {
     let mut results = Vec::new();
 
     // Read source files and find function boundaries
@@ -248,10 +242,7 @@ fn extract_func_name(line: &str, language: apex_core::types::Language) -> String
         apex_core::types::Language::Rust => {
             // "pub async fn foo(...)"
             let s = line.trim();
-            let after_fn = s
-                .find("fn ")
-                .map(|i| &s[i + 3..])
-                .unwrap_or("unknown");
+            let after_fn = s.find("fn ").map(|i| &s[i + 3..]).unwrap_or("unknown");
             after_fn
                 .split(|c: char| c == '(' || c == '<' || c.is_whitespace())
                 .next()
@@ -265,8 +256,19 @@ fn extract_func_name(line: &str, language: apex_core::types::Language) -> String
                 .iter()
                 .find(|t| {
                     t.chars().next().map(|c| c.is_alphabetic()).unwrap_or(false)
-                        && !["pub", "async", "fn", "def", "function", "void", "public", "private", "protected", "static"]
-                            .contains(t)
+                        && ![
+                            "pub",
+                            "async",
+                            "fn",
+                            "def",
+                            "function",
+                            "void",
+                            "public",
+                            "private",
+                            "protected",
+                            "static",
+                        ]
+                        .contains(t)
                 })
                 .map(|t| t.trim_end_matches(|c: char| !c.is_alphanumeric() && c != '_'))
                 .unwrap_or("unknown")
@@ -301,10 +303,7 @@ pub struct ExecutionPath {
 }
 
 /// Generate behavioral documentation from execution traces.
-pub fn generate_docs(
-    index: &BranchIndex,
-    target_root: &Path,
-) -> Vec<FunctionDoc> {
+pub fn generate_docs(index: &BranchIndex, target_root: &Path) -> Vec<FunctionDoc> {
     let mut docs = Vec::new();
 
     for (file_id, rel_path) in &index.file_paths {
@@ -351,13 +350,11 @@ pub fn generate_docs(
             let total_tests: usize = path_groups.values().map(|v| v.len()).sum();
             let mut paths: Vec<ExecutionPath> = path_groups
                 .iter()
-                .map(|(branches, tests)| {
-                    ExecutionPath {
-                        branch_count: branches.len(),
-                        representative_test: tests[0].to_string(),
-                        frequency_pct: (tests.len() as f64 / total_tests as f64) * 100.0,
-                        test_count: tests.len(),
-                    }
+                .map(|(branches, tests)| ExecutionPath {
+                    branch_count: branches.len(),
+                    representative_test: tests[0].to_string(),
+                    frequency_pct: (tests.len() as f64 / total_tests as f64) * 100.0,
+                    test_count: tests.len(),
                 })
                 .collect();
 
@@ -377,11 +374,7 @@ pub fn generate_docs(
         }
     }
 
-    docs.sort_by(|a, b| {
-        a.file_path
-            .cmp(&b.file_path)
-            .then(a.line.cmp(&b.line))
-    });
+    docs.sort_by(|a, b| a.file_path.cmp(&b.file_path).then(a.line.cmp(&b.line)));
 
     docs
 }
@@ -410,10 +403,7 @@ pub struct ReachableFile {
 }
 
 /// Map attack surface from entry-point test reachability.
-pub fn analyze_attack_surface(
-    index: &BranchIndex,
-    entry_pattern: &str,
-) -> AttackSurfaceReport {
+pub fn analyze_attack_surface(index: &BranchIndex, entry_pattern: &str) -> AttackSurfaceReport {
     // Filter tests matching entry pattern
     let entry_traces: Vec<_> = index
         .traces
@@ -452,7 +442,7 @@ pub fn analyze_attack_surface(
                 .file_paths
                 .get(file_id)
                 .cloned()
-                .unwrap_or_else(|| PathBuf::from(format!("<{:016x}>", file_id)));
+                .unwrap_or_else(|| PathBuf::from(format!("<{file_id:016x}>")));
             ReachableFile {
                 file_path: path,
                 reachable_branches: branches.len(),
@@ -534,8 +524,7 @@ pub fn verify_boundaries(
                 // Find all branches on or near this line
                 for profile in index.profiles.values() {
                     if profile.branch.file_id == *file_id
-                        && (profile.branch.line == line_num
-                            || profile.branch.line == line_num + 1)
+                        && (profile.branch.line == line_num || profile.branch.line == line_num + 1)
                     {
                         auth_branches.insert(branch_key(&profile.branch));
                     }
@@ -554,8 +543,7 @@ pub fn verify_boundaries(
     let mut unprotected = Vec::new();
 
     for trace in &entry_traces {
-        let trace_keys: HashSet<String> =
-            trace.branches.iter().map(|b| branch_key(b)).collect();
+        let trace_keys: HashSet<String> = trace.branches.iter().map(branch_key).collect();
 
         let hits_auth = trace_keys.iter().any(|k| auth_branches.contains(k));
 
@@ -620,7 +608,11 @@ pub fn analyze_hotpaths(index: &BranchIndex, top_n: usize) -> Vec<HotPath> {
                 branch: p.branch.clone(),
                 file_path,
                 line: p.branch.line,
-                direction: if p.branch.direction == 0 { "true" } else { "false" },
+                direction: if p.branch.direction == 0 {
+                    "true"
+                } else {
+                    "false"
+                },
                 hit_count: p.hit_count,
                 test_count: p.test_count,
                 hit_share_pct: if total_hits > 0 {
@@ -654,10 +646,7 @@ pub struct RiskAssessment {
 }
 
 /// Assess risk of changes based on branch coverage data.
-pub fn assess_risk(
-    index: &BranchIndex,
-    changed_files: &[String],
-) -> RiskAssessment {
+pub fn assess_risk(index: &BranchIndex, changed_files: &[String]) -> RiskAssessment {
     // Map changed files to file_ids
     let changed_file_ids: HashSet<u64> = index
         .file_paths
@@ -705,28 +694,33 @@ pub fn assess_risk(
     if coverage_of_changed < 50.0 {
         score += 40;
         reasons.push(format!(
-            "Low coverage of changed code: {:.0}%",
-            coverage_of_changed
+            "Low coverage of changed code: {coverage_of_changed:.0}%"
         ));
     } else if coverage_of_changed < 80.0 {
         score += 20;
         reasons.push(format!(
-            "Moderate coverage of changed code: {:.0}%",
-            coverage_of_changed
+            "Moderate coverage of changed code: {coverage_of_changed:.0}%"
         ));
     }
 
     if uncovered_changed > 10 {
         score += 30;
-        reasons.push(format!("{} uncovered branches in changed files", uncovered_changed));
+        reasons.push(format!(
+            "{uncovered_changed} uncovered branches in changed files"
+        ));
     } else if uncovered_changed > 0 {
         score += 10;
-        reasons.push(format!("{} uncovered branches in changed files", uncovered_changed));
+        reasons.push(format!(
+            "{uncovered_changed} uncovered branches in changed files"
+        ));
     }
 
     if affected_tests.len() > 50 {
         score += 20;
-        reasons.push(format!("Wide blast radius: {} tests affected", affected_tests.len()));
+        reasons.push(format!(
+            "Wide blast radius: {} tests affected",
+            affected_tests.len()
+        ));
     } else if affected_tests.len() > 10 {
         score += 10;
         reasons.push(format!("{} tests affected", affected_tests.len()));
@@ -771,10 +765,7 @@ pub struct DiscoveredInvariant {
 }
 
 /// Discover invariants from branch execution patterns.
-pub fn discover_contracts(
-    index: &BranchIndex,
-    target_root: &Path,
-) -> Vec<DiscoveredInvariant> {
+pub fn discover_contracts(index: &BranchIndex, target_root: &Path) -> Vec<DiscoveredInvariant> {
     let mut invariants = Vec::new();
 
     for (file_id, rel_path) in &index.file_paths {
@@ -869,9 +860,11 @@ pub fn discover_contracts(
     }
 
     invariants.sort_by(|a, b| {
-        b.evidence_tests
-            .cmp(&a.evidence_tests)
-            .then(b.confidence.partial_cmp(&a.confidence).unwrap_or(std::cmp::Ordering::Equal))
+        b.evidence_tests.cmp(&a.evidence_tests).then(
+            b.confidence
+                .partial_cmp(&a.confidence)
+                .unwrap_or(std::cmp::Ordering::Equal),
+        )
     });
 
     invariants
@@ -913,8 +906,7 @@ pub fn compute_deploy_score(
     let cov_pct = index.coverage_percent();
     let coverage_score = ((cov_pct / 100.0) * coverage_max as f64).round() as u32;
     breakdown.push(format!(
-        "Coverage: {:.1}% → {}/{}",
-        cov_pct, coverage_score, coverage_max
+        "Coverage: {cov_pct:.1}% → {coverage_score}/{coverage_max}"
     ));
 
     // Test quality: unique coverage ratio (tests that cover unique branches / total tests)
@@ -948,15 +940,13 @@ pub fn compute_deploy_score(
         detector_max
     };
     breakdown.push(format!(
-        "Detectors: {} findings ({} critical) → {}/{}",
-        detector_findings, critical_findings, detector_score, detector_max
+        "Detectors: {detector_findings} findings ({critical_findings} critical) → {detector_score}/{detector_max}"
     ));
 
     // Stability: assume stable if we have an index (future: compare across runs)
     let stability_score = stability_max; // Full marks if index exists
     breakdown.push(format!(
-        "Stability: index present → {}/{}",
-        stability_score, stability_max
+        "Stability: index present → {stability_score}/{stability_max}"
     ));
 
     let total_score = coverage_score + test_quality_score + detector_score + stability_score;
@@ -1034,7 +1024,7 @@ mod tests {
         let flaky = detect_flaky_tests(&[run1, run2], &HashMap::new());
         assert_eq!(flaky.len(), 1);
         assert_eq!(flaky[0].test_name, "test_flaky");
-        assert!(flaky[0].divergent_branches.len() >= 1);
+        assert!(!flaky[0].divergent_branches.is_empty());
     }
 
     #[test]
@@ -1045,13 +1035,19 @@ mod tests {
 
     #[test]
     fn extract_func_name_python() {
-        let name = extract_func_name("def process_order(order):", apex_core::types::Language::Python);
+        let name = extract_func_name(
+            "def process_order(order):",
+            apex_core::types::Language::Python,
+        );
         assert_eq!(name, "process_order");
     }
 
     #[test]
     fn extract_func_name_rust() {
-        let name = extract_func_name("pub async fn handle_request(req: Request) -> Response {", apex_core::types::Language::Rust);
+        let name = extract_func_name(
+            "pub async fn handle_request(req: Request) -> Response {",
+            apex_core::types::Language::Rust,
+        );
         assert_eq!(name, "handle_request");
     }
 
@@ -1222,7 +1218,11 @@ mod tests {
         };
 
         let risk = assess_risk(&index, &["src/risky.py".to_string()]);
-        assert!(risk.score > 30, "expected HIGH risk, got score={}", risk.score);
+        assert!(
+            risk.score > 30,
+            "expected HIGH risk, got score={}",
+            risk.score
+        );
         assert!(risk.uncovered_changed > 10);
     }
 
@@ -1279,21 +1279,30 @@ mod tests {
     #[test]
     fn extract_func_name_js() {
         // JS uses generic fallback — keeps up to first non-alphanumeric (comma excluded by trim)
-        let name = extract_func_name("function handleRequest(req, res) {", apex_core::types::Language::JavaScript);
+        let name = extract_func_name(
+            "function handleRequest(req, res) {",
+            apex_core::types::Language::JavaScript,
+        );
         assert_eq!(name, "handleRequest(req");
     }
 
     #[test]
     fn extract_func_name_ruby() {
         // Ruby uses Python-style "def " prefix strip + split on '('
-        let name = extract_func_name("def process_payment(amount)", apex_core::types::Language::Ruby);
+        let name = extract_func_name(
+            "def process_payment(amount)",
+            apex_core::types::Language::Ruby,
+        );
         assert_eq!(name, "process_payment(amount");
     }
 
     #[test]
     fn extract_func_name_java() {
         // Java uses generic fallback
-        let name = extract_func_name("public void processOrder(Order order) {", apex_core::types::Language::Java);
+        let name = extract_func_name(
+            "public void processOrder(Order order) {",
+            apex_core::types::Language::Java,
+        );
         assert_eq!(name, "processOrder(Order");
     }
 
@@ -1355,11 +1364,7 @@ mod tests {
 
     #[test]
     fn extract_functions_js_arrow() {
-        let source = vec![
-            "const handler = (req) => {",
-            "    return 42;",
-            "};",
-        ];
+        let source = vec!["const handler = (req) => {", "    return 42;", "};"];
         let funcs = extract_functions(&source, apex_core::types::Language::JavaScript);
         assert_eq!(funcs.len(), 1);
     }
@@ -1397,7 +1402,10 @@ mod tests {
         let flaky = detect_flaky_tests(&[run1, run2], &file_paths);
         assert_eq!(flaky.len(), 1);
         // Should resolve file path
-        assert!(flaky[0].divergent_branches.iter().any(|d| d.file_path.is_some()));
+        assert!(flaky[0]
+            .divergent_branches
+            .iter()
+            .any(|d| d.file_path.is_some()));
     }
 
     #[test]
@@ -1573,7 +1581,13 @@ mod tests {
     fn hotpaths_truncates_to_top_n() {
         let traces = vec![TestTrace {
             test_name: "t1".into(),
-            branches: vec![br(1, 10, 0), br(1, 20, 0), br(1, 30, 0), br(1, 40, 0), br(1, 50, 0)],
+            branches: vec![
+                br(1, 10, 0),
+                br(1, 20, 0),
+                br(1, 30, 0),
+                br(1, 40, 0),
+                br(1, 50, 0),
+            ],
             duration_ms: 50,
             status: ExecutionStatus::Pass,
         }];
@@ -1594,14 +1608,12 @@ mod tests {
 
     #[test]
     fn attack_surface_pct_calculation() {
-        let traces = vec![
-            TestTrace {
-                test_name: "test_api_get".into(),
-                branches: vec![br(1, 10, 0), br(1, 20, 0)],
-                duration_ms: 50,
-                status: ExecutionStatus::Pass,
-            },
-        ];
+        let traces = vec![TestTrace {
+            test_name: "test_api_get".into(),
+            branches: vec![br(1, 10, 0), br(1, 20, 0)],
+            duration_ms: 50,
+            status: ExecutionStatus::Pass,
+        }];
 
         let index = BranchIndex {
             profiles: BranchIndex::build_profiles(&traces),
@@ -1676,10 +1688,7 @@ mod tests {
     #[test]
     fn extract_func_name_generic_all_keywords() {
         // All tokens are keywords — should return "unknown"
-        let name = extract_func_name(
-            "pub async fn",
-            apex_core::types::Language::Wasm,
-        );
+        let name = extract_func_name("pub async fn", apex_core::types::Language::Wasm);
         assert_eq!(name, "unknown");
     }
 
@@ -1692,7 +1701,10 @@ mod tests {
     #[test]
     fn extract_func_name_c_language_uses_generic() {
         // C falls through to the generic `_ =>` arm
-        let name = extract_func_name("void handle_event(int code) {", apex_core::types::Language::C);
+        let name = extract_func_name(
+            "void handle_event(int code) {",
+            apex_core::types::Language::C,
+        );
         assert_eq!(name, "handle_event(int");
     }
 
@@ -1719,11 +1731,7 @@ mod tests {
     #[test]
     fn extract_functions_skips_hash_comments() {
         // Lines starting with '#' should be skipped even if they contain "def "
-        let source = vec![
-            "# def fake_function():",
-            "def real():",
-            "    pass",
-        ];
+        let source = vec!["# def fake_function():", "def real():", "    pass"];
         let funcs = extract_functions(&source, apex_core::types::Language::Python);
         assert_eq!(funcs.len(), 1);
         assert_eq!(funcs[0].0, "real");
@@ -1748,10 +1756,7 @@ mod tests {
 
     #[test]
     fn extract_functions_single_function_ends_at_last_line() {
-        let source = vec![
-            "def only_one():",
-            "    return 42",
-        ];
+        let source = vec!["def only_one():", "    return 42"];
         let funcs = extract_functions(&source, apex_core::types::Language::Python);
         assert_eq!(funcs.len(), 1);
         assert_eq!(funcs[0].0, "only_one");
@@ -1762,11 +1767,7 @@ mod tests {
     #[test]
     fn extract_functions_c_uses_fn_pattern() {
         // C falls through to default `_ => &["fn "]` pattern
-        let source = vec![
-            "fn c_like() {",
-            "    // body",
-            "}",
-        ];
+        let source = vec!["fn c_like() {", "    // body", "}"];
         let funcs = extract_functions(&source, apex_core::types::Language::C);
         assert_eq!(funcs.len(), 1);
         assert_eq!(funcs[0].0, "c_like");
@@ -1926,8 +1927,13 @@ mod tests {
         let hot = analyze_hotpaths(&index, 10);
         assert_eq!(hot.len(), 1);
         // Should use the fallback format "<file_id_hex>"
-        assert!(hot[0].file_path.to_string_lossy().contains("0000000000002710")
-            || hot[0].file_path.to_string_lossy().starts_with('<'));
+        assert!(
+            hot[0]
+                .file_path
+                .to_string_lossy()
+                .contains("0000000000002710")
+                || hot[0].file_path.to_string_lossy().starts_with('<')
+        );
     }
 
     #[test]
@@ -2013,7 +2019,7 @@ mod tests {
         let mut traces = Vec::new();
         for i in 0..55 {
             traces.push(TestTrace {
-                test_name: format!("test_{}", i),
+                test_name: format!("test_{i}"),
                 branches: vec![br(1, 10, 0)],
                 duration_ms: 10,
                 status: ExecutionStatus::Pass,
@@ -2041,7 +2047,7 @@ mod tests {
         let mut traces = Vec::new();
         for i in 0..15 {
             traces.push(TestTrace {
-                test_name: format!("test_{}", i),
+                test_name: format!("test_{i}"),
                 branches: vec![br(1, 10, 0)],
                 duration_ms: 10,
                 status: ExecutionStatus::Pass,
@@ -2126,7 +2132,10 @@ mod tests {
         let score = compute_deploy_score(&index, 0, 0);
         assert_eq!(score.coverage_score, 0);
         // With 0% coverage, total = 0 + 0 + 25 + 20 = 45
-        assert_eq!(score.recommendation, "CAUTION — review findings before deploying");
+        assert_eq!(
+            score.recommendation,
+            "CAUTION — review findings before deploying"
+        );
     }
 
     #[test]
@@ -2560,12 +2569,16 @@ mod tests {
         // All 3+ tests hit branch -> ratio >= 0.99 -> "always-taken"
         let tmp = tempfile::tempdir().unwrap();
         let src = tmp.path().join("mod.py");
-        std::fs::write(&src, "def validate(x):\n    if x > 0:\n        return True\n").unwrap();
+        std::fs::write(
+            &src,
+            "def validate(x):\n    if x > 0:\n        return True\n",
+        )
+        .unwrap();
 
         let mut traces = Vec::new();
         for i in 0..4 {
             traces.push(TestTrace {
-                test_name: format!("test_{}", i),
+                test_name: format!("test_{i}"),
                 branches: vec![br(1, 2, 0)],
                 duration_ms: 10,
                 status: ExecutionStatus::Pass,
@@ -2593,13 +2606,17 @@ mod tests {
         // 0 tests hit a branch (but func has >= 3 tests) -> ratio <= 0.01 -> "never-taken"
         let tmp = tempfile::tempdir().unwrap();
         let src = tmp.path().join("mod.py");
-        std::fs::write(&src, "def check(x):\n    if x < 0:\n        return False\n    return True\n").unwrap();
+        std::fs::write(
+            &src,
+            "def check(x):\n    if x < 0:\n        return False\n    return True\n",
+        )
+        .unwrap();
 
         // 3 tests visit the function (touching line 3) but none take direction=1 (line 2 false)
         let mut traces = Vec::new();
         for i in 0..3 {
             traces.push(TestTrace {
-                test_name: format!("test_{}", i),
+                test_name: format!("test_{i}"),
                 branches: vec![br(1, 3, 0)], // touches function but not line 2 false branch
                 duration_ms: 10,
                 status: ExecutionStatus::Pass,
@@ -2629,8 +2646,11 @@ mod tests {
             source_hash: String::new(),
         };
         let invariants = discover_contracts(&index, tmp.path());
-        assert!(invariants.iter().any(|i| i.kind == "never-taken"),
-            "expected never-taken invariant, got: {:?}", invariants.iter().map(|i| i.kind).collect::<Vec<_>>());
+        assert!(
+            invariants.iter().any(|i| i.kind == "never-taken"),
+            "expected never-taken invariant, got: {:?}",
+            invariants.iter().map(|i| i.kind).collect::<Vec<_>>()
+        );
     }
 
     #[test]
@@ -2672,7 +2692,7 @@ mod tests {
         let mut traces = Vec::new();
         for i in 0..4 {
             traces.push(TestTrace {
-                test_name: format!("test_{}", i),
+                test_name: format!("test_{i}"),
                 branches: vec![br(1, 2, 1)], // direction=1 -> "false" label
                 duration_ms: 10,
                 status: ExecutionStatus::Pass,
@@ -2691,8 +2711,11 @@ mod tests {
         };
         let invariants = discover_contracts(&index, tmp.path());
         assert!(!invariants.is_empty());
-        assert!(invariants[0].description.contains("false"),
-            "expected 'false' in description: {}", invariants[0].description);
+        assert!(
+            invariants[0].description.contains("false"),
+            "expected 'false' in description: {}",
+            invariants[0].description
+        );
     }
 
     #[test]
@@ -2705,7 +2728,7 @@ mod tests {
         let mut traces = Vec::new();
         for i in 0..4 {
             traces.push(TestTrace {
-                test_name: format!("t{}", i),
+                test_name: format!("t{i}"),
                 branches: vec![br(1, 1, 0)],
                 duration_ms: 5,
                 status: ExecutionStatus::Pass,
@@ -2799,7 +2822,11 @@ mod tests {
     fn generate_docs_with_function_having_branches() {
         let tmp = tempfile::tempdir().unwrap();
         let src = tmp.path().join("mod.py");
-        std::fs::write(&src, "def process(x):\n    if x > 0:\n        return x\n    return 0\n").unwrap();
+        std::fs::write(
+            &src,
+            "def process(x):\n    if x > 0:\n        return x\n    return 0\n",
+        )
+        .unwrap();
 
         let traces = vec![
             TestTrace {
@@ -2838,7 +2865,11 @@ mod tests {
         // Tests that path sorting (by test_count desc, then branch_count asc) is exercised
         let tmp = tempfile::tempdir().unwrap();
         let src = tmp.path().join("mod.py");
-        std::fs::write(&src, "def handler(x):\n    if x > 0:\n        return 1\n    return 0\n").unwrap();
+        std::fs::write(
+            &src,
+            "def handler(x):\n    if x > 0:\n        return 1\n    return 0\n",
+        )
+        .unwrap();
 
         let traces = vec![
             // 2 tests take path A (same branch set)
@@ -3108,7 +3139,12 @@ mod tests {
         let b = br(1, 2, 1);
         profiles.insert(
             branch_key(&b),
-            crate::BranchProfile { branch: b, hit_count: 0, test_count: 0, test_names: vec![] },
+            crate::BranchProfile {
+                branch: b,
+                hit_count: 0,
+                test_count: 0,
+                test_names: vec![],
+            },
         );
         let index = BranchIndex {
             profiles,
@@ -3137,7 +3173,11 @@ mod tests {
         // All entry tests pass through auth — unprotected should be empty
         let tmp = tempfile::tempdir().unwrap();
         let src = tmp.path().join("api.py");
-        std::fs::write(&src, "def endpoint(req):\n    check_auth(req)\n    return 200\n").unwrap();
+        std::fs::write(
+            &src,
+            "def endpoint(req):\n    check_auth(req)\n    return 200\n",
+        )
+        .unwrap();
 
         let traces = vec![TestTrace {
             test_name: "test_api_login".into(),
@@ -3185,7 +3225,12 @@ mod tests {
         let auth_b = br(1, 5, 0);
         profiles.insert(
             branch_key(&auth_b),
-            crate::BranchProfile { branch: auth_b, hit_count: 0, test_count: 0, test_names: vec![] },
+            crate::BranchProfile {
+                branch: auth_b,
+                hit_count: 0,
+                test_count: 0,
+                test_names: vec![],
+            },
         );
         let index = BranchIndex {
             profiles,
@@ -3226,7 +3271,8 @@ mod tests {
             target_root: PathBuf::new(),
             source_hash: String::new(),
         };
-        let report = verify_boundaries(&index, Path::new("/missing/root"), "test_api", "check_auth");
+        let report =
+            verify_boundaries(&index, Path::new("/missing/root"), "test_api", "check_auth");
         // Source couldn't be read -> auth_branches empty -> test is unprotected
         assert_eq!(report.total_entry_tests, 1);
         assert_eq!(report.failing_tests, 1);
@@ -3238,7 +3284,11 @@ mod tests {
         let tmp = tempfile::tempdir().unwrap();
         let src = tmp.path().join("api.py");
         // Line 1: auth check keyword, line 2: branch that would be associated with it
-        std::fs::write(&src, "def ep():\n    verify_token(r)\n    if ok:\n        return 200\n").unwrap();
+        std::fs::write(
+            &src,
+            "def ep():\n    verify_token(r)\n    if ok:\n        return 200\n",
+        )
+        .unwrap();
 
         let traces = vec![TestTrace {
             test_name: "test_api_auth".into(),
@@ -3250,12 +3300,14 @@ mod tests {
         let mut profiles = BranchIndex::build_profiles(&traces);
         // Mark the branch on line 3 as the auth branch (line 2 + 1)
         let auth_b = br(1, 3, 0);
-        if !profiles.contains_key(&branch_key(&auth_b)) {
-            profiles.insert(
-                branch_key(&auth_b),
-                crate::BranchProfile { branch: auth_b, hit_count: 1, test_count: 1, test_names: vec!["test_api_auth".into()] },
-            );
-        }
+        profiles
+            .entry(branch_key(&auth_b))
+            .or_insert_with(|| crate::BranchProfile {
+                branch: auth_b,
+                hit_count: 1,
+                test_count: 1,
+                test_names: vec!["test_api_auth".into()],
+            });
         let index = BranchIndex {
             profiles,
             traces,
@@ -3289,10 +3341,7 @@ mod tests {
         let index = BranchIndex {
             profiles: BranchIndex::build_profiles(&traces),
             traces,
-            file_paths: HashMap::from([
-                (1, PathBuf::from("api.py")),
-                (2, PathBuf::from("db.py")),
-            ]),
+            file_paths: HashMap::from([(1, PathBuf::from("api.py")), (2, PathBuf::from("db.py"))]),
             total_branches: 2,
             covered_branches: 2,
             created_at: String::new(),
@@ -3390,8 +3439,11 @@ mod tests {
             source_hash: String::new(),
         };
         let score = compute_deploy_score(&index, 0, 0);
-        assert!(score.total_score >= 61 && score.total_score <= 80,
-            "expected ACCEPTABLE range, got total_score={}", score.total_score);
+        assert!(
+            score.total_score >= 61 && score.total_score <= 80,
+            "expected ACCEPTABLE range, got total_score={}",
+            score.total_score
+        );
         assert_eq!(score.recommendation, "ACCEPTABLE — deploy with monitoring");
     }
 }

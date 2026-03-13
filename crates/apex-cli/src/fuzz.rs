@@ -180,6 +180,81 @@ pub async fn run_all_strategies(
     Ok(())
 }
 
+/// Run a limited concolic pass as part of the combined strategy.
+async fn run_concolic_phase(
+    oracle: Arc<CoverageOracle>,
+    instrumented: &InstrumentedTarget,
+    coverage_target: f64,
+    cfg: &ApexConfig,
+) {
+    use apex_concolic::PythonConcolicStrategy;
+    use apex_core::traits::Strategy;
+
+    let target_root = instrumented.target.root.clone();
+    let file_paths = Arc::new(instrumented.file_paths.clone());
+
+    let sandbox = Arc::new(PythonTestSandbox::new(
+        Arc::clone(&oracle),
+        Arc::clone(&file_paths),
+        target_root.clone(),
+    ));
+
+    let strategy = PythonConcolicStrategy::new(
+        Arc::clone(&oracle),
+        Arc::clone(&file_paths),
+        target_root.clone(),
+        instrumented.target.test_command.clone(),
+    );
+
+    let max_rounds = cfg.concolic.max_rounds.min(cfg.agent.max_rounds);
+    for round in 1..=max_rounds {
+        let uncovered = oracle.uncovered_branches();
+        if uncovered.is_empty() || oracle.coverage_percent() / 100.0 >= coverage_target {
+            break;
+        }
+
+        info!(
+            round,
+            uncovered = uncovered.len(),
+            "concolic round (all strategy)"
+        );
+
+        let ctx = apex_core::types::ExplorationContext {
+            target: instrumented.target.clone(),
+            uncovered_branches: uncovered,
+            iteration: round as u64,
+        };
+
+        let seeds = match strategy.suggest_inputs(&ctx).await {
+            Ok(s) => s,
+            Err(e) => {
+                warn!(error = %e, "concolic suggest_inputs failed");
+                break;
+            }
+        };
+
+        if seeds.is_empty() {
+            info!("concolic: no seeds generated");
+            break;
+        }
+
+        for seed in &seeds {
+            match sandbox.run(seed).await {
+                Ok(result) => {
+                    let delta = oracle.merge_from_result(&result);
+                    if !delta.newly_covered.is_empty() {
+                        info!(
+                            newly_covered = delta.newly_covered.len(),
+                            "concolic seed improved coverage"
+                        );
+                    }
+                }
+                Err(e) => debug!(error = %e, "concolic seed run failed"),
+            }
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -650,80 +725,5 @@ mod tests {
             &cfg,
         ));
         assert!(result.is_ok());
-    }
-}
-
-/// Run a limited concolic pass as part of the combined strategy.
-async fn run_concolic_phase(
-    oracle: Arc<CoverageOracle>,
-    instrumented: &InstrumentedTarget,
-    coverage_target: f64,
-    cfg: &ApexConfig,
-) {
-    use apex_concolic::PythonConcolicStrategy;
-    use apex_core::traits::Strategy;
-
-    let target_root = instrumented.target.root.clone();
-    let file_paths = Arc::new(instrumented.file_paths.clone());
-
-    let sandbox = Arc::new(PythonTestSandbox::new(
-        Arc::clone(&oracle),
-        Arc::clone(&file_paths),
-        target_root.clone(),
-    ));
-
-    let strategy = PythonConcolicStrategy::new(
-        Arc::clone(&oracle),
-        Arc::clone(&file_paths),
-        target_root.clone(),
-        instrumented.target.test_command.clone(),
-    );
-
-    let max_rounds = cfg.concolic.max_rounds.min(cfg.agent.max_rounds);
-    for round in 1..=max_rounds {
-        let uncovered = oracle.uncovered_branches();
-        if uncovered.is_empty() || oracle.coverage_percent() / 100.0 >= coverage_target {
-            break;
-        }
-
-        info!(
-            round,
-            uncovered = uncovered.len(),
-            "concolic round (all strategy)"
-        );
-
-        let ctx = apex_core::types::ExplorationContext {
-            target: instrumented.target.clone(),
-            uncovered_branches: uncovered,
-            iteration: round as u64,
-        };
-
-        let seeds = match strategy.suggest_inputs(&ctx).await {
-            Ok(s) => s,
-            Err(e) => {
-                warn!(error = %e, "concolic suggest_inputs failed");
-                break;
-            }
-        };
-
-        if seeds.is_empty() {
-            info!("concolic: no seeds generated");
-            break;
-        }
-
-        for seed in &seeds {
-            match sandbox.run(seed).await {
-                Ok(result) => {
-                    let delta = oracle.merge_from_result(&result);
-                    if !delta.newly_covered.is_empty() {
-                        info!(
-                            newly_covered = delta.newly_covered.len(),
-                            "concolic seed improved coverage"
-                        );
-                    }
-                }
-                Err(e) => debug!(error = %e, "concolic seed run failed"),
-            }
-        }
     }
 }

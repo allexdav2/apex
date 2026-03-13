@@ -368,7 +368,7 @@ mod tests {
     #[test]
     fn cmp_entry_debug() {
         let e = CmpEntry::new(vec![0xAA], vec![0xBB]);
-        let debug = format!("{:?}", e);
+        let debug = format!("{e:?}");
         assert!(debug.contains("CmpEntry"));
     }
 
@@ -403,7 +403,9 @@ mod tests {
         let output = "thread 'main' panicked: assertion failed: left=`hello`, right=`world`";
         let hints = parse_cmp_hints_from_output(output);
         assert!(!hints.is_empty());
-        assert!(hints.iter().any(|e| e.arg1 == b"hello" && e.arg2 == b"world"));
+        assert!(hints
+            .iter()
+            .any(|e| e.arg1 == b"hello" && e.arg2 == b"world"));
     }
 
     #[test]

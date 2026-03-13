@@ -31,10 +31,12 @@ impl Detector for DependencyAuditDetector {
     }
 
     async fn analyze(&self, ctx: &AnalysisContext) -> Result<Vec<Finding>> {
-        let spec = CommandSpec::new("cargo", &ctx.target_root)
-            .args(["audit", "--json"]);
+        let spec = CommandSpec::new("cargo", &ctx.target_root).args(["audit", "--json"]);
 
-        let output = ctx.runner.run_command(&spec).await
+        let output = ctx
+            .runner
+            .run_command(&spec)
+            .await
             .map_err(|e| ApexError::Detect(format!("cargo-audit: {e}")))?;
 
         let stdout = String::from_utf8_lossy(&output.stdout);
@@ -192,8 +194,10 @@ mod tests {
                 }]
             }
         }"#;
-        let runner = FixtureRunner::new()
-            .on("cargo", CommandOutput::success(audit_json.as_bytes().to_vec()));
+        let runner = FixtureRunner::new().on(
+            "cargo",
+            CommandOutput::success(audit_json.as_bytes().to_vec()),
+        );
         let ctx = make_ctx_with_runner(runner);
         let findings = DependencyAuditDetector.analyze(&ctx).await.unwrap();
         assert_eq!(findings.len(), 1);
@@ -203,8 +207,10 @@ mod tests {
     #[tokio::test]
     async fn analyze_no_vulns() {
         let audit_json = r#"{"vulnerabilities": {"found": 0, "list": []}}"#;
-        let runner = FixtureRunner::new()
-            .on("cargo", CommandOutput::success(audit_json.as_bytes().to_vec()));
+        let runner = FixtureRunner::new().on(
+            "cargo",
+            CommandOutput::success(audit_json.as_bytes().to_vec()),
+        );
         let ctx = make_ctx_with_runner(runner);
         let findings = DependencyAuditDetector.analyze(&ctx).await.unwrap();
         assert!(findings.is_empty());

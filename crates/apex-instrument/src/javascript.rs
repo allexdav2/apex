@@ -466,7 +466,7 @@ mod tests {
         let mut inst = JavaScriptInstrumentor::new();
         inst.parse_istanbul_json(&json_path, repo_root).unwrap();
 
-        for (_, path) in &inst.file_paths {
+        for path in inst.file_paths.values() {
             assert!(
                 !path.is_absolute(),
                 "expected relative path, got: {}",

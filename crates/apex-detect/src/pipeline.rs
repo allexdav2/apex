@@ -463,13 +463,28 @@ mod tests {
         ctx.config.per_detector_timeout_secs = Some(10);
         let report = pipeline.run_all(&ctx).await;
         assert_eq!(report.findings.len(), 1);
-        assert_eq!(report.detector_status[0], ("mock-timeout".to_string(), true));
+        assert_eq!(
+            report.detector_status[0],
+            ("mock-timeout".to_string(), true)
+        );
     }
 
     #[tokio::test]
     async fn run_all_multiple_subprocess_detectors_run_sequentially() {
-        let f1 = make_finding("sub-a", "src/a.rs", 1, Severity::Medium, FindingCategory::DependencyVuln);
-        let f2 = make_finding("sub-b", "src/b.rs", 2, Severity::Low, FindingCategory::DependencyVuln);
+        let f1 = make_finding(
+            "sub-a",
+            "src/a.rs",
+            1,
+            Severity::Medium,
+            FindingCategory::DependencyVuln,
+        );
+        let f2 = make_finding(
+            "sub-b",
+            "src/b.rs",
+            2,
+            Severity::Low,
+            FindingCategory::DependencyVuln,
+        );
         let pipeline = DetectorPipeline::new(vec![
             Box::new(MockDetector {
                 name: "sub-a",
@@ -491,8 +506,20 @@ mod tests {
     #[test]
     fn deduplicate_higher_severity_wins() {
         let mut findings = vec![
-            make_finding("a", "src/lib.rs", 10, Severity::Low, FindingCategory::PanicPath),
-            make_finding("b", "src/lib.rs", 10, Severity::Critical, FindingCategory::PanicPath),
+            make_finding(
+                "a",
+                "src/lib.rs",
+                10,
+                Severity::Low,
+                FindingCategory::PanicPath,
+            ),
+            make_finding(
+                "b",
+                "src/lib.rs",
+                10,
+                Severity::Critical,
+                FindingCategory::PanicPath,
+            ),
         ];
         deduplicate(&mut findings);
         assert_eq!(findings.len(), 1);
@@ -502,8 +529,20 @@ mod tests {
     #[test]
     fn deduplicate_keeps_different_files_separate() {
         let mut findings = vec![
-            make_finding("a", "src/a.rs", 10, Severity::Medium, FindingCategory::PanicPath),
-            make_finding("a", "src/b.rs", 10, Severity::Medium, FindingCategory::PanicPath),
+            make_finding(
+                "a",
+                "src/a.rs",
+                10,
+                Severity::Medium,
+                FindingCategory::PanicPath,
+            ),
+            make_finding(
+                "a",
+                "src/b.rs",
+                10,
+                Severity::Medium,
+                FindingCategory::PanicPath,
+            ),
         ];
         deduplicate(&mut findings);
         assert_eq!(findings.len(), 2);
@@ -512,12 +551,24 @@ mod tests {
     #[test]
     fn deduplicate_merges_evidence() {
         use crate::finding::Evidence;
-        let mut f1 = make_finding("a", "src/lib.rs", 10, Severity::Medium, FindingCategory::PanicPath);
+        let mut f1 = make_finding(
+            "a",
+            "src/lib.rs",
+            10,
+            Severity::Medium,
+            FindingCategory::PanicPath,
+        );
         f1.evidence = vec![Evidence::SanitizerReport {
             sanitizer: "asan".into(),
             stderr: "overflow".into(),
         }];
-        let mut f2 = make_finding("b", "src/lib.rs", 10, Severity::Low, FindingCategory::PanicPath);
+        let mut f2 = make_finding(
+            "b",
+            "src/lib.rs",
+            10,
+            Severity::Low,
+            FindingCategory::PanicPath,
+        );
         f2.evidence = vec![Evidence::SanitizerReport {
             sanitizer: "ubsan".into(),
             stderr: "undefined".into(),

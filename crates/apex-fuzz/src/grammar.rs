@@ -174,7 +174,7 @@ mod tests {
             }
         }
         // With 50 different seeds we should get more than one unique output.
-        assert!(results.len() > 1, "expected variation, got {:?}", results);
+        assert!(results.len() > 1, "expected variation, got {results:?}");
     }
 
     #[test]
@@ -292,11 +292,14 @@ mod tests {
     #[test]
     fn generate_multiple_nonterminals_in_alt() {
         let mut g = Grammar::new("s");
-        g.add_production("s", vec![vec![
-            Symbol::NonTerminal("a".into()),
-            Symbol::Terminal(" ".into()),
-            Symbol::NonTerminal("b".into()),
-        ]]);
+        g.add_production(
+            "s",
+            vec![vec![
+                Symbol::NonTerminal("a".into()),
+                Symbol::Terminal(" ".into()),
+                Symbol::NonTerminal("b".into()),
+            ]],
+        );
         g.add_production("a", vec![vec![Symbol::Terminal("hello".into())]]);
         g.add_production("b", vec![vec![Symbol::Terminal("world".into())]]);
         let mut rng = StdRng::seed_from_u64(42);
@@ -307,7 +310,7 @@ mod tests {
     #[test]
     fn grammar_debug() {
         let g = simple_grammar();
-        let debug = format!("{:?}", g);
+        let debug = format!("{g:?}");
         assert!(debug.contains("Grammar"));
     }
 
@@ -327,11 +330,14 @@ mod tests {
     #[test]
     fn generate_with_only_terminal_alternatives() {
         let mut g = Grammar::new("lit");
-        g.add_production("lit", vec![
-            vec![Symbol::Terminal("a".into())],
-            vec![Symbol::Terminal("b".into())],
-            vec![Symbol::Terminal("c".into())],
-        ]);
+        g.add_production(
+            "lit",
+            vec![
+                vec![Symbol::Terminal("a".into())],
+                vec![Symbol::Terminal("b".into())],
+                vec![Symbol::Terminal("c".into())],
+            ],
+        );
         let mut rng = StdRng::seed_from_u64(0);
         let result = g.generate(&mut rng, 10).unwrap();
         assert!(result == "a" || result == "b" || result == "c");
@@ -341,10 +347,13 @@ mod tests {
     fn generate_empty_alternatives_exits_at_depth_zero() {
         // Production exists but alternatives is empty -> depth=0 path exits immediately
         let mut g = Grammar::new("s");
-        g.productions.insert("s".to_string(), crate::grammar::Production {
-            lhs: "s".into(),
-            alternatives: vec![],
-        });
+        g.productions.insert(
+            "s".to_string(),
+            crate::grammar::Production {
+                lhs: "s".into(),
+                alternatives: vec![],
+            },
+        );
         let mut rng = StdRng::seed_from_u64(0);
         // Should not panic; returns Some("") since alternatives is empty at depth=0
         let result = g.generate(&mut rng, 5);
@@ -363,8 +372,8 @@ mod tests {
     fn symbol_debug() {
         let t = Symbol::Terminal("hello".into());
         let nt = Symbol::NonTerminal("world".into());
-        let dt = format!("{:?}", t);
-        let dnt = format!("{:?}", nt);
+        let dt = format!("{t:?}");
+        let dnt = format!("{nt:?}");
         assert!(dt.contains("Terminal"));
         assert!(dnt.contains("NonTerminal"));
     }
@@ -373,8 +382,8 @@ mod tests {
     fn parse_node_debug() {
         let leaf = ParseNode::Leaf("x".into());
         let interior = ParseNode::Interior("y".into(), vec![]);
-        let dl = format!("{:?}", leaf);
-        let di = format!("{:?}", interior);
+        let dl = format!("{leaf:?}");
+        let di = format!("{interior:?}");
         assert!(dl.contains("Leaf"));
         assert!(di.contains("Interior"));
     }

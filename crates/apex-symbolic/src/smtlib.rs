@@ -320,10 +320,7 @@ mod tests {
 
     #[test]
     fn test_condition_underscore_var() {
-        assert_eq!(
-            condition_to_smtlib2("_x > 5"),
-            Some("(> _x 5)".into())
-        );
+        assert_eq!(condition_to_smtlib2("_x > 5"), Some("(> _x 5)".into()));
     }
 
     #[test]
@@ -339,7 +336,10 @@ mod tests {
         assert_eq!(condition_to_smtlib2("x >= -10"), Some("(>= x -10)".into()));
         assert_eq!(condition_to_smtlib2("x <= -1"), Some("(<= x -1)".into()));
         assert_eq!(condition_to_smtlib2("x == -5"), Some("(= x -5)".into()));
-        assert_eq!(condition_to_smtlib2("x != -3"), Some("(not (= x -3))".into()));
+        assert_eq!(
+            condition_to_smtlib2("x != -3"),
+            Some("(not (= x -3))".into())
+        );
     }
 
     // -----------------------------------------------------------------------
@@ -384,7 +384,7 @@ mod tests {
             if KEYWORDS.contains(&var1.as_str()) || KEYWORDS.contains(&var2.as_str()) {
                 return Ok(());
             }
-            let expr = format!("(and (> {} 0) (< {} 10))", var1, var2);
+            let expr = format!("(and (> {var1} 0) (< {var2} 10))");
             let vars = extract_variables(&expr);
             prop_assert!(vars.contains(&var1), "missing var1={} in {:?}", var1, vars);
             if var1 != var2 {
@@ -448,12 +448,11 @@ mod tests {
     #[test]
     fn test_extract_vars_all_keywords_skipped() {
         for kw in KEYWORDS {
-            let expr = format!("(= {} 0)", kw);
+            let expr = format!("(= {kw} 0)");
             let vars = extract_variables(&expr);
             assert!(
                 !vars.contains(&kw.to_string()),
-                "keyword '{}' should not appear in vars",
-                kw
+                "keyword '{kw}' should not appear in vars"
             );
         }
     }
@@ -486,7 +485,10 @@ mod tests {
 
     #[test]
     fn test_condition_ge_negative_large() {
-        assert_eq!(condition_to_smtlib2("n >= -1000"), Some("(>= n -1000)".into()));
+        assert_eq!(
+            condition_to_smtlib2("n >= -1000"),
+            Some("(>= n -1000)".into())
+        );
     }
 
     #[test]

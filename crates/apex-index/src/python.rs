@@ -128,19 +128,23 @@ pub async fn enumerate_python_tests(
 
 async fn run_full_coverage(
     target_root: &Path,
-) -> Result<
-    (Vec<BranchId>, HashMap<u64, PathBuf>),
-    Box<dyn std::error::Error + Send + Sync>,
-> {
+) -> Result<(Vec<BranchId>, HashMap<u64, PathBuf>), Box<dyn std::error::Error + Send + Sync>> {
     let data_file = target_root.join(".apex_index_full_cov");
     let json_out = target_root.join(".apex_index_full_cov.json");
 
     // Run coverage on full suite
     let status = tokio::process::Command::new("python3")
         .args([
-            "-m", "coverage", "run", "--branch",
+            "-m",
+            "coverage",
+            "run",
+            "--branch",
             &format!("--data-file={}", data_file.display()),
-            "-m", "pytest", "-q", "--tb=no", "--no-header",
+            "-m",
+            "pytest",
+            "-q",
+            "--tb=no",
+            "--no-header",
         ])
         .current_dir(target_root)
         .stdout(std::process::Stdio::null())
@@ -155,9 +159,12 @@ async fn run_full_coverage(
     // Export to JSON
     let _ = tokio::process::Command::new("python3")
         .args([
-            "-m", "coverage", "json",
+            "-m",
+            "coverage",
+            "json",
             &format!("--data-file={}", data_file.display()),
-            "-o", &json_out.to_string_lossy(),
+            "-o",
+            &json_out.to_string_lossy(),
         ])
         .current_dir(target_root)
         .stdout(std::process::Stdio::null())
@@ -195,8 +202,8 @@ async fn run_per_test_coverage(
     parallelism: usize,
     idx_offset: usize,
 ) -> Result<Vec<TestTrace>, Box<dyn std::error::Error + Send + Sync>> {
-    use tokio::sync::Semaphore;
     use std::sync::Arc;
+    use tokio::sync::Semaphore;
 
     let semaphore = Arc::new(Semaphore::new(parallelism.max(1)));
     let mut handles = Vec::with_capacity(test_names.len());
@@ -237,9 +244,17 @@ async fn run_single_test(
 
     let output = tokio::process::Command::new("python3")
         .args([
-            "-m", "coverage", "run", "--branch",
+            "-m",
+            "coverage",
+            "run",
+            "--branch",
             &format!("--data-file={}", data_file.display()),
-            "-m", "pytest", "-q", "--tb=no", "--no-header", test_name,
+            "-m",
+            "pytest",
+            "-q",
+            "--tb=no",
+            "--no-header",
+            test_name,
         ])
         .current_dir(target_root)
         .output()
@@ -255,9 +270,12 @@ async fn run_single_test(
     // Export to JSON
     let _ = tokio::process::Command::new("python3")
         .args([
-            "-m", "coverage", "json",
+            "-m",
+            "coverage",
+            "json",
             &format!("--data-file={}", data_file.display()),
-            "-o", &json_out.to_string_lossy(),
+            "-o",
+            &json_out.to_string_lossy(),
         ])
         .current_dir(target_root)
         .stdout(std::process::Stdio::null())
@@ -290,11 +308,13 @@ async fn run_single_test(
 // Coverage JSON parsing
 // ---------------------------------------------------------------------------
 
+type BranchResult = (Vec<BranchId>, HashMap<u64, PathBuf>);
+
 /// Parse coverage JSON and return ALL branches (executed + missing).
 fn parse_coverage_all_branches(
     json_path: &Path,
     repo_root: &Path,
-) -> Result<(Vec<BranchId>, HashMap<u64, PathBuf>), Box<dyn std::error::Error + Send + Sync>> {
+) -> Result<BranchResult, Box<dyn std::error::Error + Send + Sync>> {
     let content = std::fs::read_to_string(json_path)?;
     let data: CoverageJsonRaw = serde_json::from_str(&content)?;
     let mut branches = Vec::new();
@@ -316,7 +336,12 @@ fn parse_coverage_all_branches(
                             let from = pair_arr[0].as_i64().unwrap_or(0);
                             let to = pair_arr[1].as_i64().unwrap_or(0);
                             let direction = if to < 0 { 1u8 } else { 0u8 };
-                            branches.push(BranchId::new(file_id, from.unsigned_abs() as u32, 0, direction));
+                            branches.push(BranchId::new(
+                                file_id,
+                                from.unsigned_abs() as u32,
+                                0,
+                                direction,
+                            ));
                         }
                     }
                 }
@@ -330,7 +355,12 @@ fn parse_coverage_all_branches(
                             let from = pair_arr[0].as_i64().unwrap_or(0);
                             let to = pair_arr[1].as_i64().unwrap_or(0);
                             let direction = if to < 0 { 1u8 } else { 0u8 };
-                            branches.push(BranchId::new(file_id, from.unsigned_abs() as u32, 0, direction));
+                            branches.push(BranchId::new(
+                                file_id,
+                                from.unsigned_abs() as u32,
+                                0,
+                                direction,
+                            ));
                         }
                     }
                 }
@@ -591,8 +621,7 @@ mod tests {
             }
         }"#;
         std::fs::write(&json_path, json).unwrap();
-        let (branches, _) =
-            parse_coverage_all_branches(&json_path, Path::new("/")).unwrap();
+        let (branches, _) = parse_coverage_all_branches(&json_path, Path::new("/")).unwrap();
         assert_eq!(branches.len(), 2);
         assert_eq!(branches[0].direction, 1); // to < 0
         assert_eq!(branches[1].direction, 1); // to < 0
@@ -611,8 +640,7 @@ mod tests {
             }
         }"#;
         std::fs::write(&json_path, json).unwrap();
-        let (branches, _) =
-            parse_coverage_all_branches(&json_path, Path::new("/")).unwrap();
+        let (branches, _) = parse_coverage_all_branches(&json_path, Path::new("/")).unwrap();
         assert_eq!(branches.len(), 2);
         assert_eq!(branches[0].direction, 0);
         assert_eq!(branches[1].direction, 0);
@@ -648,10 +676,10 @@ mod tests {
         // executed_branches is not an array
         let tmp = tempfile::tempdir().unwrap();
         let json_path = tmp.path().join("cov.json");
-        let json = r#"{"files": {"a.py": {"executed_branches": "not_array", "missing_branches": 42}}}"#;
+        let json =
+            r#"{"files": {"a.py": {"executed_branches": "not_array", "missing_branches": 42}}}"#;
         std::fs::write(&json_path, json).unwrap();
-        let (branches, _) =
-            parse_coverage_all_branches(&json_path, Path::new("/")).unwrap();
+        let (branches, _) = parse_coverage_all_branches(&json_path, Path::new("/")).unwrap();
         assert!(branches.is_empty());
     }
 
@@ -662,8 +690,7 @@ mod tests {
         let json_path = tmp.path().join("cov.json");
         let json = r#"{"files": {"a.py": {"executed_branches": [42, "hello"]}}}"#;
         std::fs::write(&json_path, json).unwrap();
-        let (branches, _) =
-            parse_coverage_all_branches(&json_path, Path::new("/")).unwrap();
+        let (branches, _) = parse_coverage_all_branches(&json_path, Path::new("/")).unwrap();
         assert!(branches.is_empty()); // pairs are not arrays, skipped
     }
 
@@ -674,8 +701,7 @@ mod tests {
         let json_path = tmp.path().join("cov.json");
         let json = r#"{"files": {"a.py": {"executed_branches": [[10]], "missing_branches": [[20, 30, 40]]}}}"#;
         std::fs::write(&json_path, json).unwrap();
-        let (branches, _) =
-            parse_coverage_all_branches(&json_path, Path::new("/")).unwrap();
+        let (branches, _) = parse_coverage_all_branches(&json_path, Path::new("/")).unwrap();
         // [10] has len 1, skipped. [20, 30, 40] has len 3, skipped.
         assert!(branches.is_empty());
     }
@@ -754,8 +780,7 @@ mod tests {
         let json_path = tmp.path().join("cov.json");
         let json = r#"{"files": {"a.py": {"executed_branches": [[5, 0]]}}}"#;
         std::fs::write(&json_path, json).unwrap();
-        let (branches, _) =
-            parse_coverage_all_branches(&json_path, Path::new("/")).unwrap();
+        let (branches, _) = parse_coverage_all_branches(&json_path, Path::new("/")).unwrap();
         assert_eq!(branches.len(), 1);
         assert_eq!(branches[0].direction, 0);
     }
@@ -1046,8 +1071,7 @@ mod tests {
         let json_path = tmp.path().join("cov.json");
         let json = r#"{"files": {"a.py": {"executed_branches": [["x", "y"]]}}}"#;
         std::fs::write(&json_path, json).unwrap();
-        let (branches, _) =
-            parse_coverage_all_branches(&json_path, Path::new("/")).unwrap();
+        let (branches, _) = parse_coverage_all_branches(&json_path, Path::new("/")).unwrap();
         assert_eq!(branches.len(), 1);
         // Both from and to are 0 (from unwrap_or(0)); to=0 is not < 0, so direction=0
         assert_eq!(branches[0].line, 0);

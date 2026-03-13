@@ -570,7 +570,7 @@ mod tests {
     #[test]
     fn session_debug_works() {
         let session = SymbolicSession::new();
-        let debug = format!("{:?}", session);
+        let debug = format!("{session:?}");
         assert!(debug.contains("SymbolicSession"));
     }
 
@@ -712,7 +712,7 @@ mod tests {
     fn session_multiple_push_then_diverge() {
         let mut session = SymbolicSession::new();
         for i in 0..10 {
-            session.push(make_constraint(&format!("(> x{}  0)", i)));
+            session.push(make_constraint(&format!("(> x{i}  0)")));
         }
         assert_eq!(session.len(), 10);
         let inputs = session.diverging_inputs().unwrap();
@@ -788,9 +788,9 @@ mod tests {
     #[test]
     fn session_len_and_is_empty_consistency() {
         let mut session = SymbolicSession::new();
-        assert_eq!(session.is_empty(), session.len() == 0);
+        assert_eq!(session.is_empty(), session.is_empty());
         session.push(make_constraint("(> x 0)"));
-        assert_eq!(session.is_empty(), session.len() == 0);
+        assert_eq!(session.is_empty(), session.is_empty());
         assert_eq!(session.len(), 1);
     }
 
@@ -837,24 +837,36 @@ mod tests {
     /// `Ok(Some(seed)) => inputs.push(seed)` arm in diverging_inputs_with.
     struct AlwaysSatSolver;
     impl SolverTrait for AlwaysSatSolver {
-        fn solve(&self, _constraints: &[String], _negate_last: bool) -> apex_core::error::Result<Option<apex_core::types::InputSeed>> {
+        fn solve(
+            &self,
+            _constraints: &[String],
+            _negate_last: bool,
+        ) -> apex_core::error::Result<Option<apex_core::types::InputSeed>> {
             Ok(Some(apex_core::types::InputSeed::new(
                 vec![1, 2, 3],
                 apex_core::types::SeedOrigin::Symbolic,
             )))
         }
         fn set_logic(&mut self, _logic: SolverLogic) {}
-        fn name(&self) -> &str { "always_sat" }
+        fn name(&self) -> &str {
+            "always_sat"
+        }
     }
 
     /// A solver that always returns Err — exercises the error arm.
     struct AlwaysErrSolver;
     impl SolverTrait for AlwaysErrSolver {
-        fn solve(&self, _constraints: &[String], _negate_last: bool) -> apex_core::error::Result<Option<apex_core::types::InputSeed>> {
+        fn solve(
+            &self,
+            _constraints: &[String],
+            _negate_last: bool,
+        ) -> apex_core::error::Result<Option<apex_core::types::InputSeed>> {
             Err(apex_core::error::ApexError::Solver("test error".into()))
         }
         fn set_logic(&mut self, _logic: SolverLogic) {}
-        fn name(&self) -> &str { "always_err" }
+        fn name(&self) -> &str {
+            "always_err"
+        }
     }
 
     #[test]
@@ -893,24 +905,37 @@ mod tests {
     fn diverging_inputs_with_mixed_sat_and_none() {
         // Tests the Ok(None) arm (no push) mixed with Ok(Some) (push)
         use std::sync::Mutex;
-        struct AlternatingSolver { call_count: Mutex<u64> }
+        struct AlternatingSolver {
+            call_count: Mutex<u64>,
+        }
         impl SolverTrait for AlternatingSolver {
-            fn solve(&self, _constraints: &[String], _negate_last: bool) -> apex_core::error::Result<Option<apex_core::types::InputSeed>> {
+            fn solve(
+                &self,
+                _constraints: &[String],
+                _negate_last: bool,
+            ) -> apex_core::error::Result<Option<apex_core::types::InputSeed>> {
                 let mut c = self.call_count.lock().unwrap();
                 *c += 1;
                 if *c % 2 == 0 {
-                    Ok(Some(apex_core::types::InputSeed::new(vec![42], apex_core::types::SeedOrigin::Symbolic)))
+                    Ok(Some(apex_core::types::InputSeed::new(
+                        vec![42],
+                        apex_core::types::SeedOrigin::Symbolic,
+                    )))
                 } else {
                     Ok(None)
                 }
             }
             fn set_logic(&mut self, _logic: SolverLogic) {}
-            fn name(&self) -> &str { "alternating" }
+            fn name(&self) -> &str {
+                "alternating"
+            }
         }
-        let solver = AlternatingSolver { call_count: Mutex::new(0) };
+        let solver = AlternatingSolver {
+            call_count: Mutex::new(0),
+        };
         let mut session = SymbolicSession::new();
         for i in 0..4 {
-            session.push(make_constraint(&format!("(> x{}  0)", i)));
+            session.push(make_constraint(&format!("(> x{i}  0)")));
         }
         let inputs = session.diverging_inputs_with(&solver).unwrap();
         // 4 batches, alternating Some/None => 2 seeds

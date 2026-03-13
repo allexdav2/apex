@@ -242,7 +242,7 @@ mod tests {
         let mut m = CoverageMonitor::new(5);
         m.record(0, 10);
         m.record(1, 10); // stall_count = 1
-        // 1 < 2*5=10 → SwitchStrategy
+                         // 1 < 2*5=10 → SwitchStrategy
         assert_eq!(m.action(), MonitorAction::SwitchStrategy);
     }
 
@@ -364,11 +364,11 @@ mod tests {
     #[test]
     fn growth_rate_after_window_eviction() {
         let mut m = CoverageMonitor::new(3);
-        m.record(0, 0);   // evicted
-        m.record(1, 10);  // front after eviction
+        m.record(0, 0); // evicted
+        m.record(1, 10); // front after eviction
         m.record(2, 20);
-        m.record(3, 30);  // back
-        // Window: [(1,10), (2,20), (3,30)] → rate = (30-10)/3 ≈ 6.67
+        m.record(3, 30); // back
+                         // Window: [(1,10), (2,20), (3,30)] → rate = (30-10)/3 ≈ 6.67
         let rate = m.growth_rate();
         assert!(rate > 0.0, "rate={rate}");
     }

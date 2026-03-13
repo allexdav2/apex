@@ -389,9 +389,7 @@ mod tests {
     /// `fnv1a_hash` produces different results for different strings.
     #[test]
     fn fnv1a_hash_many_strings_differ() {
-        let paths: Vec<&str> = vec![
-            "/src/a.js", "/src/b.js", "/src/c.js", "/lib/util.js",
-        ];
+        let paths: Vec<&str> = vec!["/src/a.js", "/src/b.js", "/src/c.js", "/lib/util.js"];
         let hashes: std::collections::HashSet<u64> = paths.iter().map(|p| fnv1a_hash(p)).collect();
         assert_eq!(hashes.len(), paths.len(), "all hashes should be distinct");
     }

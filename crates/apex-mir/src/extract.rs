@@ -577,7 +577,9 @@ fn unknown_stmt() -> () {
         let stmts = &funcs[0].blocks[0].statements;
         assert_eq!(stmts.len(), 2);
         assert!(matches!(&stmts[0], Statement::StorageLive(v) if v == "_1"));
-        assert!(matches!(&stmts[1], Statement::Assign { place, rvalue } if place == "_0" && rvalue == "_1"));
+        assert!(
+            matches!(&stmts[1], Statement::Assign { place, rvalue } if place == "_0" && rvalue == "_1")
+        );
     }
 
     #[test]
@@ -676,7 +678,9 @@ fn multi_stmt() -> () {
         let stmts = &funcs[0].blocks[0].statements;
         assert_eq!(stmts.len(), 3);
         assert!(matches!(&stmts[0], Statement::StorageLive(v) if v == "_1"));
-        assert!(matches!(&stmts[1], Statement::Assign { place, rvalue } if place == "_0" && rvalue == "Add(_1, _2)"));
+        assert!(
+            matches!(&stmts[1], Statement::Assign { place, rvalue } if place == "_0" && rvalue == "Add(_1, _2)")
+        );
         assert!(matches!(&stmts[2], Statement::StorageDead(v) if v == "_1"));
         assert!(matches!(funcs[0].blocks[0].terminator, Terminator::Return));
     }
@@ -868,8 +872,14 @@ fn varied() -> () {
         let funcs = parse_mir_output(mir);
         assert_eq!(funcs.len(), 1);
         assert_eq!(funcs[0].block_count(), 4);
-        assert!(matches!(funcs[0].blocks[0].terminator, Terminator::Goto { target: 1 }));
-        assert!(matches!(funcs[0].blocks[1].terminator, Terminator::Unreachable));
+        assert!(matches!(
+            funcs[0].blocks[0].terminator,
+            Terminator::Goto { target: 1 }
+        ));
+        assert!(matches!(
+            funcs[0].blocks[1].terminator,
+            Terminator::Unreachable
+        ));
         assert!(matches!(funcs[0].blocks[2].terminator, Terminator::Abort));
         assert!(matches!(funcs[0].blocks[3].terminator, Terminator::Return));
     }
@@ -919,10 +929,7 @@ fn multi_eq() -> () {
     #[test]
     fn parse_fn_name_with_angle_brackets() {
         // Angle brackets before parenthesis
-        assert_eq!(
-            extract_fn_name("fn foo::<u32>() {"),
-            "foo::<u32>"
-        );
+        assert_eq!(extract_fn_name("fn foo::<u32>() {"), "foo::<u32>");
     }
 
     #[test]
@@ -1080,7 +1087,8 @@ fn goto_nospc_semi() -> () {
     #[test]
     fn parse_trailing_with_open_bb_and_stmts() {
         // Trailing flush with an open bb that has accumulated statements
-        let mir = "fn trailing_stmts() -> () {\n    bb0: {\n        StorageLive(_1);\n        _0 = _1;";
+        let mir =
+            "fn trailing_stmts() -> () {\n    bb0: {\n        StorageLive(_1);\n        _0 = _1;";
         let funcs = parse_mir_output(mir);
         assert_eq!(funcs.len(), 1);
         assert_eq!(funcs[0].block_count(), 1);

@@ -22,7 +22,11 @@ use apex_instrument::{
 use apex_lang::{CRunner, JavaRunner, JavaScriptRunner, PythonRunner, WasmRunner};
 use clap::{Parser, Subcommand, ValueEnum};
 use color_eyre::Result;
-use std::{collections::{HashMap, HashSet}, path::PathBuf, sync::Arc};
+use std::{
+    collections::{HashMap, HashSet},
+    path::PathBuf,
+    sync::Arc,
+};
 use tracing::{debug, info, warn};
 
 // ---------------------------------------------------------------------------
@@ -1309,16 +1313,12 @@ async fn run_index(args: IndexArgs) -> Result<()> {
     let target_path = args.target.canonicalize()?;
 
     let index = match lang {
-        Language::Python => {
-            apex_index::python::build_python_index(&target_path, args.parallel)
-                .await
-                .map_err(|e| color_eyre::eyre::eyre!("index build failed: {e}"))?
-        }
-        Language::Rust => {
-            apex_index::rust::build_rust_index(&target_path, args.parallel)
-                .await
-                .map_err(|e| color_eyre::eyre::eyre!("index build failed: {e}"))?
-        }
+        Language::Python => apex_index::python::build_python_index(&target_path, args.parallel)
+            .await
+            .map_err(|e| color_eyre::eyre::eyre!("index build failed: {e}"))?,
+        Language::Rust => apex_index::rust::build_rust_index(&target_path, args.parallel)
+            .await
+            .map_err(|e| color_eyre::eyre::eyre!("index build failed: {e}"))?,
         other => {
             return Err(color_eyre::eyre::eyre!(
                 "indexing not yet supported for {other}"
@@ -1333,7 +1333,10 @@ async fn run_index(args: IndexArgs) -> Result<()> {
 
     println!("Branch index built:");
     println!("  Tests:    {}", index.traces.len());
-    println!("  Branches: {} total, {} covered", index.total_branches, index.covered_branches);
+    println!(
+        "  Branches: {} total, {} covered",
+        index.total_branches, index.covered_branches
+    );
     println!("  Coverage: {:.1}%", index.coverage_percent());
     println!("  Saved:    {}", out_path.display());
 
@@ -1354,8 +1357,7 @@ async fn run_test_optimize(args: TestOptimizeArgs) -> Result<()> {
     }
 
     // Greedy weighted set cover
-    let mut uncovered: std::collections::HashSet<String> =
-        index.profiles.keys().cloned().collect();
+    let mut uncovered: std::collections::HashSet<String> = index.profiles.keys().cloned().collect();
     let mut selected: Vec<(String, usize)> = Vec::new(); // (test_name, unique_branches_covered)
     let mut remaining: Vec<&apex_index::TestTrace> = index.traces.iter().collect();
 
@@ -1428,24 +1430,21 @@ async fn run_test_optimize(args: TestOptimizeArgs) -> Result<()> {
         }
         OutputFormat::Text => {
             println!("Test Suite Optimization:");
-            println!(
-                "  Minimal covering set: {} / {} tests",
-                selected_count, total_tests
-            );
+            println!("  Minimal covering set: {selected_count} / {total_tests} tests");
             println!("  Redundant tests:     {}", total_tests - selected_count);
-            println!("  Estimated speedup:   {:.1}x", speedup);
-            println!(
-                "  Duration:            {}ms → {}ms",
-                total_duration, selected_duration
-            );
+            println!("  Estimated speedup:   {speedup:.1}x");
+            println!("  Duration:            {total_duration}ms → {selected_duration}ms");
             println!();
 
             // Show essential tests (cover unique branches)
             let essential: Vec<_> = selected.iter().filter(|(_, u)| *u > 0).collect();
             if !essential.is_empty() {
-                println!("Essential tests ({} cover unique branches):", essential.len());
+                println!(
+                    "Essential tests ({} cover unique branches):",
+                    essential.len()
+                );
                 for (name, unique) in essential.iter().take(20) {
-                    println!("  {} — {} unique branches", name, unique);
+                    println!("  {name} — {unique} unique branches");
                 }
                 if essential.len() > 20 {
                     println!("  ... and {} more", essential.len() - 20);
@@ -1485,9 +1484,7 @@ async fn run_test_prioritize(args: TestPrioritizeArgs) -> Result<()> {
         .collect();
 
     if changed_file_ids.is_empty() {
-        eprintln!(
-            "Warning: none of the changed files match indexed files. Outputting all tests."
-        );
+        eprintln!("Warning: none of the changed files match indexed files. Outputting all tests.");
         for t in &index.traces {
             println!("{}", t.test_name);
         }
@@ -1594,7 +1591,14 @@ async fn run_dead_code(args: DeadCodeArgs) -> Result<()> {
                     } else {
                         100.0
                     };
-                    println!("  {} — {}/{} covered ({:.0}%), {} dead", path.display(), covered, total, pct, dead);
+                    println!(
+                        "  {} — {}/{} covered ({:.0}%), {} dead",
+                        path.display(),
+                        covered,
+                        total,
+                        pct,
+                        dead
+                    );
                 }
             }
         }
@@ -1649,7 +1653,11 @@ async fn run_lint(args: LintArgs, _cfg: &ApexConfig) -> Result<()> {
                         let matches_file = idx
                             .file_paths
                             .get(&p.branch.file_id)
-                            .map(|fp| f.file.to_string_lossy().contains(&fp.to_string_lossy().to_string()))
+                            .map(|fp| {
+                                f.file
+                                    .to_string_lossy()
+                                    .contains(&fp.to_string_lossy().to_string())
+                            })
                             .unwrap_or(false);
                         let matches_line = f.line.map(|l| p.branch.line == l).unwrap_or(false);
                         matches_file && matches_line
@@ -1680,11 +1688,17 @@ async fn run_lint(args: LintArgs, _cfg: &ApexConfig) -> Result<()> {
     // Sort: CRITICAL first, then HIGH, etc.
     enriched.sort_by(|a, b| {
         let rank = |s: &str| -> u8 {
-            if s.starts_with("CRITICAL") { 0 }
-            else if s.starts_with("HIGH") { 1 }
-            else if s.starts_with("MEDIUM") { 2 }
-            else if s.starts_with("LOW") { 3 }
-            else { 4 }
+            if s.starts_with("CRITICAL") {
+                0
+            } else if s.starts_with("HIGH") {
+                1
+            } else if s.starts_with("MEDIUM") {
+                2
+            } else if s.starts_with("LOW") {
+                3
+            } else {
+                4
+            }
         };
         rank(&a.0).cmp(&rank(&b.0))
     });
@@ -1713,7 +1727,9 @@ async fn run_lint(args: LintArgs, _cfg: &ApexConfig) -> Result<()> {
             if has_index {
                 println!("Runtime-prioritized lint findings:\n");
             } else {
-                println!("Lint findings (no index — run `apex index` for runtime prioritization):\n");
+                println!(
+                    "Lint findings (no index — run `apex index` for runtime prioritization):\n"
+                );
             }
             for (priority, f) in &enriched {
                 println!(
@@ -1749,7 +1765,12 @@ async fn run_diff(args: DiffArgs) -> Result<()> {
 
     let worktree_dir = target_path.join(format!(".apex-diff-{}", args.base.replace('/', "-")));
     let worktree_result = tokio::process::Command::new("git")
-        .args(["worktree", "add", &worktree_dir.to_string_lossy(), &args.base])
+        .args([
+            "worktree",
+            "add",
+            &worktree_dir.to_string_lossy(),
+            &args.base,
+        ])
         .current_dir(&target_path)
         .output()
         .await;
@@ -1760,9 +1781,7 @@ async fn run_diff(args: DiffArgs) -> Result<()> {
         Ok(output) if output.status.success() => {}
         Ok(output) => {
             let stderr = String::from_utf8_lossy(&output.stderr);
-            return Err(color_eyre::eyre::eyre!(
-                "git worktree add failed: {stderr}"
-            ));
+            return Err(color_eyre::eyre::eyre!("git worktree add failed: {stderr}"));
         }
         Err(e) => {
             return Err(color_eyre::eyre::eyre!("git worktree add: {e}"));
@@ -1770,13 +1789,13 @@ async fn run_diff(args: DiffArgs) -> Result<()> {
     }
 
     let base_index = match lang {
-        Language::Python => {
-            apex_index::python::build_python_index(&worktree_dir, 4)
-                .await
-                .map_err(|e| color_eyre::eyre::eyre!("base index: {e}"))?
-        }
+        Language::Python => apex_index::python::build_python_index(&worktree_dir, 4)
+            .await
+            .map_err(|e| color_eyre::eyre::eyre!("base index: {e}"))?,
         other => {
-            return Err(color_eyre::eyre::eyre!("diff not yet supported for {other}"));
+            return Err(color_eyre::eyre::eyre!(
+                "diff not yet supported for {other}"
+            ));
         }
     };
 
@@ -1835,7 +1854,7 @@ async fn run_diff(args: DiffArgs) -> Result<()> {
         if !changed_tests.is_empty() {
             println!("Changed tests ({}):", changed_tests.len());
             for (name, added, removed) in &changed_tests {
-                println!("  {} — +{} branches, -{} branches", name, added, removed);
+                println!("  {name} — +{added} branches, -{removed} branches");
             }
             println!();
         }
@@ -1843,7 +1862,7 @@ async fn run_diff(args: DiffArgs) -> Result<()> {
         if !new_tests.is_empty() {
             println!("New tests ({}):", new_tests.len());
             for name in &new_tests {
-                println!("  {}", name);
+                println!("  {name}");
             }
             println!();
         }
@@ -1851,7 +1870,7 @@ async fn run_diff(args: DiffArgs) -> Result<()> {
         if !removed_tests.is_empty() {
             println!("Removed tests ({}):", removed_tests.len());
             for name in &removed_tests {
-                println!("  {}", name);
+                println!("  {name}");
             }
             println!();
         }
@@ -1867,7 +1886,10 @@ async fn run_diff(args: DiffArgs) -> Result<()> {
     }
 
     if args.strict && !changed_tests.is_empty() {
-        eprintln!("\nFAIL: {} tests show behavioral changes", changed_tests.len());
+        eprintln!(
+            "\nFAIL: {} tests show behavioral changes",
+            changed_tests.len()
+        );
         std::process::exit(1);
     }
 
@@ -1875,10 +1897,7 @@ async fn run_diff(args: DiffArgs) -> Result<()> {
 }
 
 /// RAII guard to clean up git worktree on drop.
-fn scopeguard_worktree(
-    repo_root: &std::path::Path,
-    worktree_dir: &std::path::Path,
-) -> impl Drop {
+fn scopeguard_worktree(repo_root: &std::path::Path, worktree_dir: &std::path::Path) -> impl Drop {
     let repo = repo_root.to_path_buf();
     let wt = worktree_dir.to_path_buf();
     scopeguard::guard((), move |_| {
@@ -1913,7 +1932,11 @@ async fn run_flaky_detect(args: FlakyDetectArgs) -> Result<()> {
         .await
         .map_err(|e| color_eyre::eyre::eyre!("enumerate tests: {e}"))?;
 
-    eprintln!("Found {} tests, running {} repetitions each", test_names.len(), args.runs);
+    eprintln!(
+        "Found {} tests, running {} repetitions each",
+        test_names.len(),
+        args.runs
+    );
 
     // Run N times
     let mut all_runs = Vec::with_capacity(args.runs);
@@ -1953,7 +1976,11 @@ async fn run_flaky_detect(args: FlakyDetectArgs) -> Result<()> {
                     test_names.len()
                 );
                 for f in &flaky {
-                    println!("  {} — {} divergent branches", f.test_name, f.divergent_branches.len());
+                    println!(
+                        "  {} — {} divergent branches",
+                        f.test_name,
+                        f.divergent_branches.len()
+                    );
                     for db in &f.divergent_branches {
                         let path = db
                             .file_path
@@ -1996,8 +2023,8 @@ async fn run_complexity(args: ComplexityArgs) -> Result<()> {
         OutputFormat::Text => {
             println!("Exercised vs Static Complexity:\n");
             println!(
-                "{:<40} {:>8} {:>8} {:>7} {}",
-                "Function", "Static", "Exerc.", "Ratio", "Classification"
+                "{:<40} {:>8} {:>8} {:>7} Classification",
+                "Function", "Static", "Exerc.", "Ratio"
             );
             println!("{}", "-".repeat(85));
             for r in &results {
@@ -2204,11 +2231,9 @@ async fn run_regression_check(args: RegressionCheckArgs) -> Result<()> {
     } else {
         // Build index in base worktree
         match lang {
-            Language::Python => {
-                apex_index::python::build_python_index(&worktree_dir, 4)
-                    .await
-                    .map_err(|e| color_eyre::eyre::eyre!("{e}"))?
-            }
+            Language::Python => apex_index::python::build_python_index(&worktree_dir, 4)
+                .await
+                .map_err(|e| color_eyre::eyre::eyre!("{e}"))?,
             _ => {
                 return Err(color_eyre::eyre::eyre!(
                     "regression-check currently supports Python only"
@@ -2220,7 +2245,11 @@ async fn run_regression_check(args: RegressionCheckArgs) -> Result<()> {
     // Compare per-test branch sets
     let mut regressions = Vec::new();
     for head_trace in &head_index.traces {
-        if args.allow.iter().any(|pat| head_trace.test_name.contains(pat)) {
+        if args
+            .allow
+            .iter()
+            .any(|pat| head_trace.test_name.contains(pat))
+        {
             continue;
         }
 
@@ -2233,12 +2262,12 @@ async fn run_regression_check(args: RegressionCheckArgs) -> Result<()> {
             let head_set: HashSet<String> = head_trace
                 .branches
                 .iter()
-                .map(|b| apex_index::types::branch_key(b))
+                .map(apex_index::types::branch_key)
                 .collect();
             let base_set: HashSet<String> = base
                 .branches
                 .iter()
-                .map(|b| apex_index::types::branch_key(b))
+                .map(apex_index::types::branch_key)
                 .collect();
 
             let gained: Vec<_> = head_set.difference(&base_set).cloned().collect();
@@ -2269,7 +2298,10 @@ async fn run_regression_check(args: RegressionCheckArgs) -> Result<()> {
         }
         OutputFormat::Text => {
             if regressions.is_empty() {
-                println!("Regression check PASSED — no behavioral changes detected vs {}", args.base);
+                println!(
+                    "Regression check PASSED — no behavioral changes detected vs {}",
+                    args.base
+                );
             } else {
                 println!(
                     "Regression check FAILED — {} tests show behavioral changes vs {}\n",
@@ -2449,8 +2481,7 @@ async fn run_attack_surface(args: AttackSurfaceArgs) -> Result<()> {
     let target_path = args.target.canonicalize()?;
     let index = load_index(&target_path)?;
 
-    let report =
-        apex_index::analysis::analyze_attack_surface(&index, &args.entry_pattern);
+    let report = apex_index::analysis::analyze_attack_surface(&index, &args.entry_pattern);
 
     match args.output_format {
         OutputFormat::Json => {

@@ -60,7 +60,7 @@ mod tests {
     fn solver_logic_clone_and_copy() {
         let a = SolverLogic::QfS;
         let b = a; // Copy
-        let c = a.clone(); // Clone
+        let c = a; // Clone
         assert_eq!(a, b);
         assert_eq!(a, c);
     }
@@ -112,7 +112,10 @@ mod tests {
         assert!(results[0].as_ref().unwrap().is_some());
         assert!(results[1].as_ref().unwrap().is_none());
         assert!(results[2].as_ref().unwrap().is_some());
-        assert_eq!(results[2].as_ref().unwrap().as_ref().unwrap().data.as_ref(), &[2u8]);
+        assert_eq!(
+            results[2].as_ref().unwrap().as_ref().unwrap().data.as_ref(),
+            &[2u8]
+        );
     }
 
     #[test]
@@ -133,18 +136,33 @@ mod tests {
             negate_seen: std::sync::Mutex<Vec<bool>>,
         }
         impl Solver for NegateCapture {
-            fn solve(&self, constraints: &[String], negate_last: bool) -> Result<Option<InputSeed>> {
+            fn solve(
+                &self,
+                constraints: &[String],
+                negate_last: bool,
+            ) -> Result<Option<InputSeed>> {
                 self.negate_seen.lock().unwrap().push(negate_last);
-                if constraints.is_empty() { Ok(None) } else { Ok(None) }
+                if constraints.is_empty() {
+                    Ok(None)
+                } else {
+                    Ok(None)
+                }
             }
             fn set_logic(&mut self, _logic: SolverLogic) {}
-            fn name(&self) -> &str { "capture" }
+            fn name(&self) -> &str {
+                "capture"
+            }
         }
-        let solver = NegateCapture { negate_seen: std::sync::Mutex::new(Vec::new()) };
+        let solver = NegateCapture {
+            negate_seen: std::sync::Mutex::new(Vec::new()),
+        };
         let sets = vec![vec!["x".to_string()], vec!["y".to_string()]];
         let _ = solver.solve_batch(&sets, true);
         let seen = solver.negate_seen.lock().unwrap();
-        assert!(seen.iter().all(|&v| v), "negate_last=true should be forwarded");
+        assert!(
+            seen.iter().all(|&v| v),
+            "negate_last=true should be forwarded"
+        );
     }
 
     #[test]
@@ -158,7 +176,12 @@ mod tests {
     #[test]
     fn solver_logic_ne_exhaustive() {
         // Ensure all variants differ from each other
-        let all = [SolverLogic::QfLia, SolverLogic::QfAbv, SolverLogic::QfS, SolverLogic::Auto];
+        let all = [
+            SolverLogic::QfLia,
+            SolverLogic::QfAbv,
+            SolverLogic::QfS,
+            SolverLogic::Auto,
+        ];
         for (i, a) in all.iter().enumerate() {
             for (j, b) in all.iter().enumerate() {
                 if i == j {

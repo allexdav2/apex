@@ -158,12 +158,16 @@ mod tests {
     #[test]
     fn test_file_benches() {
         assert!(is_test_file(std::path::Path::new("benches/bench_sort.rs")));
-        assert!(is_test_file(std::path::Path::new("crates/foo/benches/bar.rs")));
+        assert!(is_test_file(std::path::Path::new(
+            "crates/foo/benches/bar.rs"
+        )));
     }
 
     #[test]
     fn test_file_spec_dir() {
-        assert!(is_test_file(std::path::Path::new("spec/models/user_spec.rb")));
+        assert!(is_test_file(std::path::Path::new(
+            "spec/models/user_spec.rb"
+        )));
         assert!(is_test_file(std::path::Path::new("app/spec/foo.rb")));
     }
 
@@ -212,7 +216,7 @@ mod tests {
         let src = "fn real() {}\n\n#[cfg(test)]\nmod tests {\n    fn inside() {}\n}\n";
         assert!(!in_test_block(src, 0)); // real()
         assert!(!in_test_block(src, 2)); // #[cfg(test)]
-        assert!(in_test_block(src, 4));  // fn inside()
+        assert!(in_test_block(src, 4)); // fn inside()
     }
 
     #[test]
@@ -236,7 +240,7 @@ mod tests {
     #[test]
     fn in_test_block_after_closing_brace() {
         let src = "#[cfg(test)]\nmod tests {\n    fn t() {}\n}\nfn after() {}\n";
-        assert!(in_test_block(src, 2));  // fn t()
+        assert!(in_test_block(src, 2)); // fn t()
         assert!(!in_test_block(src, 4)); // fn after()
     }
 
@@ -254,7 +258,10 @@ mod tests {
 
     #[test]
     fn strip_simple_string() {
-        assert_eq!(strip_string_literals(r#"let x = "hello";"#), r#"let x = "";"#);
+        assert_eq!(
+            strip_string_literals(r#"let x = "hello";"#),
+            r#"let x = "";"#
+        );
     }
 
     #[test]
@@ -267,10 +274,7 @@ mod tests {
 
     #[test]
     fn strip_multiple_strings() {
-        assert_eq!(
-            strip_string_literals(r#"f("a", "b")"#),
-            r#"f("", "")"#
-        );
+        assert_eq!(strip_string_literals(r#"f("a", "b")"#), r#"f("", "")"#);
     }
 
     // ---- is_comment ----

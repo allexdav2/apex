@@ -178,7 +178,7 @@ mod tests {
         let mode = SanCovMode::TracePcGuard;
         let cloned = mode;
         assert_eq!(mode, cloned);
-        assert_eq!(format!("{:?}", mode), "TracePcGuard");
+        assert_eq!(format!("{mode:?}"), "TracePcGuard");
         assert_eq!(
             format!("{:?}", SanCovMode::Inline8BitCounters),
             "Inline8BitCounters"
@@ -255,14 +255,10 @@ mod tests {
     #[test]
     fn sancov_trace_pc_guard_not_in_others() {
         let flags_8bit = sancov_rustc_flags(SanCovMode::Inline8BitCounters, false);
-        assert!(!flags_8bit
-            .iter()
-            .any(|f| f.contains("trace-pc-guard")));
+        assert!(!flags_8bit.iter().any(|f| f.contains("trace-pc-guard")));
 
         let flags_bool = sancov_rustc_flags(SanCovMode::InlineBoolFlag, false);
-        assert!(!flags_bool
-            .iter()
-            .any(|f| f.contains("trace-pc-guard")));
+        assert!(!flags_bool.iter().any(|f| f.contains("trace-pc-guard")));
     }
 
     #[test]
@@ -309,11 +305,7 @@ mod tests {
     #[test]
     fn sancov_inline_bool_flag_has_correct_unique_flag() {
         let flags = sancov_rustc_flags(SanCovMode::InlineBoolFlag, false);
-        assert!(flags
-            .iter()
-            .any(|f| f.contains("inline-bool-flag")));
-        assert!(!flags
-            .iter()
-            .any(|f| f.contains("inline-8bit-counters")));
+        assert!(flags.iter().any(|f| f.contains("inline-bool-flag")));
+        assert!(!flags.iter().any(|f| f.contains("inline-8bit-counters")));
     }
 }

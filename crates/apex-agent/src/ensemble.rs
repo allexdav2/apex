@@ -153,8 +153,8 @@ mod tests {
         let sync = EnsembleSync::new(10);
         sync.sync(10); // last_sync = 10
         assert!(!sync.should_sync(15)); // 15 < 10+10
-        assert!(sync.should_sync(20));  // 20 >= 10+10
-        assert!(sync.should_sync(25));  // 25 >= 20 (last_sync still 10)
+        assert!(sync.should_sync(20)); // 20 >= 10+10
+        assert!(sync.should_sync(25)); // 25 >= 20 (last_sync still 10)
     }
 
     /// Two sequential syncs correctly advance the timer each time.
@@ -162,10 +162,10 @@ mod tests {
     fn sequential_syncs_advance_timer() {
         let sync = EnsembleSync::new(5);
         sync.deposit(make_seed());
-        sync.sync(5);  // last_sync = 5
+        sync.sync(5); // last_sync = 5
         sync.deposit(make_seed());
         sync.sync(10); // last_sync = 10
-        // After syncing at 10, next sync due at 15.
+                       // After syncing at 10, next sync due at 15.
         assert!(!sync.should_sync(14));
         assert!(sync.should_sync(15));
     }

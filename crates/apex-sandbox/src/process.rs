@@ -790,9 +790,10 @@ mod tests {
         let spec = sb.build_spec(&input, None).unwrap();
         // No SHM or shim env vars should be present.
         let has_shm = spec.env.iter().any(|(k, _)| k == SHM_ENV_VAR);
-        let has_preload = spec.env.iter().any(|(k, _)| {
-            k == "LD_PRELOAD" || k == "DYLD_INSERT_LIBRARIES"
-        });
+        let has_preload = spec
+            .env
+            .iter()
+            .any(|(k, _)| k == "LD_PRELOAD" || k == "DYLD_INSERT_LIBRARIES");
         assert!(!has_shm);
         assert!(!has_preload);
     }
@@ -813,8 +814,14 @@ mod tests {
         let spec = sb.build_spec(&input, Some("/apx_deadbeef")).unwrap();
 
         let preload_var = crate::shim::preload_env_var();
-        let has_shim = spec.env.iter().any(|(k, v)| k == preload_var && v == "/lib/libapex.so");
-        let has_shm = spec.env.iter().any(|(k, v)| k == SHM_ENV_VAR && v == "/apx_deadbeef");
+        let has_shim = spec
+            .env
+            .iter()
+            .any(|(k, v)| k == preload_var && v == "/lib/libapex.so");
+        let has_shm = spec
+            .env
+            .iter()
+            .any(|(k, v)| k == SHM_ENV_VAR && v == "/apx_deadbeef");
         assert!(has_shim, "shim env var missing: {:?}", spec.env);
         assert!(has_shm, "shm env var missing: {:?}", spec.env);
     }

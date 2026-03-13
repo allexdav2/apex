@@ -860,7 +860,10 @@ mod tests {
   </package>
 </report>"#;
         let (_, _, fps) = parse_jacoco_xml(xml, Path::new("."), Path::new(".")).unwrap();
-        let paths: Vec<String> = fps.values().map(|p| p.to_string_lossy().to_string()).collect();
+        let paths: Vec<String> = fps
+            .values()
+            .map(|p| p.to_string_lossy().to_string())
+            .collect();
         assert!(paths.contains(&"first/A.java".to_string()));
         assert!(paths.contains(&"second/B.java".to_string()));
     }

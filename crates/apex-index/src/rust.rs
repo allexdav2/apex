@@ -69,15 +69,16 @@ struct LlvmEnv {
 // ---------------------------------------------------------------------------
 
 /// Build the per-test branch index for a Rust workspace.
-pub async fn build_rust_index(
-    target: &Path,
-    parallel: usize,
-) -> Result<BranchIndex, BoxErr> {
+pub async fn build_rust_index(target: &Path, parallel: usize) -> Result<BranchIndex, BoxErr> {
     let target = std::fs::canonicalize(target)?;
 
     // 1. Resolve LLVM tools
     let env = resolve_llvm_env(&target).await?;
-    info!("llvm-cov: {}, target-dir: {}", env.llvm_cov, env.target_dir.display());
+    info!(
+        "llvm-cov: {}, target-dir: {}",
+        env.llvm_cov,
+        env.target_dir.display()
+    );
 
     // 2. Build instrumented binaries (compile once)
     info!("building instrumented workspace...");
@@ -338,7 +339,7 @@ async fn run_full_coverage(target: &Path, env: &LlvmEnv) -> Result<LlvmCovJson, 
 
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
-        return Err(format!("cargo llvm-cov --json failed: {}", stderr).into());
+        return Err(format!("cargo llvm-cov --json failed: {stderr}").into());
     }
 
     Ok(serde_json::from_slice(&output.stdout)?)
@@ -350,10 +351,7 @@ async fn run_single_test(
     env: &LlvmEnv,
     target_str: &str,
 ) -> Result<Vec<BranchId>, BoxErr> {
-    let sanitized_name = test_name
-        .replace("::", "__")
-        .replace('/', "_")
-        .replace(' ', "_");
+    let sanitized_name = test_name.replace("::", "__").replace(['/', ' '], "_");
 
     let tmpdir = std::env::temp_dir();
     let profraw = tmpdir.join(format!(
@@ -489,7 +487,7 @@ fn make_relative(path: &str, target: &str) -> String {
     let prefix = if target.ends_with('/') {
         target.to_string()
     } else {
-        format!("{}/", target)
+        format!("{target}/")
     };
 
     path.strip_prefix(&prefix)

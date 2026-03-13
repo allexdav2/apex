@@ -487,7 +487,8 @@ mod tests {
     /// Rust location with column after line number (path:line:col → path:line).
     #[test]
     fn extract_location_rust_with_column() {
-        let loc = extract_location("thread 'main' panicked at 'index out of bounds', src/lib.rs:55:12");
+        let loc =
+            extract_location("thread 'main' panicked at 'index out of bounds', src/lib.rs:55:12");
         assert_eq!(loc.as_deref(), Some("src/lib.rs:55"));
     }
 
@@ -545,7 +546,10 @@ mod tests {
     #[test]
     fn record_from_result_crash_message_from_stderr() {
         let ledger = BugLedger::new();
-        let r = make_result(ExecutionStatus::Crash, "segmentation fault at src/main.rs:10");
+        let r = make_result(
+            ExecutionStatus::Crash,
+            "segmentation fault at src/main.rs:10",
+        );
         ledger.record_from_result(&r, 0);
         let reports = ledger.reports();
         assert!(reports[0].message.contains("segmentation fault"));

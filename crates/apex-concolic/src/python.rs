@@ -1277,21 +1277,26 @@ mod tests {
         let s = make_strategy();
         // (op, direction=0) → expected seed counts based on match arms
         let cases: Vec<(&str, u8, usize)> = vec![
-            (">",  0, 2),  // ">", 0  → vec![val - 1, val]
-            (">=", 0, 2),  // ">=", 0 → vec![val - 1, val - 2] (want False → go below)
-            ("<",  0, 2),  // "<",  0 → vec![val + 1, val]
-            ("<=", 0, 2),  // "<=", 0 → vec![val + 1, val + 2]
-            ("==", 0, 2),  // "==", 0 → vec![val + 1, val - 1]
-            ("!=", 0, 2),  // "!=", 0 → vec![val - 1, val + 1]
+            (">", 0, 2),  // ">", 0  → vec![val - 1, val]
+            (">=", 0, 2), // ">=", 0 → vec![val - 1, val - 2] (want False → go below)
+            ("<", 0, 2),  // "<",  0 → vec![val + 1, val]
+            ("<=", 0, 2), // "<=", 0 → vec![val + 1, val + 2]
+            ("==", 0, 2), // "==", 0 → vec![val + 1, val - 1]
+            ("!=", 0, 2), // "!=", 0 → vec![val - 1, val + 1]
         ];
         for (op, dir, expected) in cases {
             let cond = format!("x {op} 10");
             let entry = make_trace_entry(
-                "test.py", 1, 1 - dir, &cond, "f", "m",
+                "test.py",
+                1,
+                1 - dir,
+                &cond,
+                "f",
+                "m",
                 vec!["x"],
                 [("x".into(), serde_json::json!(5i64))].into(),
             );
-            let seeds = s.boundary_seeds(&entry, dir as u8);
+            let seeds = s.boundary_seeds(&entry, dir);
             assert!(
                 seeds.len() <= 3,
                 "op={op} dir={dir}: too many seeds ({})",
@@ -1308,7 +1313,12 @@ mod tests {
         for op in cases {
             let cond = format!("x {op} 10");
             let entry = make_trace_entry(
-                "test.py", 1, 0, &cond, "f", "m",
+                "test.py",
+                1,
+                0,
+                &cond,
+                "f",
+                "m",
                 vec!["x"],
                 [("x".into(), serde_json::json!(5i64))].into(),
             );
@@ -1321,7 +1331,12 @@ mod tests {
     fn symbolic_seeds_direction_field_present() {
         let s = make_strategy();
         let trace = vec![make_trace_entry(
-            "f.py", 5, 1, "x > 0", "g", "m",
+            "f.py",
+            5,
+            1,
+            "x > 0",
+            "g",
+            "m",
             vec!["x"],
             [("x".into(), serde_json::json!(3))].into(),
         )];
@@ -1334,14 +1349,22 @@ mod tests {
     fn boundary_seeds_variant_idx_in_generated_code() {
         let s = make_strategy();
         let entry = make_trace_entry(
-            "t.py", 1, 0, "x > 0", "f", "m",
+            "t.py",
+            1,
+            0,
+            "x > 0",
+            "f",
+            "m",
             vec!["x"],
             [("x".into(), serde_json::json!(7i64))].into(),
         );
         let seeds = s.boundary_seeds(&entry, 1);
         // Each seed's code should contain "import sys"
         for code in &seeds {
-            assert!(code.contains("import sys"), "missing 'import sys' in seed code: {code}");
+            assert!(
+                code.contains("import sys"),
+                "missing 'import sys' in seed code: {code}"
+            );
         }
     }
 
@@ -1350,7 +1373,12 @@ mod tests {
         // When val is negative, boundary arithmetic should still work
         let s = make_strategy();
         let entry = make_trace_entry(
-            "t.py", 1, 0, "x > -5", "f", "m",
+            "t.py",
+            1,
+            0,
+            "x > -5",
+            "f",
+            "m",
             vec!["x"],
             [("x".into(), serde_json::json!(-10i64))].into(),
         );
@@ -1363,23 +1391,38 @@ mod tests {
         // ("!=", 1) observed True (not-equal), want False (equal) → vec![val] → 1 seed
         let s = make_strategy();
         let entry = make_trace_entry(
-            "t.py", 1, 0, "x != 42", "f", "m",
+            "t.py",
+            1,
+            0,
+            "x != 42",
+            "f",
+            "m",
             vec!["x"],
             [("x".into(), serde_json::json!(0i64))].into(),
         );
         let seeds = s.boundary_seeds(&entry, 1);
-        assert_eq!(seeds.len(), 1, "!= dir=1 should produce 1 seed (want equal → val)");
+        assert_eq!(
+            seeds.len(),
+            1,
+            "!= dir=1 should produce 1 seed (want equal → val)"
+        );
     }
 
     #[test]
     fn branch_trace_all_fields() {
         let bt = make_trace_entry(
-            "foo.py", 42, 1, "a < b", "myfunc", "mymod",
+            "foo.py",
+            42,
+            1,
+            "a < b",
+            "myfunc",
+            "mymod",
             vec!["a", "b"],
             [
                 ("a".into(), serde_json::json!(1)),
                 ("b".into(), serde_json::json!(2)),
-            ].into(),
+            ]
+            .into(),
         );
         assert_eq!(bt.file, "foo.py");
         assert_eq!(bt.line, 42);
@@ -1407,7 +1450,12 @@ mod tests {
         for val in [-100i64, -1, 0, 1, 100] {
             let cond = format!("x > {val}");
             let entry = make_trace_entry(
-                "t.py", 1, 0, &cond, "f", "m",
+                "t.py",
+                1,
+                0,
+                &cond,
+                "f",
+                "m",
                 vec!["x"],
                 [("x".into(), serde_json::json!(val))].into(),
             );

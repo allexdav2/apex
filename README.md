@@ -80,23 +80,16 @@ $ /apex-intel
 ## Install — one command
 
 ```bash
-# Clone, build, and install all dependencies
+# Prerequisites: Rust via rustup (not Homebrew)
+curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
+rustup component add llvm-tools-preview
+cargo install cargo-llvm-cov
+
+# Clone and build
 git clone https://github.com/allexdav2/apex.git && cd apex \
-  && cargo install cargo-llvm-cov \
   && cargo build --release \
   && ./agents/install.sh
 ```
-
-<details>
-<summary>macOS with Homebrew LLVM</summary>
-
-```bash
-brew install llvm
-export LLVM_COV=/opt/homebrew/opt/llvm/bin/llvm-cov
-export LLVM_PROFDATA=/opt/homebrew/opt/llvm/bin/llvm-profdata
-```
-
-</details>
 
 ---
 
@@ -229,26 +222,41 @@ apex verify-boundaries --target . --lang python \
 
 ## Architecture
 
-Rust workspace, 15 crates. Heavy dependencies (Z3, LibAFL, PyO3, Inkwell,
+Rust workspace, 16 crates. Heavy dependencies (Z3, LibAFL, PyO3, Inkwell,
 Firecracker) are behind feature flags — not compiled by default.
 
 | Crate | Role |
 |-------|------|
 | `apex-core` | Shared types, traits, config |
-| `apex-coverage` | Coverage oracle, bitmap tracking |
+| `apex-coverage` | Coverage oracle, bitmap tracking, continuous branch distance heuristics |
 | `apex-instrument` | Multi-language instrumentation (Python, JS, Java, Rust, LLVM, WASM) |
 | `apex-lang` | Language-specific test runners |
 | `apex-sandbox` | Process / WASM / Firecracker isolation |
-| `apex-agent` | AI-driven test generation loops |
-| `apex-synth` | Test synthesis via Tera templates |
-| `apex-symbolic` | SMT-LIB2 constraint solving (optional Z3) |
+| `apex-agent` | AI-driven test generation, priority scheduler, solver cache |
+| `apex-synth` | Test synthesis via Tera templates + LLM-guided refinement loop |
+| `apex-symbolic` | SMT-LIB2 constraint solving, gradient descent solver (optional Z3) |
 | `apex-concolic` | Concolic execution (optional PyO3 tracer) |
 | `apex-fuzz` | Coverage-guided fuzzing with MOpt (optional LibAFL) |
-| `apex-detect` | Panic patterns, security checks |
+| `apex-detect` | Security patterns, hardcoded secrets, CWE-mapped findings |
+| `apex-cpg` | Code Property Graph — taint analysis via reaching definitions |
 | `apex-index` | Per-test branch indexing, SDLC analysis |
 | `apex-rpc` | gRPC distributed coordination |
 | `apex-mir` | MIR parsing, control-flow analysis |
 | `apex-cli` | CLI binary — 20 subcommands |
+
+### Analysis Mechanisms
+
+APEX integrates fundamental mechanisms from established tools
+(see [docs/INSPIRATION.md](docs/INSPIRATION.md) for details):
+
+| Mechanism | From | APEX Crate |
+|-----------|------|------------|
+| Continuous branch distance (Korel fitness) | EvoMaster | `apex-coverage` |
+| Gradient descent constraint solving | Angora | `apex-symbolic` |
+| Code Property Graph + taint analysis | Joern | `apex-cpg` |
+| LLM-guided test refinement (closed loop) | CoverUp | `apex-synth` |
+| Priority-based exploration scheduler | Owi + EvoMaster | `apex-agent` |
+| Solver caching with negation inference | Owi | `apex-agent` |
 
 <details>
 <summary>Optional feature flags</summary>

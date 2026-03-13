@@ -1,5 +1,15 @@
 use apex_core::types::BranchId;
 
+/// A candidate branch for priority-based selection.
+#[derive(Debug, Clone)]
+pub struct BranchCandidate {
+    pub id: BranchId,
+    pub heuristic: f64,
+    pub attempts_since_progress: u64,
+    pub depth_in_cfg: u32,
+    pub hit_count: u64,
+}
+
 /// Priority score for an uncovered branch — higher = explore first.
 ///
 /// Composite of four signals (from Owi + EvoMaster):
@@ -23,12 +33,17 @@ pub fn target_priority(
 
 /// Select the top-K branches by priority.
 pub fn select_top_targets(
-    branches: &[(BranchId, f64, u64, u32, u64)], // (id, heuristic, attempts, depth, hits)
+    branches: &[BranchCandidate],
     k: usize,
 ) -> Vec<BranchId> {
     let mut scored: Vec<_> = branches
         .iter()
-        .map(|(id, h, a, d, hits)| (id.clone(), target_priority(*h, *a, *d, *hits)))
+        .map(|b| {
+            (
+                b.id.clone(),
+                target_priority(b.heuristic, b.attempts_since_progress, b.depth_in_cfg, b.hit_count),
+            )
+        })
         .collect();
     scored.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
     scored.into_iter().take(k).map(|(id, _)| id).collect()
@@ -100,11 +115,41 @@ mod tests {
     #[test]
     fn select_top_targets_returns_k() {
         let branches = vec![
-            (make_branch(1), 0.1, 0u64, 5u32, 50u64),
-            (make_branch(2), 0.9, 0, 2, 1),
-            (make_branch(3), 0.5, 0, 3, 10),
-            (make_branch(4), 0.7, 0, 4, 5),
-            (make_branch(5), 0.3, 0, 6, 20),
+            BranchCandidate {
+                id: make_branch(1),
+                heuristic: 0.1,
+                attempts_since_progress: 0,
+                depth_in_cfg: 5,
+                hit_count: 50,
+            },
+            BranchCandidate {
+                id: make_branch(2),
+                heuristic: 0.9,
+                attempts_since_progress: 0,
+                depth_in_cfg: 2,
+                hit_count: 1,
+            },
+            BranchCandidate {
+                id: make_branch(3),
+                heuristic: 0.5,
+                attempts_since_progress: 0,
+                depth_in_cfg: 3,
+                hit_count: 10,
+            },
+            BranchCandidate {
+                id: make_branch(4),
+                heuristic: 0.7,
+                attempts_since_progress: 0,
+                depth_in_cfg: 4,
+                hit_count: 5,
+            },
+            BranchCandidate {
+                id: make_branch(5),
+                heuristic: 0.3,
+                attempts_since_progress: 0,
+                depth_in_cfg: 6,
+                hit_count: 20,
+            },
         ];
         let top = select_top_targets(&branches, 3);
         assert_eq!(top.len(), 3);
@@ -113,8 +158,20 @@ mod tests {
     #[test]
     fn select_top_targets_fewer_than_k() {
         let branches = vec![
-            (make_branch(1), 0.5, 0u64, 3u32, 10u64),
-            (make_branch(2), 0.9, 0, 2, 1),
+            BranchCandidate {
+                id: make_branch(1),
+                heuristic: 0.5,
+                attempts_since_progress: 0,
+                depth_in_cfg: 3,
+                hit_count: 10,
+            },
+            BranchCandidate {
+                id: make_branch(2),
+                heuristic: 0.9,
+                attempts_since_progress: 0,
+                depth_in_cfg: 2,
+                hit_count: 1,
+            },
         ];
         let top = select_top_targets(&branches, 5);
         assert_eq!(top.len(), 2);
@@ -124,9 +181,27 @@ mod tests {
     fn select_top_targets_orders_by_priority() {
         // Branch 2 has high heuristic + low hit_count → highest priority
         let branches = vec![
-            (make_branch(1), 0.1, 0u64, 3u32, 100u64),
-            (make_branch(2), 0.9, 0, 2, 1),
-            (make_branch(3), 0.5, 0, 3, 10),
+            BranchCandidate {
+                id: make_branch(1),
+                heuristic: 0.1,
+                attempts_since_progress: 0,
+                depth_in_cfg: 3,
+                hit_count: 100,
+            },
+            BranchCandidate {
+                id: make_branch(2),
+                heuristic: 0.9,
+                attempts_since_progress: 0,
+                depth_in_cfg: 2,
+                hit_count: 1,
+            },
+            BranchCandidate {
+                id: make_branch(3),
+                heuristic: 0.5,
+                attempts_since_progress: 0,
+                depth_in_cfg: 3,
+                hit_count: 10,
+            },
         ];
         let top = select_top_targets(&branches, 1);
         assert_eq!(top[0], make_branch(2));

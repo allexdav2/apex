@@ -178,6 +178,7 @@ pub async fn build_rust_index(target: &Path, parallel: usize) -> Result<BranchIn
     for handle in handles {
         traces.push(handle.await?);
         done += 1;
+        #[allow(unknown_lints, clippy::manual_is_multiple_of)]
         if done % 100 == 0 {
             info!("  {}/{} tests complete", done, total_tests);
         }

@@ -107,6 +107,7 @@ pub async fn run_fuzz_strategy(
             break;
         }
 
+        #[allow(unknown_lints, clippy::manual_is_multiple_of)]
         if iter % 100 == 0 {
             info!(
                 iter,

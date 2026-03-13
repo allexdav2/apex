@@ -551,6 +551,7 @@ mod tests {
         // Only process seeds with even data, skip odd
         let (count, pct) = worker
             .pull_once(10, |seed| {
+                #[allow(unknown_lints, clippy::manual_is_multiple_of)]
                 if seed.data[0] % 2 == 0 {
                     Some(make_result(
                         &seed.id,

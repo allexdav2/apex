@@ -110,6 +110,7 @@ impl Mutator for CmpLogMutator {
         let entry = &entries[idx];
 
         // Randomly pick direction: replace arg1->arg2 or arg2->arg1
+        #[allow(unknown_lints, clippy::manual_is_multiple_of)]
         let (needle, replacement) = if rng.next_u32() % 2 == 0 {
             (&entry.arg1, &entry.arg2)
         } else {

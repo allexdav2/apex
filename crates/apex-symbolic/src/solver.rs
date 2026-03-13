@@ -916,6 +916,7 @@ mod tests {
             ) -> apex_core::error::Result<Option<apex_core::types::InputSeed>> {
                 let mut c = self.call_count.lock().unwrap();
                 *c += 1;
+                #[allow(unknown_lints, clippy::manual_is_multiple_of)]
                 if *c % 2 == 0 {
                     Ok(Some(apex_core::types::InputSeed::new(
                         vec![42],

@@ -3,275 +3,284 @@
 [![CI](https://github.com/allexdav2/apex/actions/workflows/ci.yml/badge.svg)](https://github.com/allexdav2/apex/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
-APEX is a **Claude Code-first** coverage exploration and SDLC intelligence
-platform. It drives any repository toward 100% branch coverage by combining
-instrumentation, fuzzing, concolic execution, symbolic solving, and AI-guided
-test synthesis — then uses the resulting per-test branch data to power 16
-intelligence commands across testing, security, documentation, and CI/CD.
+**Stop guessing what your tests miss.** APEX finds dead code, flaky tests,
+security gaps, and untested branches — then writes the tests to fix them.
 
-While APEX includes a standalone CLI, the primary interface is Claude Code.
-The agents analyze your codebase, identify coverage gaps, write tests,
-select strategies, and iterate autonomously inside your editor.
+---
 
-## Using APEX with Claude Code
+## What APEX finds in real projects
 
-### Install
+```
+$ apex run --target ./your-project --lang python
 
-Clone the repo and install the agents into your project:
+  ╭──────────────────────────────────────────────────╮
+  │  APEX — Autonomous Path EXploration              │
+  │  Target: ./your-project  (Python, 847 branches)  │
+  ╰──────────────────────────────────────────────────╯
 
-```bash
-git clone https://github.com/allexdav2/apex.git
-cd apex
-cargo build --release
+  Round 1/5 ─────────────────────────────────────────
 
-# Install agents and commands into your project's .claude/ directory
-./agents/install.sh
+  Coverage: 62% → 71% (+9%)
+  +142 branches covered | 203 remaining | 8 tests written
 ```
 
-### Prerequisites
+```
+  Round 5/5 ─────────────────────────────────────────
+
+  Coverage: 71% → 94% (+23%)
+  Final: 798/847 branches covered
+  Tests written: 31 new tests across 6 files
+```
+
+Then ask what it learned:
+
+```
+$ /apex-intel
+
+  ┌─ Test Optimization ──────────────────────────────┐
+  │  312 tests → 94 minimal set (3.3× speedup)       │
+  │  218 tests are redundant — same branch coverage   │
+  └──────────────────────────────────────────────────┘
+
+  ┌─ Dead Code ──────────────────────────────────────┐
+  │  23 branches in 4 files — never executed by any   │
+  │  test or production path                          │
+  │                                                   │
+  │  src/billing.py:89   unreachable after refactor   │
+  │  src/export.py:34    legacy XML path, 0 callers   │
+  │  src/api.py:201      dead error handler           │
+  └──────────────────────────────────────────────────┘
+
+  ┌─ Flaky Tests ────────────────────────────────────┐
+  │  2 tests show nondeterministic branch paths       │
+  │                                                   │
+  │  test_concurrent_upload — race in file locking    │
+  │  test_session_timeout  — depends on wall clock    │
+  └──────────────────────────────────────────────────┘
+
+  ┌─ Security ───────────────────────────────────────┐
+  │  src/auth.py:67  — auth bypass: no token check    │
+  │  on admin endpoint (reachable from test_api)      │
+  │                                                   │
+  │  src/config.py:12 — hardcoded secret:             │
+  │  AWS_KEY = "AKIA..." (not from env)               │
+  └──────────────────────────────────────────────────┘
+
+  ┌─ Hot Paths ──────────────────────────────────────┐
+  │  src/auth.py:45  — 12.3% of all branch hits      │
+  │  src/db.py:112   — 8.7% of all branch hits       │
+  │  These functions need the most test coverage.     │
+  └──────────────────────────────────────────────────┘
+
+  Deploy Score: 87/100 — GO
+```
+
+---
+
+## Install — one command
 
 ```bash
-cargo install cargo-llvm-cov
+# Clone, build, and install all dependencies
+git clone https://github.com/allexdav2/apex.git && cd apex \
+  && cargo install cargo-llvm-cov \
+  && cargo build --release \
+  && ./agents/install.sh
+```
 
-# On macOS with Homebrew LLVM:
+<details>
+<summary>macOS with Homebrew LLVM</summary>
+
+```bash
+brew install llvm
 export LLVM_COV=/opt/homebrew/opt/llvm/bin/llvm-cov
 export LLVM_PROFDATA=/opt/homebrew/opt/llvm/bin/llvm-profdata
 ```
 
+</details>
+
+---
+
+## Claude Code-first
+
+APEX is built for Claude Code. The primary interface is slash commands and
+auto-triggered agents — not a CLI you have to learn.
+
 ### Slash Commands
-
-Start here:
-
-```
-/apex                — project dashboard: health, metrics, recommendations
-```
-
-Then dig deeper:
 
 | Command | What it does |
 |---------|-------------|
-| `/apex` | **Main entrypoint** — dashboard with deploy score, key findings, and recommended actions |
-| `/apex-run` | Full autonomous coverage loop — measures gaps, writes tests, selects strategies, re-measures |
+| `/apex` | **Dashboard** — deploy score, key findings, recommended next actions |
+| `/apex-run` | **Autonomous loop** — measures gaps, writes tests, re-measures, repeats |
 | `/apex-index` | Build per-test branch index for intelligence commands |
-| `/apex-intel` | Full SDLC intelligence report — test quality, risk, dead code, hotpaths, contracts |
-| `/apex-deploy` | Deployment readiness check — aggregate confidence score with GO/CAUTION/BLOCK |
-| `/apex-status` | Show coverage table for the workspace |
-| `/apex-gaps` | List the top uncovered regions with explanations and suggested tests |
-| `/apex-generate apex-fuzz` | Generate tests targeting uncovered branches in a crate |
-| `/apex-ci 0.8` | CI coverage gate — fails if below threshold |
+| `/apex-intel` | Full SDLC intelligence — test quality, risk, dead code, hotpaths, contracts |
+| `/apex-deploy` | Deployment readiness — GO / CAUTION / BLOCK with confidence score |
+| `/apex-status` | Coverage table for the workspace |
+| `/apex-gaps` | Top uncovered regions with explanations and suggested tests |
+| `/apex-generate` | Generate tests targeting uncovered branches in a crate |
+| `/apex-ci 0.8` | CI gate — fails if below threshold |
 
-### Agents (auto-invoked)
+### Auto-triggered Agents
 
-These agents are triggered automatically by Claude Code when your message matches:
+These fire automatically when Claude Code detects a matching intent:
 
 | Agent | Trigger examples |
 |-------|-----------------|
 | **apex-coverage-analyst** | "what's our coverage?", "which parts are uncovered?" |
 | **apex-test-writer** | "write tests for X", "improve coverage in Y" |
 | **apex-runner** | "run apex against Z", "run apex on itself" |
-| **apex-sdlc-analyst** | "what's our deploy score?", "find flaky tests", "show hot paths" |
-
-### Typical Workflow
-
-```
-You:    /apex-run
-APEX:   Round 1/5 — Coverage: 62% -> 71% (+9%)
-        +142 branches covered | 203 remaining | 8 tests written
-
-You:    /apex-index --target . --lang python
-APEX:   Index built: 312 tests, 1847 branches, 89.2% coverage
-        Saved to .apex/index.json
-
-You:    /apex-intel
-APEX:   Test Optimization: 312 -> 94 tests (3.3x speedup)
-        Dead Code: 23 branches in 4 files never executed
-        Flaky Tests: 2 tests show nondeterministic branch paths
-        Hot Paths: src/auth.py:45 accounts for 12.3% of all branch hits
-        Contracts: 8 invariants discovered (always-taken branches)
-        Risk: LOW — 95% coverage of changed files
-
-You:    /apex-deploy
-APEX:   Deploy Score: 87/100 — GO
-        Coverage: 89.2% -> 27/30
-        Test quality: 68% unique coverage -> 17/25
-        Detectors: 0 findings -> 25/25
-        Stability: index present -> 20/20
-```
+| **apex-sdlc-analyst** | "what's our deploy score?", "find flaky tests" |
 
 ### Strategy Selection
 
-The `/apex-run` agent loop automatically selects the best strategy per gap:
+The `/apex-run` loop automatically picks the best strategy per gap:
 
-| Target | Primary strategy | Fallback |
-|--------|-----------------|----------|
-| Rust workspace | Source-level tests | fuzz (if binary harness exists) |
-| Python project | Source-level tests | concolic (for constraint paths) |
+| Target | Primary | Fallback |
+|--------|---------|----------|
+| Rust workspace | Source-level tests | fuzz harness |
+| Python project | Source-level tests | concolic execution |
 | C/Rust binary | fuzz | driller (when fuzz stalls) |
 | JavaScript | Source-level tests | — |
 
-## Standalone CLI
+---
 
-APEX has 20 subcommands organized in 6 packs:
+## Standalone CLI — 20 commands, 6 packs
 
-### Core Commands
+<details>
+<summary><strong>Core</strong></summary>
 
 ```bash
-# Run against a Python project
-apex run --target ./my-project --lang python
-
-# CI coverage gate (fails if coverage < 80%)
-apex ratchet --target ./my-project --lang python --min-coverage 0.8
-
-# Check tool dependencies
-apex doctor
-
-# Security audit
-apex audit --target ./my-project --lang python
+apex run --target ./project --lang python      # Coverage gap report
+apex ratchet --target ./project --min-cov 0.8  # CI gate
+apex doctor                                     # Check dependencies
+apex audit --target ./project --lang python     # Security audit
 ```
 
-### Pack A: Foundation — Per-Test Branch Index
+</details>
+
+<details>
+<summary><strong>Pack A: Per-Test Branch Index</strong></summary>
 
 ```bash
-# Build the index (required before intelligence commands)
-apex index --target ./my-project --lang python --parallel 8
+apex index --target ./project --lang python --parallel 8
 ```
 
-Runs each test individually under coverage instrumentation, building a persistent
-map of which tests exercise which branches. Stored in `.apex/index.json`.
+Runs each test individually under coverage, builds a map of test→branches.
+Stored in `.apex/index.json`. Required before intelligence commands.
 
-### Pack B: Test Intelligence
+</details>
+
+<details>
+<summary><strong>Pack B: Test Intelligence</strong></summary>
 
 ```bash
-# Find minimal test subset maintaining coverage
-apex test-optimize --target .
-
-# Order tests by relevance to changed files
-apex test-prioritize --target . --changed-files src/auth.py,src/api.py
-
-# Detect flaky tests via execution path divergence
+apex test-optimize --target .                  # Minimal test subset
+apex test-prioritize --target . --changed-files src/auth.py
 apex flaky-detect --target . --lang python --runs 5
 ```
 
-### Pack C: Source Intelligence
+</details>
+
+<details>
+<summary><strong>Pack C: Source Intelligence</strong></summary>
 
 ```bash
-# Find semantically dead code
-apex dead-code --target .
-
-# Runtime-prioritized lint findings
-apex lint --target . --lang python
-
-# Exercised vs static complexity per function
-apex complexity --target .
+apex dead-code --target .                      # Semantically dead code
+apex lint --target . --lang python             # Runtime-prioritized lints
+apex complexity --target .                     # Exercised vs static complexity
 ```
 
-### Pack D: Behavioral Analysis & CI/CD
+</details>
+
+<details>
+<summary><strong>Pack D: Behavioral Analysis & CI/CD</strong></summary>
 
 ```bash
-# Behavioral diff between current and base branch
-apex diff --target . --lang python --base main
-
-# CI gate for unexpected behavioral changes
-apex regression-check --target . --lang python --base main --allow flaky_test
-
-# Assess risk of changed files
+apex diff --target . --base main               # Behavioral diff
+apex regression-check --target . --base main   # CI gate for behavior changes
 apex risk --target . --changed-files src/auth.py
-
-# Rank branches by execution frequency
 apex hotpaths --target . --top 20
-
-# Discover invariants from branch execution patterns
-apex contracts --target .
-
-# Aggregate deployment confidence score (0-100)
-apex deploy-score --target . --detector-findings 0 --critical-findings 0
+apex contracts --target .                      # Discover invariants
+apex deploy-score --target .                   # Aggregate confidence 0-100
 ```
 
-### Pack E: Documentation
+</details>
+
+<details>
+<summary><strong>Pack E: Documentation</strong></summary>
 
 ```bash
-# Generate behavioral documentation from execution traces
 apex docs --target . --output docs/behavioral.md
 ```
 
-### Pack F: Security Analysis
+</details>
+
+<details>
+<summary><strong>Pack F: Security</strong></summary>
 
 ```bash
-# Map attack surface from entry-point reachability
 apex attack-surface --target . --lang python --entry-pattern test_api
-
-# Verify all entry-point paths pass through auth checks
 apex verify-boundaries --target . --lang python \
   --entry-pattern test_api --auth-checks check_auth --strict
 ```
 
-## Features
+</details>
 
-- **Multi-language** — Python, JavaScript, Java, Rust, C, WebAssembly
-- **Coverage-guided fuzzing** — MOpt-mutator scheduling with corpus management
-- **Concolic execution** — concrete + symbolic hybrid exploration
-- **Symbolic constraint solving** — SMT-LIB2 solver with optional Z3 backend
-- **AI agent orchestration** — LLM-driven test generation and refinement
-- **Bug detection** — panic patterns, security auditing, hardcoded secrets
-- **SDLC intelligence** — 16 commands powered by per-test branch indexing
-- **CI integration** — `ratchet`, `regression-check`, `deploy-score` for CI gates
-- **Sandboxed execution** — process isolation, shared-memory bitmaps, optional Firecracker microVMs
+---
 
 ## Architecture
 
-APEX is a Rust workspace with 15 crates:
+Rust workspace, 15 crates. Heavy dependencies (Z3, LibAFL, PyO3, Inkwell,
+Firecracker) are behind feature flags — not compiled by default.
 
-| Crate | Description |
-|-------|-------------|
-| **apex-core** | Shared types, traits, configuration, error handling |
-| **apex-coverage** | Coverage oracle, bitmap management, delta tracking |
-| **apex-instrument** | Multi-language instrumentation (Python, JS, Java, Rust, LLVM, WASM) |
-| **apex-lang** | Language-specific test runners |
-| **apex-sandbox** | Process/WASM/Firecracker sandbox execution, shared-memory bitmaps |
-| **apex-agent** | AI agent orchestration, report generation, refinement loops |
-| **apex-synth** | Test synthesis via Tera templates (pytest, Jest, JUnit, cargo-test) |
-| **apex-symbolic** | Symbolic constraint solving (SMT-LIB2, optional Z3, Kani) |
-| **apex-concolic** | Concolic execution engine (optional pyo3 tracer) |
-| **apex-fuzz** | Coverage-guided fuzzing with MOpt scheduling (optional libafl) |
-| **apex-detect** | Bug detection pipeline (panic patterns, security checks) |
-| **apex-index** | Per-test branch indexing, SDLC intelligence analysis |
-| **apex-rpc** | gRPC distributed coordination (tonic) |
-| **apex-mir** | Mid-level IR parsing and control-flow analysis |
-| **apex-cli** | CLI binary — 20 subcommands across 6 intelligence packs |
+| Crate | Role |
+|-------|------|
+| `apex-core` | Shared types, traits, config |
+| `apex-coverage` | Coverage oracle, bitmap tracking |
+| `apex-instrument` | Multi-language instrumentation (Python, JS, Java, Rust, LLVM, WASM) |
+| `apex-lang` | Language-specific test runners |
+| `apex-sandbox` | Process / WASM / Firecracker isolation |
+| `apex-agent` | AI-driven test generation loops |
+| `apex-synth` | Test synthesis via Tera templates |
+| `apex-symbolic` | SMT-LIB2 constraint solving (optional Z3) |
+| `apex-concolic` | Concolic execution (optional PyO3 tracer) |
+| `apex-fuzz` | Coverage-guided fuzzing with MOpt (optional LibAFL) |
+| `apex-detect` | Panic patterns, security checks |
+| `apex-index` | Per-test branch indexing, SDLC analysis |
+| `apex-rpc` | gRPC distributed coordination |
+| `apex-mir` | MIR parsing, control-flow analysis |
+| `apex-cli` | CLI binary — 20 subcommands |
 
+<details>
+<summary>Optional feature flags</summary>
+
+| Feature | Crate | Enables |
+|---------|-------|---------|
+| `llvm-instrument` | apex-instrument | LLVM-based instrumentation via inkwell |
+| `wasm-instrument` | apex-instrument | WebAssembly instrumentation |
+| `z3-solver` | apex-symbolic | Z3 SMT solver |
+| `kani-prover` | apex-symbolic | Kani bounded model checking |
+| `pyo3-tracer` | apex-concolic | Python concolic tracer |
+| `libafl-backend` | apex-fuzz | LibAFL fuzzer backend |
+| `firecracker` | apex-sandbox | Firecracker microVM isolation |
+
+```bash
+cargo build --release --features "apex-symbolic/z3-solver,apex-fuzz/libafl-backend"
 ```
-                    +----------+
-                    | apex-cli |
-                    +----+-----+
-         +-------+-------+-------+--------+--------+
-         v       v       v       v        v        v
-    apex-agent  apex-fuzz  apex-concolic  apex-detect  apex-index
-         |       |       |                              |
-         v       v       v                              v
-    apex-synth  apex-coverage  apex-symbolic      (analysis engine)
-         |       |       |
-         v       v       v
-    apex-instrument  apex-sandbox  apex-mir
-         |       |
-         v       v
-    apex-lang  apex-rpc
-         |
-         v
-      apex-core
-```
+
+</details>
+
+---
 
 ## Configuration
 
-Copy `apex.example.toml` to your project root as `apex.toml`:
-
 ```toml
+# apex.toml
 [coverage]
-target = 1.0            # Coverage target (0.0-1.0)
-min_ratchet = 0.8       # Minimum for CI gate
+target = 1.0
+min_ratchet = 0.8
 
 [fuzz]
 corpus_max = 10000
-mutations_per_input = 8
 stall_iterations = 50
 
 [agent]
@@ -281,43 +290,12 @@ max_rounds = 3
 process_timeout_ms = 10000
 ```
 
-See [`apex.example.toml`](apex.example.toml) for all options.
-
-## Optional Feature Flags
-
-Heavy dependencies are behind feature flags and not compiled by default:
-
-| Feature | Crate | Enables |
-|---------|-------|---------|
-| `llvm-instrument` | apex-instrument | LLVM-based instrumentation via inkwell |
-| `wasm-instrument` | apex-instrument, apex-lang | WebAssembly instrumentation |
-| `z3-solver` | apex-symbolic | Z3 SMT solver integration |
-| `kani-prover` | apex-symbolic | Kani bounded model checking |
-| `pyo3-tracer` | apex-concolic | Python concolic tracer extension |
-| `libafl-backend` | apex-fuzz | LibAFL fuzzer backend |
-| `firecracker` | apex-sandbox | Firecracker microVM isolation |
-
-Enable with:
-
-```bash
-cargo build --release --features "apex-symbolic/z3-solver,apex-fuzz/libafl-backend"
-```
-
 ## Development
 
 ```bash
-# Run all tests
 cargo test --workspace
-
-# Run tests for a specific crate
-cargo test -p apex-core
-
-# Check formatting and lints
 cargo fmt --check
 cargo clippy --workspace -- -D warnings
-
-# Build docs
-cargo doc --workspace --no-deps --open
 ```
 
 ## License

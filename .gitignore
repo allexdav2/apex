@@ -49,3 +49,6 @@ fuzz/
 
 # APEX runtime index output
 .apex/
+
+# Worktrees
+.worktrees/

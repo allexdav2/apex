@@ -186,6 +186,11 @@ impl PythonConcolicStrategy {
         let module = &trace_entry.module;
         let func = &trace_entry.func;
 
+        // Skip if module or function name is empty — cannot generate valid Python.
+        if module.is_empty() || func.is_empty() {
+            return Vec::new();
+        }
+
         // Parse condition for simple comparison patterns.
         let mut assignments: Vec<Vec<(String, serde_json::Value)>> = Vec::new();
 
@@ -201,15 +206,27 @@ impl PythonConcolicStrategy {
                 if let Ok(val) = lit.parse::<i64>() {
                     let variants: Vec<i64> = match (op, target_direction) {
                         // We observed True, want False
-                        (">", 1) | (">=", 1) => vec![val - 1, val],
-                        ("<", 1) | ("<=", 1) => vec![val + 1, val],
-                        ("==", 1) => vec![val + 1, val - 1],
+                        // x > N was true  → try N and N-1 (at or below threshold)
+                        (">", 1) => vec![val, val.saturating_sub(1)],
+                        // x >= N was true → try N-1 and N-2 (below threshold)
+                        (">=", 1) => vec![val.saturating_sub(1), val.saturating_sub(2)],
+                        // x < N was true  → try N and N+1
+                        ("<", 1) => vec![val, val.saturating_add(1)],
+                        // x <= N was true → try N+1 and N+2
+                        ("<=", 1) => vec![val.saturating_add(1), val.saturating_add(2)],
+                        ("==", 1) => vec![val.saturating_add(1), val.saturating_sub(1)],
                         ("!=", 1) => vec![val],
                         // We observed False, want True
-                        (">", 0) | (">=", 0) => vec![val + 1, val + 2],
-                        ("<", 0) | ("<=", 0) => vec![val - 1, val - 2],
+                        // x > N was false → try N+1 and N+2
+                        (">", 0) => vec![val.saturating_add(1), val.saturating_add(2)],
+                        // x >= N was false → try N and N+1
+                        (">=", 0) => vec![val, val.saturating_add(1)],
+                        // x < N was false → try N-1 and N-2
+                        ("<", 0) => vec![val.saturating_sub(1), val.saturating_sub(2)],
+                        // x <= N was false → try N and N-1
+                        ("<=", 0) => vec![val, val.saturating_sub(1)],
                         ("==", 0) => vec![val],
-                        ("!=", 0) => vec![val + 1, val - 1],
+                        ("!=", 0) => vec![val.saturating_add(1), val.saturating_sub(1)],
                         _ => vec![0, 1, -1],
                     };
                     for v in variants {
@@ -384,11 +401,15 @@ impl PythonConcolicStrategy {
         // Synthesise a Python test stub for each variant.
         let mut seeds = Vec::new();
         for (idx, variant) in assignments.into_iter().take(3).enumerate() {
-            let assigns: String = variant
-                .iter()
-                .map(|(k, v)| format!("    {k} = {v}"))
-                .collect::<Vec<_>>()
-                .join("\n");
+            let assigns: String = if variant.is_empty() {
+                "    pass".to_string()
+            } else {
+                variant
+                    .iter()
+                    .map(|(k, v)| format!("    {k} = {v}"))
+                    .collect::<Vec<_>>()
+                    .join("\n")
+            };
 
             let call_args: String = trace_entry
                 .args
@@ -499,8 +520,8 @@ impl Strategy for PythonConcolicStrategy {
         let trace = match self.get_trace().await {
             Ok(t) => t,
             Err(e) => {
-                warn!(error = %e, "concolic tracer failed; yielding no inputs");
-                return Ok(Vec::new());
+                warn!(error = %e, "concolic tracer failed");
+                return Err(e);
             }
         };
 

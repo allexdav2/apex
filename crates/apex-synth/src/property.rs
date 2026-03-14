@@ -187,13 +187,22 @@ impl PropertyInferer {
                 }
             }
             // Rust: fn func_name( or pub fn func_name(
-            // Skip comment lines to avoid false positives
+            // Skip comment lines and string literals to avoid false positives
             else if !trimmed.starts_with("//") && !trimmed.starts_with("/*") {
-                if let Some(pos) = trimmed.find("fn ") {
-                    // Require `fn` at start or preceded by space (keyword boundary)
-                    let valid_prefix = pos == 0 || trimmed.as_bytes()[pos - 1] == b' ';
+                let code_part = if let Some(comment_pos) = trimmed.find("//") {
+                    &trimmed[..comment_pos]
+                } else {
+                    trimmed
+                };
+                if let Some(pos) = code_part.find("fn ") {
+                    let before = &code_part[..pos];
+                    let dquotes = before.chars().filter(|c| *c == '"').count();
+                    if dquotes % 2 != 0 {
+                        continue;
+                    }
+                    let valid_prefix = pos == 0 || code_part.as_bytes()[pos - 1] == b' ';
                     if valid_prefix {
-                        let after_fn = &trimmed[pos + 3..];
+                        let after_fn = &code_part[pos + 3..];
                         if let Some(name) = after_fn.split('(').next() {
                             let name = name.trim();
                             if !name.is_empty()
@@ -585,5 +594,36 @@ def merge(a, b):
         let test = PropertyInferer::generate_hypothesis_test(&prop, "python");
         assert!(test.contains("len(transform(xs)) == len(xs)"));
         assert!(test.contains("st.lists"));
+    }
+
+    #[test]
+    fn bug_fn_not_extracted_from_string_literal() {
+        let source = "let s = \"fn fake_func(x)\";\nfn real_func() {}";
+        let names = PropertyInferer::extract_function_names(source);
+        assert!(!names.contains(&"fake_func".to_string()),
+            "Should not extract fn from string literals");
+        assert!(names.contains(&"real_func".to_string()));
+    }
+
+    #[test]
+    fn bug_fn_not_extracted_from_inline_comment() {
+        let source = "let x = 1; // fn ghost_function(x) does stuff\nfn real_function() {}";
+        let names = PropertyInferer::extract_function_names(source);
+        assert!(!names.contains(&"ghost_function".to_string()),
+            "Should not extract fn from inline comments");
+        assert!(names.contains(&"real_function".to_string()));
+    }
+
+    #[test]
+    fn bug_indented_python_method_not_public() {
+        let source = "class Foo:\n    def helper(self):\n        pass";
+        assert!(!PropertyInferer::is_public_function(source, "helper"),
+            "Indented Python methods should not be public");
+    }
+
+    #[test]
+    fn top_level_python_def_is_public() {
+        let source = "def main():\n    pass";
+        assert!(PropertyInferer::is_public_function(source, "main"));
     }
 }

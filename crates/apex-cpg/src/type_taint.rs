@@ -33,7 +33,7 @@ impl TypeTaintAnalyzer {
     pub fn is_tainted(&self, type_name: &str, field: &str) -> bool {
         self.rules
             .get(type_name)
-            .map_or(false, |fields| fields.iter().any(|f| f == field))
+            .is_some_and(|fields| fields.iter().any(|f| f == field))
     }
 
     /// Number of rules currently registered.

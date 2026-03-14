@@ -61,6 +61,9 @@ impl DetectorPipeline {
         if cfg.enabled.contains(&"session-security".to_string()) {
             detectors.push(Box::new(SessionSecurityDetector));
         }
+        if cfg.enabled.contains(&"secret-scan".to_string()) {
+            detectors.push(Box::new(SecretScanDetector::new()));
+        }
 
         Self { detectors }
     }
@@ -92,6 +95,9 @@ impl DetectorPipeline {
                 }
                 if cfg.enabled.contains(&"session-security".to_string()) {
                     detectors.push(Box::new(SessionSecurityDetector));
+                }
+                if cfg.enabled.contains(&"secret-scan".to_string()) {
+                    detectors.push(Box::new(SecretScanDetector::new()));
                 }
 
                 Self { detectors }
@@ -251,6 +257,7 @@ mod tests {
             config: crate::config::DetectConfig::default(),
             runner: Arc::new(apex_core::command::RealCommandRunner),
             cpg: None,
+            threat_model: apex_core::config::ThreatModelConfig::default(),
         }
     }
 
@@ -357,7 +364,7 @@ mod tests {
     fn from_config_enables_all_by_default() {
         let cfg = DetectConfig::default();
         let pipeline = DetectorPipeline::from_config(&cfg, Language::Rust);
-        assert_eq!(pipeline.detectors.len(), 9);
+        assert_eq!(pipeline.detectors.len(), 10);
     }
 
     #[test]
@@ -676,8 +683,8 @@ mod tests {
         let cfg = DetectConfig::default();
         let pipeline =
             DetectorPipeline::from_config_with_mode(&cfg, Language::Rust, DetectMode::Fast);
-        // panic, security, secrets, path-normalize, timeout, session-security = 6 detectors
-        assert_eq!(pipeline.detectors.len(), 6);
+        // panic, security, secrets, path-normalize, timeout, session-security, secret-scan = 7 detectors
+        assert_eq!(pipeline.detectors.len(), 7);
     }
 
     #[tokio::test]

@@ -7,6 +7,8 @@ use apex_core::command::CommandRunner;
 use apex_core::types::{BugReport, Language};
 use apex_coverage::CoverageOracle;
 
+use apex_core::config::ThreatModelConfig;
+
 use crate::config::DetectConfig;
 
 #[derive(Clone)]
@@ -21,6 +23,7 @@ pub struct AnalysisContext {
     pub config: DetectConfig,
     pub runner: Arc<dyn CommandRunner>,
     pub cpg: Option<Arc<apex_cpg::Cpg>>,
+    pub threat_model: ThreatModelConfig,
 }
 
 impl fmt::Debug for AnalysisContext {
@@ -33,6 +36,7 @@ impl fmt::Debug for AnalysisContext {
             .field("fuzz_corpus", &self.fuzz_corpus)
             .field("runner", &"<CommandRunner>")
             .field("cpg", &self.cpg.as_ref().map(|c| c.node_count()))
+            .field("threat_model", &self.threat_model.model_type)
             .finish()
     }
 }
@@ -58,6 +62,7 @@ mod tests {
             config: DetectConfig::default(),
             runner: Arc::new(apex_core::command::RealCommandRunner),
             cpg: None,
+            threat_model: ThreatModelConfig::default(),
         };
         let dbg = format!("{ctx:?}");
         assert!(dbg.contains("AnalysisContext"));
@@ -82,6 +87,7 @@ mod tests {
             config: DetectConfig::default(),
             runner: Arc::new(apex_core::command::RealCommandRunner),
             cpg: None,
+            threat_model: ThreatModelConfig::default(),
         };
         let dbg = format!("{ctx:?}");
         assert!(dbg.contains("None"));

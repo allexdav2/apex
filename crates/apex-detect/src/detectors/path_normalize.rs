@@ -43,9 +43,9 @@ const RUST_NORM_CALLS: &[&str] = &[
 
 // Validation checks that also count as safe — these protect without full normalisation.
 const VALIDATION_PATTERNS: &[&str] = &[
-    "\"..\"..",   // Rust: contains("..")
-    "\"..\"",    // any language string literal ".."
-    "'..'",      // Python/JS single-quoted
+    "\"..\"..", // Rust: contains("..")
+    "\"..\"",   // any language string literal ".."
+    "'..'",     // Python/JS single-quoted
     "dotdot",
     "\"//\"",
     "'//",
@@ -379,9 +379,7 @@ impl Detector for PathNormalizationDetector {
                         category: FindingCategory::PathTraversal,
                         file: path.clone(),
                         line: Some(line_1based),
-                        title: format!(
-                            "Missing path/URL normalization at line {line_1based}"
-                        ),
+                        title: format!("Missing path/URL normalization at line {line_1based}"),
                         description: format!(
                             "Function at {}:{} accepts a path/URL parameter but does \
                              not normalize or validate it, risking path traversal.",
@@ -421,11 +419,7 @@ mod tests {
     use std::path::PathBuf;
     use std::sync::Arc;
 
-    fn make_ctx_with_source(
-        filename: &str,
-        source: &str,
-        lang: Language,
-    ) -> AnalysisContext {
+    fn make_ctx_with_source(filename: &str, source: &str, lang: Language) -> AnalysisContext {
         let mut source_cache = HashMap::new();
         source_cache.insert(PathBuf::from(filename), source.to_string());
 
@@ -468,7 +462,10 @@ def serve(path):
 ";
         let ctx = make_ctx_with_source("src/views.py", src, Language::Python);
         let findings = PathNormalizationDetector.analyze(&ctx).await.unwrap();
-        assert!(findings.is_empty(), "expected no findings, got: {findings:?}");
+        assert!(
+            findings.is_empty(),
+            "expected no findings, got: {findings:?}"
+        );
     }
 
     // 3. Rust fn with path param using fs::read → finding (no canonicalize)
@@ -507,7 +504,10 @@ def open_file(path):
 ";
         let ctx = make_ctx_with_source("src/files.py", src, Language::Python);
         let findings = PathNormalizationDetector.analyze(&ctx).await.unwrap();
-        assert!(findings.is_empty(), "expected no findings, got: {findings:?}");
+        assert!(
+            findings.is_empty(),
+            "expected no findings, got: {findings:?}"
+        );
     }
 
     // 6. JS function with path param, no normalization → finding
@@ -519,8 +519,7 @@ function serveFile(path) {
     return data;
 }
 ";
-        let ctx =
-            make_ctx_with_source("src/server.js", src, Language::JavaScript);
+        let ctx = make_ctx_with_source("src/server.js", src, Language::JavaScript);
         let findings = PathNormalizationDetector.analyze(&ctx).await.unwrap();
         assert_eq!(findings.len(), 1, "expected 1 finding, got: {findings:?}");
         assert_eq!(findings[0].category, FindingCategory::PathTraversal);
@@ -535,10 +534,12 @@ function serveFile(path) {
     return fs.readFileSync(safe);
 }
 ";
-        let ctx =
-            make_ctx_with_source("src/server.js", src, Language::JavaScript);
+        let ctx = make_ctx_with_source("src/server.js", src, Language::JavaScript);
         let findings = PathNormalizationDetector.analyze(&ctx).await.unwrap();
-        assert!(findings.is_empty(), "expected no findings, got: {findings:?}");
+        assert!(
+            findings.is_empty(),
+            "expected no findings, got: {findings:?}"
+        );
     }
 
     // ---- Expression-level path traversal tests ----

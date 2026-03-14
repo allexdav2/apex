@@ -7,11 +7,13 @@ pub mod builder;
 pub mod model_loader;
 pub mod reaching_def;
 pub mod taint;
+pub mod taint_rules;
 pub mod taint_store;
 pub mod taint_flows_store;
 pub mod type_taint;
 pub mod taint_triage;
 
+pub use taint_rules::TaintRuleSet;
 pub use taint_store::TaintSpecStore;
 pub use taint_flows_store::find_taint_flows_with_store;
 pub use type_taint::{TypeTaintRule, TypeTaintAnalyzer};
@@ -128,7 +130,10 @@ impl Cpg {
 
     /// All edges whose source is `id`.
     pub fn edges_from(&self, id: NodeId) -> Vec<&(NodeId, NodeId, EdgeKind)> {
-        self.edges.iter().filter(|(from, _, _)| *from == id).collect()
+        self.edges
+            .iter()
+            .filter(|(from, _, _)| *from == id)
+            .collect()
     }
 
     /// All edges whose target is `id`.

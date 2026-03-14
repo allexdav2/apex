@@ -2,12 +2,13 @@ use rand::RngCore;
 use rand_distr::{Beta, Distribution};
 
 /// Bayesian bandit: each seed arm has Beta(α, β) reward distribution.
+#[derive(Default)]
 pub struct ThompsonScheduler {
     arms: Vec<(Vec<u8>, f64, f64)>, // (data, alpha, beta)
 }
 
 impl ThompsonScheduler {
-    pub fn new() -> Self { Self { arms: Vec::new() } }
+    pub fn new() -> Self { Self::default() }
 
     pub fn add_seed(&mut self, data: Vec<u8>) {
         self.arms.push((data, 1.0, 1.0)); // uniform Beta(1,1) prior

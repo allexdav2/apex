@@ -2,15 +2,18 @@
 //!
 //! Detectors identify panic patterns, security vulnerabilities, and code quality issues.
 
+pub mod api_diff;
 pub mod config;
 pub mod context;
 pub mod cvss;
 pub mod detectors;
 pub mod finding;
+pub mod lockfile;
 pub mod pipeline;
 pub mod ratchet;
 pub mod report;
 pub mod sarif;
+pub mod sbom;
 pub mod sca;
 
 pub use config::DetectConfig;

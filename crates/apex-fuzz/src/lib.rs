@@ -5,8 +5,11 @@ pub mod cmplog;
 pub mod corpus;
 pub mod de_scheduler;
 pub mod directed;
+pub mod distill;
 pub mod grammar;
+pub mod grammar_mutator;
 pub mod libafl_backend;
+pub mod llm_mutator;
 pub mod mutators;
 pub mod plugin;
 pub mod scheduler;
@@ -187,7 +190,10 @@ impl Strategy for FuzzStrategy {
 /// Compute energy boost from near-miss branch heuristics.
 /// Near-miss = heuristic > 0.5 but < 1.0 (close to flipping but not yet covered).
 #[allow(dead_code)]
-fn near_miss_energy_boost(oracle: &CoverageOracle, uncovered: &[apex_core::types::BranchId]) -> f64 {
+fn near_miss_energy_boost(
+    oracle: &CoverageOracle,
+    uncovered: &[apex_core::types::BranchId],
+) -> f64 {
     let mut boost = 0.0;
     for branch in uncovered {
         let h = oracle.best_heuristic(branch);

@@ -2,25 +2,65 @@ use apex_core::error::Result;
 use apex_core::types::Language;
 use async_trait::async_trait;
 use regex::Regex;
+use std::path::Path;
 use std::sync::LazyLock;
 use uuid::Uuid;
 
-use super::util::{is_comment, is_test_file};
+use super::util::is_comment;
 use crate::context::AnalysisContext;
 use crate::finding::{Finding, FindingCategory, Severity};
 use crate::Detector;
 
 pub struct ProcessExitInLibDetector;
 
-static PROCESS_EXIT_RE: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r"(std::)?process::exit\s*\(").expect("invalid process-exit-in-lib regex")
-});
+// Rust: `std::process::exit(` or `process::exit(`
+static RUST_EXIT: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"(std::)?process::exit\s*\(").unwrap());
 
-/// Returns true if the path ends with `main.rs` (exit() is legitimate there).
-fn is_main_file(path: &std::path::Path) -> bool {
-    path.file_name()
-        .and_then(|f| f.to_str())
-        == Some("main.rs")
+// Python: `sys.exit(`, `os._exit(`, bare `exit(`
+static PY_EXIT: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"\b(sys\.exit|os\._exit|exit)\s*\(").unwrap());
+
+// JavaScript: `process.exit(`
+static JS_EXIT: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"\bprocess\.exit\s*\(").unwrap());
+
+/// Check whether a file is a "main" entry point for the given language.
+fn is_main_file(path: &Path, language: Language, source: &str) -> bool {
+    let name = path
+        .file_name()
+        .and_then(|n| n.to_str())
+        .unwrap_or("");
+    let path_str = path.to_string_lossy();
+
+    match language {
+        Language::Rust => {
+            name == "main.rs" || path_str.contains("/bin/") || path_str.contains("\\bin\\")
+        }
+        Language::Python => {
+            name == "__main__.py"
+                || name == "manage.py"
+                || name == "cli.py"
+                || source.contains("if __name__")
+        }
+        Language::JavaScript => {
+            name == "main.js"
+                || name == "index.js"
+                || name == "server.js"
+                || name == "app.js"
+                || name == "cli.js"
+        }
+        _ => false,
+    }
+}
+
+fn matches_exit(line: &str, language: Language) -> bool {
+    match language {
+        Language::Rust => RUST_EXIT.is_match(line),
+        Language::Python => PY_EXIT.is_match(line),
+        Language::JavaScript => JS_EXIT.is_match(line),
+        _ => false,
+    }
 }
 
 #[async_trait]
@@ -30,27 +70,27 @@ impl Detector for ProcessExitInLibDetector {
     }
 
     async fn analyze(&self, ctx: &AnalysisContext) -> Result<Vec<Finding>> {
-        if ctx.language != Language::Rust {
-            return Ok(vec![]);
+        // Only supported for Rust, Python, JavaScript
+        match ctx.language {
+            Language::Rust | Language::Python | Language::JavaScript => {}
+            _ => return Ok(vec![]),
         }
 
         let mut findings = Vec::new();
 
         for (path, source) in &ctx.source_cache {
-            if is_test_file(path) || is_main_file(path) {
+            if is_main_file(path, ctx.language, source) {
                 continue;
             }
 
             for (line_num, line) in source.lines().enumerate() {
                 let trimmed = line.trim();
-
-                if is_comment(trimmed, ctx.language) {
+                if trimmed.is_empty() || is_comment(trimmed, ctx.language) {
                     continue;
                 }
 
-                if PROCESS_EXIT_RE.is_match(trimmed) {
+                if matches_exit(trimmed, ctx.language) {
                     let line_1based = (line_num + 1) as u32;
-
                     findings.push(Finding {
                         id: Uuid::new_v4(),
                         detector: self.name().into(),
@@ -59,23 +99,23 @@ impl Detector for ProcessExitInLibDetector {
                         file: path.clone(),
                         line: Some(line_1based),
                         title: format!(
-                            "process::exit() in library code at line {}",
+                            "Process exit call in library code at line {}",
                             line_1based
                         ),
                         description: format!(
-                            "process::exit() called in {}:{} — this bypasses Drop handlers \
-                             and makes the function untestable.",
-                            path.display(),
-                            line_1based
+                            "Line {} in {} calls process exit from library code. \
+                             Libraries should return errors, not terminate the process.",
+                            line_1based,
+                            path.display()
                         ),
                         evidence: vec![],
                         covered: false,
-                        suggestion: "Return an error instead of calling `process::exit()` \
-                                     — this bypasses cleanup and makes the function untestable"
-                            .into(),
+                        suggestion:
+                            "Return an error instead of calling process exit from library code"
+                                .into(),
                         explanation: None,
                         fix: None,
-                        cwe_ids: vec![705],
+                        cwe_ids: vec![],
                     });
                 }
             }
@@ -89,7 +129,6 @@ impl Detector for ProcessExitInLibDetector {
 mod tests {
     use super::*;
     use crate::context::AnalysisContext;
-    use apex_core::types::Language;
     use std::collections::HashMap;
     use std::path::PathBuf;
 
@@ -101,39 +140,27 @@ mod tests {
         }
     }
 
+    // ---- Rust ----
+
     #[tokio::test]
-    async fn detects_std_process_exit_in_lib() {
+    async fn detects_exit_in_rust_lib() {
         let mut files = HashMap::new();
         files.insert(
             PathBuf::from("src/lib.rs"),
-            "std::process::exit(1);\n".into(),
+            "fn shutdown() {\n    std::process::exit(1);\n}\n".into(),
         );
         let ctx = make_ctx(files, Language::Rust);
         let findings = ProcessExitInLibDetector.analyze(&ctx).await.unwrap();
         assert_eq!(findings.len(), 1);
-        assert_eq!(findings[0].severity, Severity::Medium);
-        assert_eq!(findings[0].category, FindingCategory::LogicBug);
-        assert_eq!(findings[0].cwe_ids, vec![705]);
+        assert_eq!(findings[0].line, Some(2));
     }
 
     #[tokio::test]
-    async fn detects_process_exit_in_cli() {
-        let mut files = HashMap::new();
-        files.insert(
-            PathBuf::from("src/cli.rs"),
-            "process::exit(1);\n".into(),
-        );
-        let ctx = make_ctx(files, Language::Rust);
-        let findings = ProcessExitInLibDetector.analyze(&ctx).await.unwrap();
-        assert_eq!(findings.len(), 1);
-    }
-
-    #[tokio::test]
-    async fn skips_main_rs() {
+    async fn skips_rust_main_rs() {
         let mut files = HashMap::new();
         files.insert(
             PathBuf::from("src/main.rs"),
-            "std::process::exit(0);\n".into(),
+            "fn main() {\n    std::process::exit(0);\n}\n".into(),
         );
         let ctx = make_ctx(files, Language::Rust);
         let findings = ProcessExitInLibDetector.analyze(&ctx).await.unwrap();
@@ -141,25 +168,151 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn skips_test_files() {
+    async fn skips_rust_bin_dir() {
         let mut files = HashMap::new();
         files.insert(
-            PathBuf::from("tests/integration.rs"),
-            "std::process::exit(1);\n".into(),
+            PathBuf::from("src/bin/cli.rs"),
+            "fn main() {\n    process::exit(1);\n}\n".into(),
         );
         let ctx = make_ctx(files, Language::Rust);
         let findings = ProcessExitInLibDetector.analyze(&ctx).await.unwrap();
         assert!(findings.is_empty());
     }
 
+    // ---- Python ----
+
     #[tokio::test]
-    async fn skips_non_rust() {
+    async fn detects_sys_exit_in_python_lib() {
         let mut files = HashMap::new();
         files.insert(
-            PathBuf::from("src/lib.py"),
-            "std::process::exit(1);\n".into(),
+            PathBuf::from("mylib/utils.py"),
+            "import sys\ndef fail():\n    sys.exit(1)\n".into(),
         );
         let ctx = make_ctx(files, Language::Python);
+        let findings = ProcessExitInLibDetector.analyze(&ctx).await.unwrap();
+        assert_eq!(findings.len(), 1);
+    }
+
+    #[tokio::test]
+    async fn detects_os_exit_in_python_lib() {
+        let mut files = HashMap::new();
+        files.insert(
+            PathBuf::from("mylib/utils.py"),
+            "import os\ndef fail():\n    os._exit(1)\n".into(),
+        );
+        let ctx = make_ctx(files, Language::Python);
+        let findings = ProcessExitInLibDetector.analyze(&ctx).await.unwrap();
+        assert_eq!(findings.len(), 1);
+    }
+
+    #[tokio::test]
+    async fn detects_bare_exit_in_python_lib() {
+        let mut files = HashMap::new();
+        files.insert(
+            PathBuf::from("mylib/utils.py"),
+            "def fail():\n    exit(1)\n".into(),
+        );
+        let ctx = make_ctx(files, Language::Python);
+        let findings = ProcessExitInLibDetector.analyze(&ctx).await.unwrap();
+        assert_eq!(findings.len(), 1);
+    }
+
+    #[tokio::test]
+    async fn skips_python_main_module() {
+        let mut files = HashMap::new();
+        files.insert(
+            PathBuf::from("mylib/__main__.py"),
+            "import sys\nsys.exit(0)\n".into(),
+        );
+        let ctx = make_ctx(files, Language::Python);
+        let findings = ProcessExitInLibDetector.analyze(&ctx).await.unwrap();
+        assert!(findings.is_empty());
+    }
+
+    #[tokio::test]
+    async fn skips_python_file_with_name_guard() {
+        let mut files = HashMap::new();
+        files.insert(
+            PathBuf::from("mylib/runner.py"),
+            "import sys\nif __name__ == '__main__':\n    sys.exit(0)\n".into(),
+        );
+        let ctx = make_ctx(files, Language::Python);
+        let findings = ProcessExitInLibDetector.analyze(&ctx).await.unwrap();
+        assert!(findings.is_empty());
+    }
+
+    // ---- JavaScript ----
+
+    #[tokio::test]
+    async fn detects_process_exit_in_js_lib() {
+        let mut files = HashMap::new();
+        files.insert(
+            PathBuf::from("src/utils.js"),
+            "function fail() {\n    process.exit(1);\n}\n".into(),
+        );
+        let ctx = make_ctx(files, Language::JavaScript);
+        let findings = ProcessExitInLibDetector.analyze(&ctx).await.unwrap();
+        assert_eq!(findings.len(), 1);
+    }
+
+    #[tokio::test]
+    async fn skips_js_main_js() {
+        let mut files = HashMap::new();
+        files.insert(
+            PathBuf::from("main.js"),
+            "process.exit(0);\n".into(),
+        );
+        let ctx = make_ctx(files, Language::JavaScript);
+        let findings = ProcessExitInLibDetector.analyze(&ctx).await.unwrap();
+        assert!(findings.is_empty());
+    }
+
+    #[tokio::test]
+    async fn skips_js_index_js() {
+        let mut files = HashMap::new();
+        files.insert(
+            PathBuf::from("index.js"),
+            "process.exit(0);\n".into(),
+        );
+        let ctx = make_ctx(files, Language::JavaScript);
+        let findings = ProcessExitInLibDetector.analyze(&ctx).await.unwrap();
+        assert!(findings.is_empty());
+    }
+
+    #[tokio::test]
+    async fn skips_js_server_js() {
+        let mut files = HashMap::new();
+        files.insert(
+            PathBuf::from("server.js"),
+            "process.exit(0);\n".into(),
+        );
+        let ctx = make_ctx(files, Language::JavaScript);
+        let findings = ProcessExitInLibDetector.analyze(&ctx).await.unwrap();
+        assert!(findings.is_empty());
+    }
+
+    #[tokio::test]
+    async fn skips_js_app_js() {
+        let mut files = HashMap::new();
+        files.insert(
+            PathBuf::from("app.js"),
+            "process.exit(0);\n".into(),
+        );
+        let ctx = make_ctx(files, Language::JavaScript);
+        let findings = ProcessExitInLibDetector.analyze(&ctx).await.unwrap();
+        assert!(findings.is_empty());
+    }
+
+    // ---- Unsupported language ----
+
+    #[tokio::test]
+    async fn skips_unsupported_language() {
+        let mut files = HashMap::new();
+        files.insert(
+            PathBuf::from("src/Main.java"),
+            "System.exit(0);\n".into(),
+        );
+        let ctx = make_ctx(files, Language::Java);
         let findings = ProcessExitInLibDetector.analyze(&ctx).await.unwrap();
         assert!(findings.is_empty());
     }

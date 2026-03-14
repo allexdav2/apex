@@ -3,6 +3,7 @@
 //! Generates SPDX 2.3 or CycloneDX 1.5 JSON documents from parsed
 //! lock-file dependencies.
 
+use apex_cpg::architecture::ImportGraph;
 use crate::lockfile::{self, Dependency};
 use apex_core::error::Result;
 use serde_json::{json, Value};
@@ -228,6 +229,127 @@ impl SbomGenerator {
                 "tools": [{"name": "apex", "version": "0.1.0"}]
             },
             "components": components
+        })
+    }
+}
+
+/// Reachability annotation for an SBOM component.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ReachabilityAnnotation {
+    /// The dependency name.
+    pub name: String,
+    /// Whether this dependency is actually imported/used in the codebase.
+    pub imported: bool,
+    /// Whether a known vulnerability in this dep is reachable from user-facing code.
+    pub vuln_reachable: bool,
+}
+
+impl SbomGenerator {
+    /// Annotate dependencies with reachability information using the import graph.
+    ///
+    /// A dependency is "imported" if any module in the project imports it
+    /// (by checking if the dependency name appears as a prefix of any import target).
+    pub fn annotate_reachability(
+        deps: &[Dependency],
+        graph: &ImportGraph,
+    ) -> Vec<ReachabilityAnnotation> {
+        deps.iter()
+            .map(|dep| {
+                let dep_name_normalized = dep.name.replace('-', "_");
+
+                // Check if any edge in the graph imports this dependency
+                let imported = graph.all_edges().iter().any(|edge| {
+                    edge.to.starts_with(&dep_name_normalized)
+                        || edge.to == dep_name_normalized
+                });
+
+                ReachabilityAnnotation {
+                    name: dep.name.clone(),
+                    imported,
+                    vuln_reachable: imported, // conservative: if imported, assume reachable
+                }
+            })
+            .collect()
+    }
+
+    /// Enrich an SPDX SBOM with reachability properties.
+    pub fn enrich_spdx_with_reachability(
+        mut sbom: Value,
+        annotations: &[ReachabilityAnnotation],
+    ) -> Value {
+        if let Some(packages) = sbom.get_mut("packages").and_then(|v| v.as_array_mut()) {
+            for pkg in packages {
+                if let Some(name) = pkg.get("name").and_then(|v| v.as_str()) {
+                    if let Some(ann) = annotations.iter().find(|a| a.name == name) {
+                        let annotations_arr = pkg
+                            .as_object_mut()
+                            .unwrap()
+                            .entry("annotations")
+                            .or_insert_with(|| json!([]));
+                        if let Some(arr) = annotations_arr.as_array_mut() {
+                            arr.push(json!({
+                                "annotationType": "REVIEW",
+                                "comment": format!(
+                                    "apex:imported={}, apex:vuln-reachable={}",
+                                    ann.imported, ann.vuln_reachable
+                                )
+                            }));
+                        }
+                    }
+                }
+            }
+        }
+        sbom
+    }
+
+    /// Enrich a CycloneDX SBOM with reachability properties.
+    pub fn enrich_cyclonedx_with_reachability(
+        mut sbom: Value,
+        annotations: &[ReachabilityAnnotation],
+    ) -> Value {
+        if let Some(components) = sbom.get_mut("components").and_then(|v| v.as_array_mut()) {
+            for comp in components {
+                if let Some(name) = comp.get("name").and_then(|v| v.as_str()) {
+                    if let Some(ann) = annotations.iter().find(|a| a.name == name) {
+                        let props = comp
+                            .as_object_mut()
+                            .unwrap()
+                            .entry("properties")
+                            .or_insert_with(|| json!([]));
+                        if let Some(arr) = props.as_array_mut() {
+                            arr.push(json!({"name": "apex:imported", "value": ann.imported.to_string()}));
+                            arr.push(json!({"name": "apex:vuln-reachable", "value": ann.vuln_reachable.to_string()}));
+                        }
+                    }
+                }
+            }
+        }
+        sbom
+    }
+
+    /// Generate a VEX (Vulnerability Exploitability Exchange) statement
+    /// for non-reachable vulnerabilities.
+    pub fn generate_vex(annotations: &[ReachabilityAnnotation]) -> Value {
+        let statements: Vec<Value> = annotations
+            .iter()
+            .filter(|a| !a.vuln_reachable)
+            .map(|a| {
+                json!({
+                    "vulnerability": { "name": format!("any-vuln-in-{}", a.name) },
+                    "status": "not_affected",
+                    "justification": "code_not_reachable",
+                    "impact_statement": format!(
+                        "Dependency '{}' is not imported by any project module (apex:imported=false)",
+                        a.name
+                    )
+                })
+            })
+            .collect();
+
+        json!({
+            "bomFormat": "CycloneDX",
+            "specVersion": "1.5",
+            "vulnerabilities": statements
         })
     }
 }
@@ -554,5 +676,196 @@ checksum = "abc123"
             .collect();
         assert!(names.contains(&"serde"));
         assert!(names.contains(&"requests"));
+    }
+
+    // ── Reachability SBOM tests ─────────────────────────────────────────────
+
+    use apex_cpg::architecture::{ImportEdge, ImportGraph};
+
+    fn make_dep(name: &str) -> Dependency {
+        Dependency {
+            name: name.into(),
+            version: "1.0.0".into(),
+            purl: format!("pkg:pypi/{name}@1.0.0"),
+            source_url: None,
+            checksum: None,
+            license: None,
+        }
+    }
+
+    #[test]
+    fn annotate_reachability_imported_dep() {
+        let mut graph = ImportGraph::new();
+        graph.add_edge(ImportEdge {
+            from: "app".into(),
+            to: "requests".into(),
+            line: 1,
+        });
+        let deps = vec![make_dep("requests")];
+        let anns = SbomGenerator::annotate_reachability(&deps, &graph);
+        assert_eq!(anns.len(), 1);
+        assert!(anns[0].imported);
+        assert!(anns[0].vuln_reachable);
+    }
+
+    #[test]
+    fn annotate_reachability_not_imported() {
+        let graph = ImportGraph::new();
+        let deps = vec![make_dep("unused_lib")];
+        let anns = SbomGenerator::annotate_reachability(&deps, &graph);
+        assert_eq!(anns.len(), 1);
+        assert!(!anns[0].imported);
+        assert!(!anns[0].vuln_reachable);
+    }
+
+    #[test]
+    fn annotate_reachability_normalizes_hyphens() {
+        let mut graph = ImportGraph::new();
+        graph.add_edge(ImportEdge {
+            from: "app".into(),
+            to: "my_dep".into(),
+            line: 1,
+        });
+        let deps = vec![make_dep("my-dep")];
+        let anns = SbomGenerator::annotate_reachability(&deps, &graph);
+        assert!(anns[0].imported);
+    }
+
+    #[test]
+    fn annotate_reachability_empty_graph() {
+        let graph = ImportGraph::new();
+        let deps = vec![make_dep("foo"), make_dep("bar")];
+        let anns = SbomGenerator::annotate_reachability(&deps, &graph);
+        assert!(anns.iter().all(|a| !a.imported));
+    }
+
+    #[test]
+    fn enrich_spdx_adds_annotations() {
+        let deps = vec![make_dep("requests")];
+        let sbom = generate_spdx_from_deps("test", &deps);
+        let anns = vec![ReachabilityAnnotation {
+            name: "requests".into(),
+            imported: true,
+            vuln_reachable: true,
+        }];
+        let enriched = SbomGenerator::enrich_spdx_with_reachability(sbom, &anns);
+        let pkg = &enriched["packages"][0];
+        let ann_arr = pkg["annotations"].as_array().unwrap();
+        assert_eq!(ann_arr.len(), 1);
+        assert_eq!(ann_arr[0]["annotationType"], "REVIEW");
+        let comment = ann_arr[0]["comment"].as_str().unwrap();
+        assert!(comment.contains("apex:imported=true"));
+        assert!(comment.contains("apex:vuln-reachable=true"));
+    }
+
+    #[test]
+    fn enrich_spdx_no_packages_noop() {
+        let sbom = json!({"spdxVersion": "SPDX-2.3"});
+        let anns = vec![ReachabilityAnnotation {
+            name: "foo".into(),
+            imported: true,
+            vuln_reachable: true,
+        }];
+        let result = SbomGenerator::enrich_spdx_with_reachability(sbom.clone(), &anns);
+        assert_eq!(result, sbom);
+    }
+
+    #[test]
+    fn enrich_cyclonedx_adds_properties() {
+        let deps = vec![make_dep("requests")];
+        let sbom = generate_cyclonedx_from_deps(&deps);
+        let anns = vec![ReachabilityAnnotation {
+            name: "requests".into(),
+            imported: true,
+            vuln_reachable: true,
+        }];
+        let enriched = SbomGenerator::enrich_cyclonedx_with_reachability(sbom, &anns);
+        let comp = &enriched["components"][0];
+        let props = comp["properties"].as_array().unwrap();
+        assert_eq!(props.len(), 2);
+        assert_eq!(props[0]["name"], "apex:imported");
+        assert_eq!(props[0]["value"], "true");
+        assert_eq!(props[1]["name"], "apex:vuln-reachable");
+        assert_eq!(props[1]["value"], "true");
+    }
+
+    #[test]
+    fn enrich_cyclonedx_no_components_noop() {
+        let sbom = json!({"bomFormat": "CycloneDX", "specVersion": "1.5"});
+        let anns = vec![ReachabilityAnnotation {
+            name: "foo".into(),
+            imported: true,
+            vuln_reachable: true,
+        }];
+        let result = SbomGenerator::enrich_cyclonedx_with_reachability(sbom.clone(), &anns);
+        assert_eq!(result, sbom);
+    }
+
+    #[test]
+    fn generate_vex_for_non_reachable() {
+        let anns = vec![
+            ReachabilityAnnotation {
+                name: "used_lib".into(),
+                imported: true,
+                vuln_reachable: true,
+            },
+            ReachabilityAnnotation {
+                name: "unused_lib".into(),
+                imported: false,
+                vuln_reachable: false,
+            },
+        ];
+        let vex = SbomGenerator::generate_vex(&anns);
+        let vulns = vex["vulnerabilities"].as_array().unwrap();
+        assert_eq!(vulns.len(), 1);
+        assert_eq!(vulns[0]["vulnerability"]["name"], "any-vuln-in-unused_lib");
+        assert_eq!(vulns[0]["status"], "not_affected");
+    }
+
+    #[test]
+    fn generate_vex_empty_when_all_reachable() {
+        let anns = vec![ReachabilityAnnotation {
+            name: "used".into(),
+            imported: true,
+            vuln_reachable: true,
+        }];
+        let vex = SbomGenerator::generate_vex(&anns);
+        let vulns = vex["vulnerabilities"].as_array().unwrap();
+        assert!(vulns.is_empty());
+    }
+
+    #[test]
+    fn annotate_reachability_multiple_deps() {
+        let mut graph = ImportGraph::new();
+        graph.add_edge(ImportEdge {
+            from: "app".into(),
+            to: "requests".into(),
+            line: 1,
+        });
+        let deps = vec![
+            make_dep("requests"),
+            make_dep("unused_a"),
+            make_dep("unused_b"),
+        ];
+        let anns = SbomGenerator::annotate_reachability(&deps, &graph);
+        assert_eq!(anns.len(), 3);
+        assert!(anns[0].imported);
+        assert!(!anns[1].imported);
+        assert!(!anns[2].imported);
+    }
+
+    #[test]
+    fn vex_justification_is_code_not_reachable() {
+        let anns = vec![ReachabilityAnnotation {
+            name: "dormant".into(),
+            imported: false,
+            vuln_reachable: false,
+        }];
+        let vex = SbomGenerator::generate_vex(&anns);
+        let vulns = vex["vulnerabilities"].as_array().unwrap();
+        assert_eq!(vulns[0]["justification"], "code_not_reachable");
+        let impact = vulns[0]["impact_statement"].as_str().unwrap();
+        assert!(impact.contains("dormant"));
+        assert!(impact.contains("not imported"));
     }
 }

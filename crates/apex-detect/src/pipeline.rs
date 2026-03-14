@@ -72,6 +72,29 @@ impl DetectorPipeline {
             detectors.push(Box::new(DuplicatedFnDetector));
         }
 
+        // JS/TS detectors
+        if cfg.enabled.contains(&"js-sql-injection".into()) && lang == Language::JavaScript {
+            detectors.push(Box::new(JsSqlInjectionDetector));
+        }
+        if cfg.enabled.contains(&"js-command-injection".into()) && lang == Language::JavaScript {
+            detectors.push(Box::new(JsCommandInjectionDetector));
+        }
+        if cfg.enabled.contains(&"js-ssrf".into()) && lang == Language::JavaScript {
+            detectors.push(Box::new(JsSsrfDetector));
+        }
+        if cfg.enabled.contains(&"js-crypto-failure".into()) && lang == Language::JavaScript {
+            detectors.push(Box::new(JsCryptoFailureDetector));
+        }
+        if cfg.enabled.contains(&"js-timeout".into()) && lang == Language::JavaScript {
+            detectors.push(Box::new(JsTimeoutDetector));
+        }
+        if cfg.enabled.contains(&"js-insecure-deser".into()) && lang == Language::JavaScript {
+            detectors.push(Box::new(JsInsecureDeserDetector));
+        }
+        if cfg.enabled.contains(&"js-path-traversal".into()) && lang == Language::JavaScript {
+            detectors.push(Box::new(JsPathTraversalDetector));
+        }
+
         if cfg.detect_mode == DetectMode::Fast {
             detectors.retain(|d| !d.uses_cargo_subprocess());
         }
@@ -338,7 +361,7 @@ mod tests {
     fn from_config_enables_all_by_default() {
         let cfg = DetectConfig::default();
         let pipeline = DetectorPipeline::from_config(&cfg, Language::Rust);
-        assert_eq!(pipeline.detectors.len(), 7);
+        assert_eq!(pipeline.detectors.len(), 15);
     }
 
     #[test]
@@ -713,7 +736,7 @@ mod tests {
         // Python should get all except unsafe
         let cfg = DetectConfig::default();
         let pipeline = DetectorPipeline::from_config(&cfg, Language::Python);
-        assert_eq!(pipeline.detectors.len(), 6);
+        assert_eq!(pipeline.detectors.len(), 14);
         assert!(pipeline
             .detectors
             .iter()

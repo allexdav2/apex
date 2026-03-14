@@ -1,11 +1,14 @@
 pub mod bandit;
+pub mod broken_access;
 pub mod cegar;
 pub mod command_injection;
+pub mod crypto_failure;
 pub mod dep_audit;
 pub mod dual_encoder;
 pub mod flag_hygiene;
 pub mod hagnn;
 pub mod hardcoded_secret;
+pub mod insecure_deserialization;
 pub mod license_scan;
 pub mod panic_pattern;
 pub mod path_normalize;
@@ -15,6 +18,7 @@ pub mod security_pattern;
 pub mod session_security;
 pub mod spec_miner;
 pub mod sql_injection;
+pub mod ssrf;
 pub mod static_analysis;
 pub mod timeout;
 pub mod unsafe_reach;
@@ -29,6 +33,15 @@ pub mod process_exit_in_lib;
 pub mod substring_security;
 pub mod unsafe_send_sync;
 pub mod vecdeque_partial;
+
+// JS/TS detectors
+pub mod js_command_injection;
+pub mod js_crypto_failure;
+pub mod js_insecure_deser;
+pub mod js_path_traversal;
+pub mod js_sql_injection;
+pub mod js_ssrf;
+pub mod js_timeout;
 
 pub use bandit::BanditRuleDetector;
 pub use dep_audit::DependencyAuditDetector;
@@ -53,3 +66,12 @@ pub use process_exit_in_lib::ProcessExitInLibDetector;
 pub use substring_security::SubstringSecurityDetector;
 pub use unsafe_send_sync::UnsafeSendSyncDetector;
 pub use vecdeque_partial::VecDequePartialDetector;
+
+// JS/TS detectors
+pub use js_command_injection::JsCommandInjectionDetector;
+pub use js_crypto_failure::JsCryptoFailureDetector;
+pub use js_insecure_deser::JsInsecureDeserDetector;
+pub use js_path_traversal::JsPathTraversalDetector;
+pub use js_sql_injection::JsSqlInjectionDetector;
+pub use js_ssrf::JsSsrfDetector;
+pub use js_timeout::JsTimeoutDetector;

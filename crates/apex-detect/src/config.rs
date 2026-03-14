@@ -20,6 +20,13 @@ fn default_enabled() -> Vec<String> {
         "process-exit-in-lib".into(),
         "unsafe-send-sync".into(),
         "duplicated-fn".into(),
+        "js-sql-injection".into(),
+        "js-command-injection".into(),
+        "js-ssrf".into(),
+        "js-crypto-failure".into(),
+        "js-timeout".into(),
+        "js-insecure-deser".into(),
+        "js-path-traversal".into(),
     ]
 }
 
@@ -189,7 +196,7 @@ clippy_extra_args = ["-W", "clippy::pedantic"]
     #[test]
     fn empty_toml_gives_defaults() {
         let cfg: DetectConfig = toml::from_str("").unwrap();
-        assert_eq!(cfg.enabled.len(), 18);
+        assert_eq!(cfg.enabled.len(), 25);
         assert_eq!(cfg.severity_threshold, "low");
     }
 
@@ -291,7 +298,7 @@ detect_mode = "Fast"
         let cfg = DetectConfig::default();
         let json = serde_json::to_string(&cfg).unwrap();
         let cfg2: DetectConfig = serde_json::from_str(&json).unwrap();
-        assert_eq!(cfg2.enabled.len(), 18);
+        assert_eq!(cfg2.enabled.len(), 25);
         assert_eq!(cfg2.severity_threshold, "low");
     }
 }

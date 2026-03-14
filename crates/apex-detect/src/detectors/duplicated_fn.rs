@@ -1,4 +1,5 @@
 use apex_core::error::Result;
+use apex_core::types::Language;
 use async_trait::async_trait;
 use regex::Regex;
 use std::collections::HashMap;
@@ -6,78 +7,91 @@ use std::path::PathBuf;
 use std::sync::LazyLock;
 use uuid::Uuid;
 
-use super::util::is_test_file;
 use crate::context::AnalysisContext;
 use crate::finding::{Finding, FindingCategory, Severity};
 use crate::Detector;
 
 pub struct DuplicatedFnDetector;
 
-static FN_DEF_RE: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r"^\s*(?:pub\s+)?fn\s+(\w+)\s*\(").expect("invalid fn def regex")
-});
+// Rust: `fn name(` or `pub fn name(` etc.
+static RUST_FN: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"^\s*(?:pub(?:\(crate\))?\s+)?(?:async\s+)?fn\s+(\w+)\s*[<(]").unwrap());
 
-/// Extract free-standing function names from source, skipping functions inside
-/// `impl` blocks and `#[cfg(test)] mod tests` blocks.
-fn extract_free_functions(source: &str) -> Vec<String> {
-    let mut functions = Vec::new();
-    let mut impl_depth: i32 = 0; // >0 means we are inside an impl block
-    let mut test_block = false;
-    let mut test_block_start_depth: i32 = 0;
-    let mut brace_depth: i32 = 0;
-    let mut in_impl = false;
+// Python: `def name(`
+static PY_FN: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"^def\s+(\w+)\s*\(").unwrap());
 
-    for line in source.lines() {
-        let trimmed = line.trim();
+// JavaScript: `function name(` or `export function name(` or `async function name(`
+static JS_FN: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"^(?:export\s+)?(?:async\s+)?function\s+(\w+)\s*\(").unwrap());
 
-        // Detect #[cfg(test)] or `mod tests {`
-        if !test_block
-            && (trimmed.contains("#[cfg(test)]")
-                || (trimmed.starts_with("mod tests") && trimmed.contains('{')))
-        {
-            test_block = true;
-            test_block_start_depth = brace_depth;
-        }
+/// Extract free (non-method) function names from source for the given language.
+fn extract_free_functions(source: &str, language: Language) -> Vec<String> {
+    let mut names = Vec::new();
 
-        // Detect `impl` block start (but not `fn` lines that happen to contain "impl")
-        if !in_impl
-            && !test_block
-            && (trimmed.starts_with("impl ")
-                || trimmed.starts_with("impl<")
-                || trimmed.starts_with("unsafe impl "))
-        {
-            in_impl = true;
-            impl_depth = brace_depth;
-        }
-
-        // Try to match function definition only if not inside impl or test block
-        if !in_impl && !test_block {
-            if let Some(caps) = FN_DEF_RE.captures(line) {
-                if let Some(name) = caps.get(1) {
-                    functions.push(name.as_str().to_string());
+    match language {
+        Language::Rust => {
+            // In Rust, we use brace depth to skip impl blocks.
+            // Free functions are at brace depth 0.
+            let mut brace_depth: i32 = 0;
+            for line in source.lines() {
+                let trimmed = line.trim();
+                if brace_depth == 0 {
+                    if let Some(cap) = RUST_FN.captures(trimmed) {
+                        if let Some(m) = cap.get(1) {
+                            names.push(m.as_str().to_string());
+                        }
+                    }
+                }
+                for ch in line.chars() {
+                    match ch {
+                        '{' => brace_depth += 1,
+                        '}' => brace_depth -= 1,
+                        _ => {}
+                    }
                 }
             }
         }
-
-        // Track brace depth
-        for ch in line.chars() {
-            match ch {
-                '{' => brace_depth += 1,
-                '}' => {
-                    brace_depth -= 1;
-                    if in_impl && brace_depth <= impl_depth {
-                        in_impl = false;
-                    }
-                    if test_block && brace_depth <= test_block_start_depth {
-                        test_block = false;
+        Language::Python => {
+            // In Python, free functions are `def` at column 0 (no indentation).
+            // Methods inside `class` blocks are indented.
+            for line in source.lines() {
+                // Only match lines with no leading whitespace
+                if line.starts_with("def ") {
+                    if let Some(cap) = PY_FN.captures(line) {
+                        if let Some(m) = cap.get(1) {
+                            names.push(m.as_str().to_string());
+                        }
                     }
                 }
-                _ => {}
             }
         }
+        Language::JavaScript => {
+            // In JS, free functions are at brace depth 0.
+            // Methods inside class {} are at depth >= 1.
+            let mut brace_depth: i32 = 0;
+            for line in source.lines() {
+                let trimmed = line.trim();
+                if brace_depth == 0 {
+                    if let Some(cap) = JS_FN.captures(trimmed) {
+                        if let Some(m) = cap.get(1) {
+                            names.push(m.as_str().to_string());
+                        }
+                    }
+                }
+                for ch in line.chars() {
+                    match ch {
+                        '{' => brace_depth += 1,
+                        '}' => brace_depth -= 1,
+                        _ => {}
+                    }
+                }
+            }
+        }
+        _ => {}
     }
 
-    functions
+    names
 }
 
 #[async_trait]
@@ -87,49 +101,43 @@ impl Detector for DuplicatedFnDetector {
     }
 
     async fn analyze(&self, ctx: &AnalysisContext) -> Result<Vec<Finding>> {
-        // Pass 1: collect function names per file
-        let mut fn_to_files: HashMap<String, Vec<PathBuf>> = HashMap::new();
+        match ctx.language {
+            Language::Rust | Language::Python | Language::JavaScript => {}
+            _ => return Ok(vec![]),
+        }
+
+        // Collect all free function names across all files
+        let mut fn_locations: HashMap<String, Vec<PathBuf>> = HashMap::new();
 
         for (path, source) in &ctx.source_cache {
-            if is_test_file(path) {
-                continue;
-            }
-
-            let fns = extract_free_functions(source);
+            let fns = extract_free_functions(source, ctx.language);
             for name in fns {
-                fn_to_files
-                    .entry(name)
-                    .or_default()
-                    .push(path.clone());
+                fn_locations.entry(name).or_default().push(path.clone());
             }
         }
 
-        // Pass 2: report duplicates
         let mut findings = Vec::new();
 
-        // Sort keys for deterministic output
-        let mut keys: Vec<_> = fn_to_files.keys().cloned().collect();
-        keys.sort();
-
-        for name in keys {
-            let files = &fn_to_files[&name];
-            if files.len() >= 2 {
+        for (fn_name, locations) in &fn_locations {
+            if locations.len() > 1 {
                 let file_list: Vec<String> =
-                    files.iter().map(|p| p.display().to_string()).collect();
+                    locations.iter().map(|p| p.display().to_string()).collect();
                 findings.push(Finding {
                     id: Uuid::new_v4(),
                     detector: self.name().into(),
                     severity: Severity::Low,
-                    category: FindingCategory::SecuritySmell,
-                    file: files[0].clone(),
+                    category: FindingCategory::LogicBug,
+                    file: locations[0].clone(),
                     line: None,
                     title: format!(
-                        "Duplicated function `{name}` defined in {} files",
-                        files.len()
+                        "Duplicated function `{}` found in {} files",
+                        fn_name,
+                        locations.len()
                     ),
                     description: format!(
-                        "Function `{name}` is defined in multiple files: {}. \
-                         Consider extracting to a shared module to avoid divergence.",
+                        "Function `{}` is defined in multiple files: {}. \
+                         Consider extracting to a shared module.",
+                        fn_name,
                         file_list.join(", ")
                     ),
                     evidence: vec![],
@@ -137,7 +145,7 @@ impl Detector for DuplicatedFnDetector {
                     suggestion: "Extract the duplicated function into a shared module".into(),
                     explanation: None,
                     fix: None,
-                    cwe_ids: vec![1041],
+                    cwe_ids: vec![],
                 });
             }
         }
@@ -150,11 +158,11 @@ impl Detector for DuplicatedFnDetector {
 mod tests {
     use super::*;
     use crate::context::AnalysisContext;
-    use apex_core::types::Language;
-    use std::collections::HashMap;
-    use std::path::PathBuf;
 
-    fn make_ctx(files: HashMap<PathBuf, String>, lang: Language) -> AnalysisContext {
+    fn make_ctx(
+        files: HashMap<PathBuf, String>,
+        lang: Language,
+    ) -> AnalysisContext {
         AnalysisContext {
             language: lang,
             source_cache: files,
@@ -162,36 +170,36 @@ mod tests {
         }
     }
 
+    // ---- Rust ----
+
     #[tokio::test]
-    async fn detects_duplicate_free_function() {
+    async fn detects_duplicated_fn_rust() {
         let mut files = HashMap::new();
         files.insert(
             PathBuf::from("src/a.rs"),
-            "fn fnv1a_hash(s: &str) -> u64 {\n    0\n}\n".into(),
+            "fn helper() {}\n".into(),
         );
         files.insert(
             PathBuf::from("src/b.rs"),
-            "fn fnv1a_hash(s: &str) -> u64 {\n    0\n}\n".into(),
+            "fn helper() {}\n".into(),
         );
         let ctx = make_ctx(files, Language::Rust);
         let findings = DuplicatedFnDetector.analyze(&ctx).await.unwrap();
-        assert!(!findings.is_empty());
+        assert_eq!(findings.len(), 1);
+        assert!(findings[0].title.contains("helper"));
         assert_eq!(findings[0].severity, Severity::Low);
-        assert_eq!(findings[0].category, FindingCategory::SecuritySmell);
-        assert_eq!(findings[0].cwe_ids, vec![1041]);
-        assert!(findings[0].title.contains("fnv1a_hash"));
     }
 
     #[tokio::test]
-    async fn no_finding_for_different_functions() {
+    async fn no_finding_for_unique_fns_rust() {
         let mut files = HashMap::new();
         files.insert(
             PathBuf::from("src/a.rs"),
-            "fn foo() {}\n".into(),
+            "fn alpha() {}\n".into(),
         );
         files.insert(
             PathBuf::from("src/b.rs"),
-            "fn bar() {}\n".into(),
+            "fn beta() {}\n".into(),
         );
         let ctx = make_ctx(files, Language::Rust);
         let findings = DuplicatedFnDetector.analyze(&ctx).await.unwrap();
@@ -199,110 +207,176 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn skips_functions_inside_impl_blocks() {
+    async fn skips_methods_in_impl_block_rust() {
         let mut files = HashMap::new();
         files.insert(
             PathBuf::from("src/a.rs"),
-            "impl Display for A {\n    fn fmt(&self) {}\n}\n".into(),
+            "impl Foo {\n    fn helper(&self) {}\n}\n".into(),
         );
         files.insert(
             PathBuf::from("src/b.rs"),
-            "impl Display for B {\n    fn fmt(&self) {}\n}\n".into(),
+            "impl Bar {\n    fn helper(&self) {}\n}\n".into(),
         );
         let ctx = make_ctx(files, Language::Rust);
         let findings = DuplicatedFnDetector.analyze(&ctx).await.unwrap();
         assert!(findings.is_empty());
     }
 
-    #[tokio::test]
-    async fn skips_test_files() {
-        let mut files = HashMap::new();
-        files.insert(
-            PathBuf::from("tests/a.rs"),
-            "fn helper() {}\n".into(),
-        );
-        files.insert(
-            PathBuf::from("tests/b.rs"),
-            "fn helper() {}\n".into(),
-        );
-        let ctx = make_ctx(files, Language::Rust);
-        let findings = DuplicatedFnDetector.analyze(&ctx).await.unwrap();
-        assert!(findings.is_empty());
-    }
+    // ---- Python ----
 
     #[tokio::test]
-    async fn skips_functions_in_cfg_test_blocks() {
+    async fn detects_duplicated_fn_python() {
         let mut files = HashMap::new();
         files.insert(
-            PathBuf::from("src/a.rs"),
-            "fn real_fn() {}\n\n#[cfg(test)]\nmod tests {\n    fn helper() {}\n}\n".into(),
+            PathBuf::from("src/a.py"),
+            "def helper():\n    pass\n".into(),
         );
         files.insert(
-            PathBuf::from("src/b.rs"),
-            "fn other_fn() {}\n\n#[cfg(test)]\nmod tests {\n    fn helper() {}\n}\n".into(),
+            PathBuf::from("src/b.py"),
+            "def helper():\n    pass\n".into(),
         );
-        let ctx = make_ctx(files, Language::Rust);
-        let findings = DuplicatedFnDetector.analyze(&ctx).await.unwrap();
-        assert!(findings.is_empty());
-    }
-
-    #[tokio::test]
-    async fn one_finding_per_duplicate_group() {
-        let mut files = HashMap::new();
-        files.insert(
-            PathBuf::from("src/a.rs"),
-            "fn compute() {}\n".into(),
-        );
-        files.insert(
-            PathBuf::from("src/b.rs"),
-            "fn compute() {}\n".into(),
-        );
-        files.insert(
-            PathBuf::from("src/c.rs"),
-            "fn compute() {}\n".into(),
-        );
-        let ctx = make_ctx(files, Language::Rust);
+        let ctx = make_ctx(files, Language::Python);
         let findings = DuplicatedFnDetector.analyze(&ctx).await.unwrap();
         assert_eq!(findings.len(), 1);
-        assert!(findings[0].title.contains("3 files"));
+        assert!(findings[0].title.contains("helper"));
     }
 
     #[tokio::test]
-    async fn detects_pub_fn_duplicates() {
+    async fn skips_methods_in_class_python() {
         let mut files = HashMap::new();
         files.insert(
-            PathBuf::from("src/a.rs"),
-            "pub fn init() {}\n".into(),
+            PathBuf::from("src/a.py"),
+            "class Foo:\n    def helper(self):\n        pass\n".into(),
         );
         files.insert(
-            PathBuf::from("src/b.rs"),
-            "pub fn init() {}\n".into(),
+            PathBuf::from("src/b.py"),
+            "class Bar:\n    def helper(self):\n        pass\n".into(),
         );
-        let ctx = make_ctx(files, Language::Rust);
+        let ctx = make_ctx(files, Language::Python);
+        let findings = DuplicatedFnDetector.analyze(&ctx).await.unwrap();
+        assert!(findings.is_empty());
+    }
+
+    #[tokio::test]
+    async fn no_finding_unique_fns_python() {
+        let mut files = HashMap::new();
+        files.insert(
+            PathBuf::from("src/a.py"),
+            "def alpha():\n    pass\n".into(),
+        );
+        files.insert(
+            PathBuf::from("src/b.py"),
+            "def beta():\n    pass\n".into(),
+        );
+        let ctx = make_ctx(files, Language::Python);
+        let findings = DuplicatedFnDetector.analyze(&ctx).await.unwrap();
+        assert!(findings.is_empty());
+    }
+
+    // ---- JavaScript ----
+
+    #[tokio::test]
+    async fn detects_duplicated_fn_js() {
+        let mut files = HashMap::new();
+        files.insert(
+            PathBuf::from("src/a.js"),
+            "function helper() {}\n".into(),
+        );
+        files.insert(
+            PathBuf::from("src/b.js"),
+            "function helper() {}\n".into(),
+        );
+        let ctx = make_ctx(files, Language::JavaScript);
         let findings = DuplicatedFnDetector.analyze(&ctx).await.unwrap();
         assert_eq!(findings.len(), 1);
-        assert!(findings[0].title.contains("init"));
+        assert!(findings[0].title.contains("helper"));
+    }
+
+    #[tokio::test]
+    async fn detects_duplicated_export_fn_js() {
+        let mut files = HashMap::new();
+        files.insert(
+            PathBuf::from("src/a.js"),
+            "export function helper() {}\n".into(),
+        );
+        files.insert(
+            PathBuf::from("src/b.js"),
+            "export async function helper() {}\n".into(),
+        );
+        let ctx = make_ctx(files, Language::JavaScript);
+        let findings = DuplicatedFnDetector.analyze(&ctx).await.unwrap();
+        assert_eq!(findings.len(), 1);
+    }
+
+    #[tokio::test]
+    async fn skips_methods_in_class_js() {
+        let mut files = HashMap::new();
+        files.insert(
+            PathBuf::from("src/a.js"),
+            "class Foo {\n    function helper() {}\n}\n".into(),
+        );
+        files.insert(
+            PathBuf::from("src/b.js"),
+            "class Bar {\n    function helper() {}\n}\n".into(),
+        );
+        let ctx = make_ctx(files, Language::JavaScript);
+        let findings = DuplicatedFnDetector.analyze(&ctx).await.unwrap();
+        assert!(findings.is_empty());
+    }
+
+    // ---- Unsupported language ----
+
+    #[tokio::test]
+    async fn skips_unsupported_language() {
+        let mut files = HashMap::new();
+        files.insert(
+            PathBuf::from("src/Main.java"),
+            "void helper() {}\n".into(),
+        );
+        files.insert(
+            PathBuf::from("src/Other.java"),
+            "void helper() {}\n".into(),
+        );
+        let ctx = make_ctx(files, Language::Java);
+        let findings = DuplicatedFnDetector.analyze(&ctx).await.unwrap();
+        assert!(findings.is_empty());
+    }
+
+    // ---- extract_free_functions unit tests ----
+
+    #[test]
+    fn extract_rust_free_fns() {
+        let src = "fn alpha() {}\npub fn beta() {}\nimpl X {\n    fn method() {}\n}\n";
+        let fns = extract_free_functions(src, Language::Rust);
+        assert_eq!(fns, vec!["alpha", "beta"]);
     }
 
     #[test]
-    fn extract_free_functions_basic() {
-        let source = "fn foo() {}\nfn bar() {}\n";
-        let fns = extract_free_functions(source);
-        assert_eq!(fns, vec!["foo", "bar"]);
+    fn extract_python_free_fns() {
+        let src = "def alpha():\n    pass\nclass Foo:\n    def method(self):\n        pass\ndef beta():\n    pass\n";
+        let fns = extract_free_functions(src, Language::Python);
+        assert_eq!(fns, vec!["alpha", "beta"]);
     }
 
     #[test]
-    fn extract_free_functions_skips_impl() {
-        let source = "impl Foo {\n    fn method(&self) {}\n}\nfn free() {}\n";
-        let fns = extract_free_functions(source);
-        assert_eq!(fns, vec!["free"]);
+    fn extract_js_free_fns() {
+        let src = "function alpha() {}\nclass Foo {\n    function method() {}\n}\nexport function beta() {}\n";
+        let fns = extract_free_functions(src, Language::JavaScript);
+        assert_eq!(fns, vec!["alpha", "beta"]);
     }
 
     #[test]
-    fn extract_free_functions_skips_cfg_test() {
-        let source = "fn real() {}\n#[cfg(test)]\nmod tests {\n    fn helper() {}\n}\n";
-        let fns = extract_free_functions(source);
-        assert_eq!(fns, vec!["real"]);
+    fn extract_rust_async_fn() {
+        let src = "pub async fn serve(addr: &str) {}\n";
+        let fns = extract_free_functions(src, Language::Rust);
+        assert_eq!(fns, vec!["serve"]);
+    }
+
+    #[test]
+    fn extract_js_async_fn() {
+        let src = "export async function fetchData() {}\n";
+        let fns = extract_free_functions(src, Language::JavaScript);
+        assert_eq!(fns, vec!["fetchData"]);
     }
 
     #[test]

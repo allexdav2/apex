@@ -12,6 +12,7 @@ pub mod lockfile;
 pub mod pipeline;
 pub mod ratchet;
 pub mod report;
+pub mod rules;
 pub mod sarif;
 pub mod sbom;
 pub mod sca;

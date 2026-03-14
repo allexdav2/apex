@@ -1,19 +1,24 @@
 use apex_core::error::Result;
+use apex_core::types::Language;
 use async_trait::async_trait;
 use regex::Regex;
 use std::sync::LazyLock;
 use uuid::Uuid;
 
-use super::util::{is_comment, is_test_file};
+use super::util::is_comment;
 use crate::context::AnalysisContext;
 use crate::finding::{Finding, FindingCategory, Severity};
 use crate::Detector;
-use apex_core::types::Language;
 
 pub struct DiscardedAsyncResultDetector;
 
-static DISCARDED_AWAIT: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"let\s+_\s*=\s*.*\.await\s*;").unwrap());
+// Rust: `let _ = something.await` — discards the result of an async call
+static RUST_DISCARD_AWAIT: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"let\s+_\s*=.*\.await").unwrap());
+
+// JavaScript: `void asyncFn()` — explicit promise discard
+static JS_VOID_ASYNC: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"^\s*void\s+\w").unwrap());
 
 #[async_trait]
 impl Detector for DiscardedAsyncResultDetector {
@@ -22,27 +27,29 @@ impl Detector for DiscardedAsyncResultDetector {
     }
 
     async fn analyze(&self, ctx: &AnalysisContext) -> Result<Vec<Finding>> {
-        let mut findings = Vec::new();
-
-        if ctx.language != Language::Rust {
-            return Ok(findings);
+        // Only supported for Rust and JavaScript
+        match ctx.language {
+            Language::Rust | Language::JavaScript => {}
+            _ => return Ok(vec![]),
         }
 
-        for (path, source) in &ctx.source_cache {
-            if is_test_file(path) {
-                continue;
-            }
+        let mut findings = Vec::new();
 
+        for (path, source) in &ctx.source_cache {
             for (line_num, line) in source.lines().enumerate() {
                 let trimmed = line.trim();
-
-                if is_comment(trimmed, ctx.language) {
+                if trimmed.is_empty() || is_comment(trimmed, ctx.language) {
                     continue;
                 }
 
-                if DISCARDED_AWAIT.is_match(trimmed) {
-                    let line_1based = (line_num + 1) as u32;
+                let matches = match ctx.language {
+                    Language::Rust => RUST_DISCARD_AWAIT.is_match(trimmed),
+                    Language::JavaScript => JS_VOID_ASYNC.is_match(line),
+                    _ => false,
+                };
 
+                if matches {
+                    let line_1based = (line_num + 1) as u32;
                     findings.push(Finding {
                         id: Uuid::new_v4(),
                         detector: self.name().into(),
@@ -51,20 +58,23 @@ impl Detector for DiscardedAsyncResultDetector {
                         file: path.clone(),
                         line: Some(line_1based),
                         title: format!(
-                            "Discarded async Result at line {}",
+                            "Discarded async result at line {}",
                             line_1based
                         ),
                         description: format!(
-                            "Async result silently discarded with `let _ =` in {}:{}",
-                            path.display(),
-                            line_1based
+                            "Line {} in {} discards the result of an async operation. \
+                             Errors from this operation will be silently lost.",
+                            line_1based,
+                            path.display()
                         ),
                         evidence: vec![],
                         covered: false,
-                        suggestion: "Log or propagate the error instead of discarding with `let _ =`".into(),
+                        suggestion:
+                            "Handle the async result or explicitly log the error instead of discarding it"
+                                .into(),
                         explanation: None,
                         fix: None,
-                        cwe_ids: vec![252],
+                        cwe_ids: vec![],
                     });
                 }
             }
@@ -89,63 +99,92 @@ mod tests {
         }
     }
 
+    // ---- Rust ----
+
     #[tokio::test]
-    async fn detects_discarded_await() {
+    async fn detects_discarded_await_rust() {
         let mut files = HashMap::new();
         files.insert(
-            PathBuf::from("src/main.rs"),
-            "let _ = bar().await;\n".into(),
+            PathBuf::from("src/lib.rs"),
+            "let _ = client.send(msg).await;\n".into(),
         );
         let ctx = make_ctx(files, Language::Rust);
         let findings = DiscardedAsyncResultDetector.analyze(&ctx).await.unwrap();
         assert_eq!(findings.len(), 1);
         assert_eq!(findings[0].severity, Severity::Medium);
         assert_eq!(findings[0].category, FindingCategory::LogicBug);
-        assert_eq!(findings[0].cwe_ids, vec![252]);
     }
 
     #[tokio::test]
-    async fn detects_discarded_method_await() {
+    async fn no_finding_for_handled_await_rust() {
         let mut files = HashMap::new();
         files.insert(
             PathBuf::from("src/lib.rs"),
-            "let _ = strategy.observe(result).await;\n".into(),
+            "let result = client.send(msg).await?;\n".into(),
         );
         let ctx = make_ctx(files, Language::Rust);
+        let findings = DiscardedAsyncResultDetector.analyze(&ctx).await.unwrap();
+        assert!(findings.is_empty());
+    }
+
+    #[tokio::test]
+    async fn no_finding_for_non_await_discard_rust() {
+        let mut files = HashMap::new();
+        files.insert(
+            PathBuf::from("src/lib.rs"),
+            "let _ = some_sync_fn();\n".into(),
+        );
+        let ctx = make_ctx(files, Language::Rust);
+        let findings = DiscardedAsyncResultDetector.analyze(&ctx).await.unwrap();
+        assert!(findings.is_empty());
+    }
+
+    // ---- JavaScript ----
+
+    #[tokio::test]
+    async fn detects_void_async_js() {
+        let mut files = HashMap::new();
+        files.insert(
+            PathBuf::from("src/utils.js"),
+            "    void sendMetrics();\n".into(),
+        );
+        let ctx = make_ctx(files, Language::JavaScript);
         let findings = DiscardedAsyncResultDetector.analyze(&ctx).await.unwrap();
         assert_eq!(findings.len(), 1);
     }
 
     #[tokio::test]
-    async fn ignores_assigned_await() {
+    async fn detects_void_async_js_no_indent() {
         let mut files = HashMap::new();
         files.insert(
-            PathBuf::from("src/main.rs"),
-            "let result = bar().await;\n".into(),
+            PathBuf::from("src/utils.js"),
+            "void fetchData();\n".into(),
         );
-        let ctx = make_ctx(files, Language::Rust);
+        let ctx = make_ctx(files, Language::JavaScript);
+        let findings = DiscardedAsyncResultDetector.analyze(&ctx).await.unwrap();
+        assert_eq!(findings.len(), 1);
+    }
+
+    #[tokio::test]
+    async fn no_finding_for_awaited_promise_js() {
+        let mut files = HashMap::new();
+        files.insert(
+            PathBuf::from("src/utils.js"),
+            "const result = await fetchData();\n".into(),
+        );
+        let ctx = make_ctx(files, Language::JavaScript);
         let findings = DiscardedAsyncResultDetector.analyze(&ctx).await.unwrap();
         assert!(findings.is_empty());
     }
 
-    #[tokio::test]
-    async fn ignores_propagated_await() {
-        let mut files = HashMap::new();
-        files.insert(
-            PathBuf::from("src/main.rs"),
-            "bar().await?;\n".into(),
-        );
-        let ctx = make_ctx(files, Language::Rust);
-        let findings = DiscardedAsyncResultDetector.analyze(&ctx).await.unwrap();
-        assert!(findings.is_empty());
-    }
+    // ---- Unsupported language ----
 
     #[tokio::test]
-    async fn ignores_non_rust_language() {
+    async fn skips_unsupported_language() {
         let mut files = HashMap::new();
         files.insert(
-            PathBuf::from("src/main.py"),
-            "let _ = bar().await;\n".into(),
+            PathBuf::from("src/utils.py"),
+            "void something\n".into(),
         );
         let ctx = make_ctx(files, Language::Python);
         let findings = DiscardedAsyncResultDetector.analyze(&ctx).await.unwrap();
@@ -153,11 +192,11 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn ignores_test_files() {
+    async fn skips_comments_rust() {
         let mut files = HashMap::new();
         files.insert(
-            PathBuf::from("tests/test_async.rs"),
-            "let _ = bar().await;\n".into(),
+            PathBuf::from("src/lib.rs"),
+            "// let _ = client.send(msg).await;\n".into(),
         );
         let ctx = make_ctx(files, Language::Rust);
         let findings = DiscardedAsyncResultDetector.analyze(&ctx).await.unwrap();

@@ -42,6 +42,53 @@ const RUST_SECURITY_PATTERNS: &[SecurityPattern] = &[
         sanitization_indicators: &["escape", "sanitize"],
         cwe: &[78],
     },
+    // Task 12: Command injection from format strings
+    SecurityPattern {
+        sink: "Command::new(format!(",
+        description: "Command from format string — command injection via string interpolation",
+        category: FindingCategory::Injection,
+        base_severity: Severity::Critical,
+        user_input_indicators: &["user", "input", "request", "query", "arg", "&str"],
+        sanitization_indicators: &["escape", "sanitize", "quote", "shell_escape"],
+        cwe: &[78],
+    },
+    SecurityPattern {
+        sink: ".arg(format!(",
+        description: "Command argument from format string — command injection via interpolated arg",
+        category: FindingCategory::Injection,
+        base_severity: Severity::High,
+        user_input_indicators: &["user", "input", "request", "query", "&str"],
+        sanitization_indicators: &["escape", "sanitize", "quote", "shell_escape"],
+        cwe: &[78],
+    },
+    // Task 13: SSRF / HTTP request patterns
+    SecurityPattern {
+        sink: "reqwest::get(",
+        description: "HTTP GET with potentially user-controlled URL — SSRF risk",
+        category: FindingCategory::Injection,
+        base_severity: Severity::High,
+        user_input_indicators: &["user", "input", "request", "query", "param", "format!", "&str"],
+        sanitization_indicators: &["allowlist", "whitelist", "ALLOWED", "starts_with"],
+        cwe: &[918],
+    },
+    SecurityPattern {
+        sink: "Client::new().get(format!(",
+        description: "HTTP GET with URL from format string — SSRF risk",
+        category: FindingCategory::Injection,
+        base_severity: Severity::High,
+        user_input_indicators: &["user", "input", "request", "query", "param", "&str"],
+        sanitization_indicators: &["allowlist", "whitelist", "ALLOWED", "starts_with"],
+        cwe: &[918],
+    },
+    SecurityPattern {
+        sink: "hyper::Uri::from_str(",
+        description: "URI from string — SSRF if string is user-controlled",
+        category: FindingCategory::Injection,
+        base_severity: Severity::Medium,
+        user_input_indicators: &["user", "input", "request", "query", "param", "format!", "&str"],
+        sanitization_indicators: &["allowlist", "whitelist", "ALLOWED", "starts_with", "parse"],
+        cwe: &[918],
+    },
 ];
 
 const PYTHON_SECURITY_PATTERNS: &[SecurityPattern] = &[

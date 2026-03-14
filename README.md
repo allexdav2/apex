@@ -1,6 +1,7 @@
 # APEX — Autonomous Path EXploration
 
 [![CI](https://github.com/allexdav2/apex/actions/workflows/ci.yml/badge.svg)](https://github.com/allexdav2/apex/actions/workflows/ci.yml)
+[![Release](https://img.shields.io/github/v/release/allexdav2/apex?label=release)](https://github.com/allexdav2/apex/releases/latest)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
 **Stop guessing what your tests miss.** APEX finds dead code, flaky tests,
@@ -77,19 +78,61 @@ $ /apex-intel
 
 ---
 
-## Install — one command
+## Installation
+
+**Standalone installer** (recommended — macOS and Linux):
 
 ```bash
-# Prerequisites: Rust via rustup (not Homebrew)
-curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
+curl -sSL https://raw.githubusercontent.com/allexdav2/apex/main/install.sh | sh
+```
+
+**Homebrew:**
+
+```bash
+brew install allexdav2/tap/apex
+```
+
+**npm:**
+
+```bash
+npx @apex-coverage/cli run --target . --lang python
+```
+
+**pip:**
+
+```bash
+pipx install apex-coverage
+```
+
+**Nix:**
+
+```bash
+nix run github:allexdav2/apex
+```
+
+**Cargo** (from source):
+
+```bash
+cargo install --git https://github.com/allexdav2/apex
+```
+
+<details>
+<summary><strong>Build from source with optional features</strong></summary>
+
+```bash
+# Prerequisites
 rustup component add llvm-tools-preview
 cargo install cargo-llvm-cov
 
 # Clone and build
-git clone https://github.com/allexdav2/apex.git && cd apex \
-  && cargo build --release \
-  && ./agents/install.sh
+git clone https://github.com/allexdav2/apex.git && cd apex
+cargo build --release
+
+# With optional heavy features (Z3, LibAFL, PyO3)
+cargo build --release --features "apex-symbolic/z3-solver,apex-fuzz/libafl-backend"
 ```
+
+</details>
 
 ---
 

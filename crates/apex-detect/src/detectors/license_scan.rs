@@ -269,17 +269,48 @@ fn check_custom(expr: &str, deny: &[String], allow: &[String]) -> PolicyVerdict 
     }
 }
 
+/// Normalize SPDX expression: strip parens, normalize whitespace and operator case.
+fn normalize_spdx(expr: &str) -> String {
+    let mut s = expr.trim().to_string();
+    // Strip parentheses (simple — handles nested too)
+    s = s.replace('(', "").replace(')', "");
+    // Normalize whitespace (tabs, multiple spaces → single space)
+    s = s.split_whitespace().collect::<Vec<_>>().join(" ");
+    // Normalize operator case
+    s = s.replace(" or ", " OR ").replace(" and ", " AND ");
+    s
+}
+
+/// Normalize a single SPDX identifier for matching.
+fn normalize_spdx_id(id: &str) -> String {
+    let id = id.trim();
+    // Strip WITH clauses (exceptions only add permissions)
+    let base = if let Some(pos) = id.to_uppercase().find(" WITH ") {
+        &id[..pos]
+    } else {
+        id
+    };
+    // Map deprecated + suffix: "GPL-2.0+" → "GPL-2.0-or-later"
+    if let Some(prefix) = base.strip_suffix('+') {
+        format!("{prefix}-or-later")
+    } else {
+        base.to_string()
+    }
+}
+
 /// Simple SPDX expression evaluation:
 /// - Split on " OR " first (any alternative being allowed suffices)
 /// - Split on " AND " (all components must be allowed)
 fn eval_spdx_permissive(expr: &str, allow: &[&str]) -> bool {
+    let expr = normalize_spdx(expr);
     let or_parts: Vec<&str> = expr.split(" OR ").collect();
     // If any OR-branch is fully allowed, the whole expression is allowed.
     or_parts.iter().any(|or_part| {
         let and_parts: Vec<&str> = or_part.split(" AND ").collect();
-        and_parts
-            .iter()
-            .all(|id| allow.iter().any(|a| a.eq_ignore_ascii_case(id.trim())))
+        and_parts.iter().all(|id| {
+            let normalized = normalize_spdx_id(id);
+            allow.iter().any(|a| a.eq_ignore_ascii_case(&normalized))
+        })
     })
 }
 
@@ -287,6 +318,7 @@ fn eval_spdx_permissive(expr: &str, allow: &[&str]) -> bool {
 /// For OR: if ALL alternatives are denied, the expression is denied.
 /// For AND: if ANY component is denied, the expression is denied.
 fn find_denied_in_expr(expr: &str, deny: &[&str]) -> Option<String> {
+    let expr = normalize_spdx(expr);
     let or_parts: Vec<&str> = expr.split(" OR ").collect();
 
     // Collect denied items per OR-branch.
@@ -298,9 +330,9 @@ fn find_denied_in_expr(expr: &str, deny: &[&str]) -> Option<String> {
         let and_parts: Vec<&str> = or_part.split(" AND ").collect();
         // An AND branch is denied if ANY of its components is denied.
         let branch_denied = and_parts.iter().find_map(|id| {
-            let trimmed = id.trim();
-            if deny.iter().any(|d| d.eq_ignore_ascii_case(trimmed)) {
-                Some(trimmed.to_string())
+            let normalized = normalize_spdx_id(id);
+            if deny.iter().any(|d| d.eq_ignore_ascii_case(&normalized)) {
+                Some(normalized)
             } else {
                 None
             }
@@ -706,6 +738,46 @@ license = "MIT"
             allow: vec!["MIT".into()],
         };
         let result = check_policy(&policy, "MIT");
+        assert!(matches!(result, PolicyVerdict::Allowed));
+    }
+
+    // -- SPDX parsing bug-fix tests -----------------------------------------
+
+    #[test]
+    fn bug_spdx_with_exception_allowed() {
+        // WITH clause adds exceptions (more permissive) — should match base license
+        let result = check_policy(
+            &LicensePolicy::Permissive,
+            "Apache-2.0 WITH LLVM-exception",
+        );
+        assert!(matches!(result, PolicyVerdict::Allowed));
+    }
+
+    #[test]
+    fn bug_spdx_parentheses_stripped() {
+        // Parenthesized SPDX expressions should be parsed correctly
+        let result = check_policy(&LicensePolicy::Permissive, "(MIT OR Apache-2.0)");
+        assert!(matches!(result, PolicyVerdict::Allowed));
+    }
+
+    #[test]
+    fn bug_spdx_plus_denied() {
+        // "GPL-2.0+" is deprecated SPDX for "GPL-2.0-or-later", which is denied
+        let result = check_policy(&LicensePolicy::Enterprise, "GPL-2.0+");
+        assert!(matches!(result, PolicyVerdict::Denied { .. }));
+    }
+
+    #[test]
+    fn bug_spdx_lowercase_or() {
+        // Lowercase "or" should be treated as SPDX OR operator
+        let result = check_policy(&LicensePolicy::Permissive, "MIT or Apache-2.0");
+        assert!(matches!(result, PolicyVerdict::Allowed));
+    }
+
+    #[test]
+    fn bug_spdx_tab_whitespace() {
+        // Tab characters in SPDX expressions should not cause false positives
+        let result = check_policy(&LicensePolicy::Permissive, "MIT\tOR\tApache-2.0");
         assert!(matches!(result, PolicyVerdict::Allowed));
     }
 }

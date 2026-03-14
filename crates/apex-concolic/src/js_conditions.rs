@@ -33,10 +33,11 @@ pub fn parse_js_condition(input: &str) -> ConditionTree {
 // ---------------------------------------------------------------------------
 
 fn parse_or(text: &str) -> ConditionTree {
-    // Split on `||` at paren depth 0 (rightmost split for left-associativity)
+    // Split on `||` at paren depth 0 (leftmost split — left side gets lower precedence,
+    // right side recurses to capture remaining `||` chains)
     if let Some(pos) = find_operator_outside_parens(text, "||") {
-        let left = parse_or(text[..pos].trim());
-        let right = parse_and(text[pos + 2..].trim());
+        let left = parse_and(text[..pos].trim());
+        let right = parse_or(text[pos + 2..].trim());
         return ConditionTree::Or(Box::new(left), Box::new(right));
     }
     parse_and(text)
@@ -44,8 +45,8 @@ fn parse_or(text: &str) -> ConditionTree {
 
 fn parse_and(text: &str) -> ConditionTree {
     if let Some(pos) = find_operator_outside_parens(text, "&&") {
-        let left = parse_and(text[..pos].trim());
-        let right = parse_not(text[pos + 2..].trim());
+        let left = parse_not(text[..pos].trim());
+        let right = parse_and(text[pos + 2..].trim());
         return ConditionTree::And(Box::new(left), Box::new(right));
     }
     parse_not(text)
@@ -250,9 +251,10 @@ pub fn parse_expr(text: &str) -> Expr {
     }
 
     // string literal
-    if (text.starts_with('"') && text.ends_with('"'))
-        || (text.starts_with('\'') && text.ends_with('\''))
-        || (text.starts_with('`') && text.ends_with('`'))
+    if text.len() >= 2
+        && ((text.starts_with('"') && text.ends_with('"'))
+            || (text.starts_with('\'') && text.ends_with('\''))
+            || (text.starts_with('`') && text.ends_with('`')))
     {
         let s = text[1..text.len() - 1].to_string();
         return Expr::StringLiteral(s);
@@ -326,8 +328,16 @@ fn find_operator_outside_parens(text: &str, needle: &str) -> Option<usize> {
 
         // String tracking
         if let Some(q) = in_str {
-            if b == q && (i == 0 || bytes[i - 1] != b'\\') {
-                in_str = None;
+            if b == q {
+                let mut backslash_count = 0;
+                let mut j = i;
+                while j > 0 && bytes[j - 1] == b'\\' {
+                    backslash_count += 1;
+                    j -= 1;
+                }
+                if backslash_count % 2 == 0 {
+                    in_str = None;
+                }
             }
             i += 1;
             continue;
@@ -678,5 +688,66 @@ mod tests {
                 right: Box::new(Expr::StringLiteral("admin".into())),
             }
         );
+    }
+
+    // --- bug regression tests ---
+
+    #[test]
+    fn bug_parse_expr_single_quote_no_panic() {
+        // A single `"` used to panic on text[1..0] slice
+        let expr = parse_expr("\"");
+        assert!(matches!(expr, Expr::Variable(_)));
+    }
+
+    #[test]
+    fn bug_parse_expr_single_backtick_no_panic() {
+        // A single backtick used to panic similarly
+        let expr = parse_expr("`");
+        assert!(matches!(expr, Expr::Variable(_)));
+    }
+
+    #[test]
+    fn bug_escaped_backslash_parsed() {
+        // "test\\" has an escaped backslash — the closing quote is real.
+        // The old code thought the quote was escaped and never closed the string.
+        let tree = parse_js_condition(r#""test\\" === x"#);
+        assert!(
+            matches!(tree, ConditionTree::Compare { .. }),
+            "expected Compare, got {:?}",
+            tree
+        );
+    }
+
+    #[test]
+    fn bug_triple_and_all_parts_parsed() {
+        // Triple && chains used to garble the right-hand side because
+        // parse_and sent the right operand to parse_not instead of recursing.
+        let tree = parse_js_condition("a === 1 && b === 2 && c === 3");
+        // Should be And(Compare(a,1), And(Compare(b,2), Compare(c,3)))
+        match &tree {
+            ConditionTree::And(left, right) => {
+                assert!(
+                    matches!(left.as_ref(), ConditionTree::Compare { .. }),
+                    "left should be Compare, got {:?}",
+                    left
+                );
+                match right.as_ref() {
+                    ConditionTree::And(mid, inner_right) => {
+                        assert!(
+                            matches!(mid.as_ref(), ConditionTree::Compare { .. }),
+                            "mid should be Compare, got {:?}",
+                            mid
+                        );
+                        assert!(
+                            matches!(inner_right.as_ref(), ConditionTree::Compare { .. }),
+                            "inner_right should be Compare, got {:?}",
+                            inner_right
+                        );
+                    }
+                    other => panic!("right should be And, got {:?}", other),
+                }
+            }
+            other => panic!("expected And at top level, got {:?}", other),
+        }
     }
 }

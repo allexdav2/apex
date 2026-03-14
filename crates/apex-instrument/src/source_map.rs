@@ -30,6 +30,13 @@ pub fn remap_source_maps(
             let col = branch.col as u32;
 
             if let Some(token) = sm.lookup_token(line_0, col) {
+                // Guard against fuzzy nearest-match: if the token maps to a
+                // different destination line, the lookup was inexact and we
+                // should drop this branch rather than attribute it to the
+                // wrong source location.
+                if token.get_dst_line() != line_0 {
+                    continue;
+                }
                 if let Some(source) = token.get_source() {
                     let source_root = sm.get_source_root().unwrap_or("");
                     let original_path = if source_root.is_empty() {
@@ -83,6 +90,8 @@ fn load_source_map(js_path: &Path) -> Option<sourcemap::SourceMap> {
             let data_url = &content[pos + 26..];
             if let Some(comma_pos) = data_url.find(',') {
                 let b64 = data_url[comma_pos + 1..].trim();
+                // Truncate at first whitespace to avoid trailing file content
+                let b64 = b64.split_whitespace().next().unwrap_or(b64);
                 if let Ok(decoded) = base64_decode(b64) {
                     return sourcemap::SourceMap::from_reader(&decoded[..]).ok();
                 }
@@ -102,6 +111,10 @@ fn base64_decode(input: &str) -> Result<Vec<u8>, ()> {
     let mut bits: u32 = 0;
 
     for &byte in input.as_bytes() {
+        // Skip RFC 2045 whitespace (newlines, spaces, tabs)
+        if byte == b'\n' || byte == b'\r' || byte == b' ' || byte == b'\t' {
+            continue;
+        }
         let val = TABLE.iter().position(|&c| c == byte).ok_or(())? as u32;
         buf = (buf << 6) | val;
         bits += 6;
@@ -148,5 +161,27 @@ mod tests {
     #[test]
     fn load_source_map_nonexistent_file() {
         assert!(load_source_map(Path::new("/no/such/file.js")).is_none());
+    }
+
+    #[test]
+    fn bug_base64_decode_whitespace() {
+        // RFC 2045 allows line-wrapped base64; our decoder must skip whitespace.
+        let decoded = base64_decode("SGVs\nbG8=").unwrap();
+        assert_eq!(decoded, b"Hello");
+    }
+
+    #[test]
+    fn bug_inline_sourcemap_trailing_truncated() {
+        // After the base64 payload there may be trailing file content (e.g.
+        // another comment or code). The truncation at first whitespace must
+        // prevent that trailing content from being fed into the decoder.
+        let clean = "SGVsbG8";
+        let with_trailing = "SGVsbG8 \n// some trailing JS content";
+        // Both should decode identically — the trailing content is ignored.
+        let decoded_clean = base64_decode(clean).unwrap();
+        let b64_extracted = with_trailing.split_whitespace().next().unwrap_or(with_trailing);
+        let decoded_trailing = base64_decode(b64_extracted).unwrap();
+        assert_eq!(decoded_clean, decoded_trailing);
+        assert_eq!(decoded_clean, b"Hello");
     }
 }

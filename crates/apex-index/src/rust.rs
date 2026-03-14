@@ -372,7 +372,9 @@ async fn run_single_test(
     env: &LlvmEnv,
     target_str: &str,
 ) -> Result<Vec<BranchId>, BoxErr> {
-    let sanitized_name = test_name.replace("::", "__").replace(['/', ' '], "_");
+    let sanitized_name = test_name
+        .replace("::", "__")
+        .replace(['/', ' ', '<', '>', '\\'], "_");
 
     let tmpdir = std::env::temp_dir();
     let profraw = tmpdir.join(format!(
@@ -459,8 +461,11 @@ fn extract_covered_branches(json: &LlvmCovJson, target_str: &str) -> Vec<BranchI
                 let count = seg[2].as_u64().unwrap_or(0);
 
                 if has_count && is_entry && !is_gap && count > 0 {
-                    let line = seg[0].as_u64().unwrap_or(0) as u32;
-                    let col = seg[1].as_u64().unwrap_or(0) as u16;
+                    let line = seg[0].as_u64().unwrap_or(0).min(u32::MAX as u64) as u32;
+                    if line == 0 {
+                        continue; // invalid 1-indexed line (e.g. null JSON value)
+                    }
+                    let col = seg[1].as_u64().unwrap_or(0).min(u16::MAX as u64) as u16;
                     branches.push(BranchId::new(file_id, line, col, 0));
                 }
             }
@@ -511,10 +516,22 @@ fn make_relative(path: &str, target: &str) -> String {
         format!("{target}/")
     };
 
-    path.strip_prefix(&prefix)
-        .or_else(|| path.strip_prefix(target))
+    let result = path
+        .strip_prefix(&prefix)
         .map(|s| s.trim_start_matches('/').to_string())
-        .unwrap_or_else(|| path.to_string())
+        .unwrap_or_else(|| {
+            if path == target {
+                ".".to_string()
+            } else {
+                path.to_string()
+            }
+        });
+
+    if result.is_empty() {
+        ".".to_string()
+    } else {
+        result
+    }
 }
 
 #[cfg(test)]
@@ -654,5 +671,47 @@ mod tests {
         let branches = extract_covered_branches(&json, "/project");
         assert_eq!(branches.len(), 1);
         assert_eq!(branches[0].line, 10);
+    }
+
+    #[test]
+    fn bug_make_relative_path_equals_target() {
+        let result = make_relative("/home/user/project", "/home/user/project");
+        assert_eq!(result, ".", "path == target should return '.' not empty string");
+    }
+
+    #[test]
+    fn bug_make_relative_sibling_dir() {
+        let result = make_relative("/home/user/project2/src/lib.rs", "/home/user/project");
+        assert_eq!(
+            result, "/home/user/project2/src/lib.rs",
+            "sibling dir should not be stripped"
+        );
+    }
+
+    #[test]
+    fn bug_extract_branches_null_skipped() {
+        let json_str = r#"{"data":[{"files":[{"filename":"src/lib.rs","segments":[[null,null,1,true,true,false]]}]}]}"#;
+        let json: LlvmCovJson = serde_json::from_str(json_str).unwrap();
+        let branches = extract_covered_branches(&json, "");
+        assert!(branches.is_empty(), "null line/col should skip the segment");
+    }
+
+    #[test]
+    fn bug_extract_branches_large_col_saturates() {
+        let json_str = r#"{"data":[{"files":[{"filename":"src/lib.rs","segments":[[10,70000,1,true,true,false]]}]}]}"#;
+        let json: LlvmCovJson = serde_json::from_str(json_str).unwrap();
+        let branches = extract_covered_branches(&json, "");
+        assert_eq!(branches[0].col, u16::MAX, "column 70000 should saturate to u16::MAX");
+    }
+
+    #[test]
+    fn bug_sanitize_angle_brackets() {
+        let name = "MyType<T>::test\\path";
+        let sanitized = name
+            .replace("::", "__")
+            .replace(['/', ' ', '<', '>', '\\'], "_");
+        assert!(!sanitized.contains('<'), "sanitized name should not contain <");
+        assert!(!sanitized.contains('>'), "sanitized name should not contain >");
+        assert!(!sanitized.contains('\\'), "sanitized name should not contain \\");
     }
 }

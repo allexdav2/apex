@@ -29,7 +29,7 @@ const IDEMPOTENT_PREFIXES: &[&str] = &["sort", "normalize", "canonicalize", "ded
 const COMMUTATIVE_PREFIXES: &[&str] = &["add", "merge", "combine", "union", "sum"];
 
 /// Length-preserving indicator prefixes.
-const LENGTH_PRESERVING_PREFIXES: &[&str] = &["filter", "map", "transform"];
+const LENGTH_PRESERVING_PREFIXES: &[&str] = &["map", "transform"];
 
 /// Round-trip pairs: (encode_prefix, decode_prefix).
 const ROUNDTRIP_PAIRS: &[(&str, &str)] = &[
@@ -52,13 +52,10 @@ impl PropertyInferer {
         let functions = Self::extract_function_names(source);
 
         // Check for round-trip pairs first (uses two functions).
-        let mut roundtrip_fns = std::collections::HashSet::new();
         for &(enc_prefix, dec_prefix) in ROUNDTRIP_PAIRS {
             let enc_match = functions.iter().find(|f| f.starts_with(enc_prefix));
             let dec_match = functions.iter().find(|f| f.starts_with(dec_prefix));
             if let (Some(enc), Some(dec)) = (enc_match, dec_match) {
-                roundtrip_fns.insert(enc.clone());
-                roundtrip_fns.insert(dec.clone());
                 props.push(InferredProperty::RoundTrip {
                     encode: enc.clone(),
                     decode: dec.clone(),
@@ -190,12 +187,21 @@ impl PropertyInferer {
                 }
             }
             // Rust: fn func_name( or pub fn func_name(
-            else if let Some(pos) = trimmed.find("fn ") {
-                let after_fn = &trimmed[pos + 3..];
-                if let Some(name) = after_fn.split('(').next() {
-                    let name = name.trim();
-                    if !name.is_empty() && name.chars().all(|c| c.is_alphanumeric() || c == '_') {
-                        names.push(name.to_string());
+            // Skip comment lines to avoid false positives
+            else if !trimmed.starts_with("//") && !trimmed.starts_with("/*") {
+                if let Some(pos) = trimmed.find("fn ") {
+                    // Require `fn` at start or preceded by space (keyword boundary)
+                    let valid_prefix = pos == 0 || trimmed.as_bytes()[pos - 1] == b' ';
+                    if valid_prefix {
+                        let after_fn = &trimmed[pos + 3..];
+                        if let Some(name) = after_fn.split('(').next() {
+                            let name = name.trim();
+                            if !name.is_empty()
+                                && name.chars().all(|c| c.is_alphanumeric() || c == '_')
+                            {
+                                names.push(name.to_string());
+                            }
+                        }
                     }
                 }
             }
@@ -216,12 +222,12 @@ impl PropertyInferer {
     fn is_public_function(source: &str, func_name: &str) -> bool {
         for line in source.lines() {
             let trimmed = line.trim();
-            // Python: def at module level (no leading whitespace or with `def`)
-            if trimmed.starts_with(&format!("def {func_name}(")) {
+            // Python: def at module level (no leading whitespace)
+            if line.starts_with(&format!("def {func_name}(")) {
                 return true;
             }
-            // Rust: pub fn
-            if trimmed.contains(&format!("pub fn {func_name}(")) {
+            // Rust: pub fn / pub async fn / pub const fn / pub unsafe fn etc.
+            if trimmed.starts_with("pub ") && trimmed.contains(&format!("fn {func_name}(")) {
                 return true;
             }
             // JS: export function or function at top level
@@ -357,5 +363,227 @@ def merge(a, b):
         assert!(props.contains(&InferredProperty::Idempotent {
             function: "normalize".into(),
         }));
+    }
+
+    // ── Bug hunters ────────────────────────────────────────────────
+
+    /// Verify filter is correctly NOT classified as length-preserving.
+    #[test]
+    fn filter_is_not_length_preserving() {
+        let source = "def filter_items(xs):\n    return [x for x in xs if x > 0]\n";
+        let props = PropertyInferer::infer(source);
+        let has_length_preserving = props.contains(&InferredProperty::LengthPreserving {
+            function: "filter_items".into(),
+        });
+        assert!(!has_length_preserving, "filter should not be length-preserving");
+    }
+
+    /// Verify generated Python tests have correct indentation.
+    /// Rust's `\` line continuation strips leading whitespace, so the
+    /// output should have proper Python formatting.
+    #[test]
+    fn generated_idempotent_test_has_valid_indentation() {
+        let prop = InferredProperty::Idempotent {
+            function: "sort".into(),
+        };
+        let test = PropertyInferer::generate_hypothesis_test(&prop, "python");
+        let lines: Vec<&str> = test.lines().collect();
+        // `from hypothesis` should have zero leading spaces
+        assert!(
+            !lines[0].starts_with(' '),
+            "BUG: 'from hypothesis' line has leading whitespace: {:?}",
+            lines[0]
+        );
+        // `@given` should have zero leading spaces
+        let given_line = lines.iter().find(|l| l.contains("@given")).unwrap();
+        assert!(
+            !given_line.starts_with(' '),
+            "BUG: '@given' decorator has leading whitespace: {:?}",
+            given_line
+        );
+        // `def test_` should have zero leading spaces
+        let def_line = lines.iter().find(|l| l.contains("def test_")).unwrap();
+        assert!(
+            !def_line.starts_with(' '),
+            "BUG: 'def test_' has leading whitespace: {:?}",
+            def_line
+        );
+        // `assert` should have exactly 4 leading spaces
+        let assert_line = lines.iter().find(|l| l.contains("assert")).unwrap();
+        assert!(
+            assert_line.starts_with("    ") && !assert_line.starts_with("     "),
+            "BUG: assert line should have exactly 4 spaces indent, got: {:?}",
+            assert_line
+        );
+    }
+
+    /// BUG: Rust `fn` extraction picks up function names from comments.
+    /// `trimmed.find("fn ")` matches `// fn helper(` inside comments.
+    #[test]
+    fn bug_rust_fn_extracted_from_comments() {
+        let source = "// fn ghost_function(x: i32) -> i32 { x }\npub fn real(x: i32) -> i32 { x }\n";
+        let names = PropertyInferer::extract_function_names(source);
+        assert!(
+            !names.contains(&"ghost_function".to_string()),
+            "BUG: extract_function_names picks up function names from comments. Got: {:?}",
+            names
+        );
+    }
+
+    /// BUG: Rust `fn` extraction picks up function names from string literals.
+    #[test]
+    fn bug_rust_fn_extracted_from_string_literal() {
+        let source = "let s = \"fn fake_func(x)\";\nfn real_func(x: i32) {}\n";
+        let names = PropertyInferer::extract_function_names(source);
+        assert!(
+            !names.contains(&"fake_func".to_string()),
+            "BUG: extract_function_names picks up function names from string literals. Got: {:?}",
+            names
+        );
+    }
+
+    /// BUG: `is_public_function` treats indented Python methods as public.
+    /// A method like `    def helper(self):` inside a class is trimmed to
+    /// `def helper(self):` which matches as public.
+    #[test]
+    fn bug_indented_python_method_detected_as_public() {
+        let source = "class Foo:\n    def helper(self):\n        pass\n";
+        // `helper` should NOT be considered a public module-level function.
+        let is_pub = PropertyInferer::is_public_function(source, "helper");
+        assert!(
+            !is_pub,
+            "BUG: indented Python method 'helper' inside a class is detected as public. \
+             is_public_function trims whitespace, erasing the indentation signal."
+        );
+    }
+
+    /// Edge case: empty function body should still be extractable.
+    #[test]
+    fn extract_python_empty_function() {
+        let source = "def noop():\n    pass\n";
+        let names = PropertyInferer::extract_function_names(source);
+        assert!(names.contains(&"noop".to_string()));
+    }
+
+    /// Edge case: source with no functions at all.
+    #[test]
+    fn extract_no_functions() {
+        let source = "x = 42\ny = x + 1\n";
+        let names = PropertyInferer::extract_function_names(source);
+        assert!(names.is_empty());
+    }
+
+    /// Edge case: function name that is a prefix keyword match but not an
+    /// actual prefix match — `sorting` starts with "sort".
+    #[test]
+    fn prefix_matching_is_greedy() {
+        // `sorting_hat` starts_with("sort") is true, so it gets
+        // classified as Idempotent. This test documents the behavior.
+        let source = "def sorting_hat(x):\n    return x\n";
+        let props = PropertyInferer::infer(source);
+        let has_idempotent = props.contains(&InferredProperty::Idempotent {
+            function: "sorting_hat".into(),
+        });
+        // This is arguably a false positive — "sorting_hat" is not a sort
+        // function. Documenting current behavior: prefix match is greedy.
+        assert!(
+            has_idempotent,
+            "Expected greedy prefix match: sorting_hat starts_with(\"sort\")"
+        );
+    }
+
+    /// Monotonic property test generation for decreasing case.
+    #[test]
+    fn generate_monotonic_decreasing_test() {
+        let prop = InferredProperty::Monotonic {
+            function: "negate".into(),
+            increasing: false,
+        };
+        let test = PropertyInferer::generate_hypothesis_test(&prop, "python");
+        assert!(test.contains(">="), "Decreasing monotonic should use >=");
+        assert!(test.contains("negate(a)"));
+    }
+
+    /// Monotonic property test generation for increasing case.
+    #[test]
+    fn generate_monotonic_increasing_test() {
+        let prop = InferredProperty::Monotonic {
+            function: "double".into(),
+            increasing: true,
+        };
+        let test = PropertyInferer::generate_hypothesis_test(&prop, "python");
+        assert!(test.contains("<="), "Increasing monotonic should use <=");
+        assert!(test.contains("assume(a <= b)"));
+    }
+
+    /// generate_hypothesis_test with unknown language defaults to Python.
+    #[test]
+    fn generate_test_unknown_language_defaults_to_python() {
+        let prop = InferredProperty::Idempotent {
+            function: "sort".into(),
+        };
+        let py = PropertyInferer::generate_hypothesis_test(&prop, "python");
+        let unknown = PropertyInferer::generate_hypothesis_test(&prop, "cobol");
+        assert_eq!(py, unknown, "Unknown language should default to Python output");
+    }
+
+    /// Rust: pub fn should be detected as public.
+    #[test]
+    fn rust_pub_fn_is_public() {
+        let source = "pub fn compute(x: i32) -> i32 { x * 2 }\n";
+        assert!(PropertyInferer::is_public_function(source, "compute"));
+    }
+
+    /// Rust: private fn should NOT be detected as public.
+    #[test]
+    fn rust_private_fn_is_not_public() {
+        let source = "fn internal_helper(x: i32) -> i32 { x }\n";
+        let is_pub = PropertyInferer::is_public_function(source, "internal_helper");
+        // Rust `fn` without `pub` — not public in Rust semantics.
+        // However, this also passes the Python check (starts_with("def ...")),
+        // which it shouldn't since it's not Python at all.
+        // Actually: "fn internal_helper(" doesn't start with "def ", so Python
+        // check doesn't fire. And it doesn't contain "pub fn", so Rust check
+        // doesn't fire. Good — should be false.
+        assert!(!is_pub);
+    }
+
+    /// JS: export function should be detected as public.
+    #[test]
+    fn js_export_function_is_public() {
+        let source = "export function calculate(x) { return x * 2; }\n";
+        assert!(PropertyInferer::is_public_function(source, "calculate"));
+    }
+
+    /// Roundtrip detection should work for all ROUNDTRIP_PAIRS.
+    #[test]
+    fn all_roundtrip_pairs_detected() {
+        for &(enc, dec) in ROUNDTRIP_PAIRS {
+            let source = format!("def {enc}(data):\n    pass\ndef {dec}(data):\n    pass\n");
+            let props = PropertyInferer::infer(&source);
+            let has_rt = props.iter().any(|p| matches!(p, InferredProperty::RoundTrip { .. }));
+            assert!(has_rt, "Roundtrip not detected for pair ({enc}, {dec})");
+        }
+    }
+
+    /// Only one encode function present (no matching decode) should NOT
+    /// produce a RoundTrip property.
+    #[test]
+    fn no_roundtrip_without_matching_pair() {
+        let source = "def encode(data):\n    pass\n";
+        let props = PropertyInferer::infer(source);
+        let has_rt = props.iter().any(|p| matches!(p, InferredProperty::RoundTrip { .. }));
+        assert!(!has_rt, "Should not infer RoundTrip with only encode");
+    }
+
+    /// LengthPreserving test generation produces valid Python.
+    #[test]
+    fn generate_length_preserving_test() {
+        let prop = InferredProperty::LengthPreserving {
+            function: "transform".into(),
+        };
+        let test = PropertyInferer::generate_hypothesis_test(&prop, "python");
+        assert!(test.contains("len(transform(xs)) == len(xs)"));
+        assert!(test.contains("st.lists"));
     }
 }

@@ -107,6 +107,12 @@ pub enum Commands {
     FlagHygiene(FlagHygieneArgs),
     /// Detect breaking changes between two OpenAPI spec versions.
     ApiDiff(ApiDiffArgs),
+    /// Trace data flow from input sources to output sinks.
+    DataFlow(DataFlowArgs),
+    /// Calculate change blast radius from branch index data.
+    BlastRadius(BlastRadiusArgs),
+    /// Export compliance evidence packages (ASVS, SSDF, STRIDE).
+    ComplianceExport(ComplianceExportArgs),
 }
 
 #[derive(Parser, Clone)]
@@ -531,6 +537,46 @@ pub struct ApiDiffArgs {
     pub output_format: OutputFormat,
 }
 
+#[derive(Parser)]
+pub struct DataFlowArgs {
+    #[arg(long, short)]
+    pub target: PathBuf,
+    #[arg(long, short, value_enum)]
+    pub lang: LangArg,
+    #[arg(long, default_value = "10")]
+    pub max_depth: usize,
+    #[arg(long, default_value = "text")]
+    pub output_format: OutputFormat,
+}
+
+#[derive(Parser)]
+pub struct BlastRadiusArgs {
+    #[arg(long, short)]
+    pub target: PathBuf,
+    #[arg(long, short, value_enum)]
+    pub lang: LangArg,
+    #[arg(long, value_delimiter = ',')]
+    pub changed_files: Vec<String>,
+    #[arg(long, default_value = "text")]
+    pub output_format: OutputFormat,
+}
+
+#[derive(Parser)]
+pub struct ComplianceExportArgs {
+    #[arg(long, short)]
+    pub target: PathBuf,
+    #[arg(long, short, value_enum)]
+    pub lang: LangArg,
+    #[arg(long, default_value = "all")]
+    pub framework: String,
+    #[arg(long, default_value = "L1")]
+    pub level: String,
+    #[arg(long, default_value = "text")]
+    pub output_format: OutputFormat,
+    #[arg(long, short)]
+    pub output: Option<PathBuf>,
+}
+
 #[derive(Clone, Copy, ValueEnum)]
 pub enum OutputFormat {
     Text,
@@ -594,6 +640,9 @@ pub async fn run_cli(cli: Cli, cfg: &ApexConfig) -> Result<()> {
         Commands::LicenseScan(args) => run_license_scan(args).await,
         Commands::FlagHygiene(args) => run_flag_hygiene(args).await,
         Commands::ApiDiff(args) => run_api_diff(args).await,
+        Commands::DataFlow(args) => run_data_flow(args).await,
+        Commands::BlastRadius(args) => run_blast_radius(args).await,
+        Commands::ComplianceExport(args) => run_compliance_export(args, cfg).await,
     }
 }
 
@@ -3105,6 +3154,317 @@ async fn run_api_diff(args: ApiDiffArgs) -> Result<()> {
 
     if report.breaking_count > 0 {
         std::process::exit(1);
+    }
+
+    Ok(())
+}
+
+// ---------------------------------------------------------------------------
+// `apex data-flow`
+// ---------------------------------------------------------------------------
+
+async fn run_data_flow(args: DataFlowArgs) -> Result<()> {
+    let lang: Language = args.lang.into();
+    let target_path = args.target.canonicalize()?;
+    let source_cache = build_source_cache(&target_path, lang);
+
+    if lang != Language::Python {
+        eprintln!("Warning: data-flow currently best supports Python. Other languages will have limited results.");
+    }
+
+    let mut cpg = apex_cpg::Cpg::new();
+    for (path, source) in &source_cache {
+        let file_cpg = apex_cpg::builder::build_python_cpg(source, &path.display().to_string());
+        cpg.merge(file_cpg);
+    }
+
+    if cpg.node_count() == 0 {
+        println!("No code found to analyze.");
+        return Ok(());
+    }
+
+    apex_cpg::reaching_def::add_reaching_def_edges(&mut cpg);
+    let flows = apex_cpg::taint::find_taint_flows(&cpg, args.max_depth);
+
+    match args.output_format {
+        OutputFormat::Json => {
+            let flow_data: Vec<serde_json::Value> = flows
+                .iter()
+                .map(|f| {
+                    serde_json::json!({
+                        "source": f.source,
+                        "sink": f.sink,
+                        "path_length": f.path.len(),
+                        "variables": f.variable_chain,
+                    })
+                })
+                .collect();
+            println!("{}", serde_json::to_string_pretty(&flow_data)?);
+        }
+        OutputFormat::Text => {
+            if flows.is_empty() {
+                println!("No taint flows detected.");
+            } else {
+                println!(
+                    "\n{} taint flow(s) in {}\n",
+                    flows.len(),
+                    target_path.display()
+                );
+                for (i, flow) in flows.iter().enumerate() {
+                    println!("  Flow {}: node {} \u{2192} node {}", i + 1, flow.source, flow.sink);
+                    if !flow.variable_chain.is_empty() {
+                        println!("    Variables: {}", flow.variable_chain.join(" \u{2192} "));
+                    }
+                    println!("    Path length: {} nodes\n", flow.path.len());
+                }
+            }
+        }
+    }
+    Ok(())
+}
+
+// ---------------------------------------------------------------------------
+// `apex blast-radius`
+// ---------------------------------------------------------------------------
+
+async fn run_blast_radius(args: BlastRadiusArgs) -> Result<()> {
+    let target_path = args.target.canonicalize()?;
+    let index_path = target_path.join(".apex").join("index.json");
+
+    if !index_path.exists() {
+        eprintln!(
+            "No branch index at {}. Run `apex index` first.",
+            index_path.display()
+        );
+        std::process::exit(1);
+    }
+
+    let index_data = std::fs::read_to_string(&index_path)?;
+    let index: apex_index::BranchIndex = serde_json::from_str(&index_data)?;
+    let assessment = apex_index::analysis::assess_risk(&index, &args.changed_files);
+
+    match args.output_format {
+        OutputFormat::Json => {
+            println!("{}", serde_json::to_string_pretty(&assessment)?);
+        }
+        OutputFormat::Text => {
+            println!("\nBlast Radius: {}\n", target_path.display());
+            println!("Risk Level:       {}", assessment.level);
+            println!("Risk Score:       {}/100", assessment.score);
+            println!("Affected Tests:   {}", assessment.affected_tests);
+            println!("Changed Branches: {}", assessment.changed_branches);
+            println!("Covered:          {}", assessment.covered_changed);
+            println!("Uncovered:        {}", assessment.uncovered_changed);
+            println!("Coverage:         {:.1}%", assessment.coverage_of_changed);
+            if !assessment.reasons.is_empty() {
+                println!("\nReasons:");
+                for r in &assessment.reasons {
+                    println!("  \u{2022} {r}");
+                }
+            }
+        }
+    }
+    Ok(())
+}
+
+// ---------------------------------------------------------------------------
+// `apex compliance-export`
+// ---------------------------------------------------------------------------
+
+async fn run_compliance_export(args: ComplianceExportArgs, cfg: &ApexConfig) -> Result<()> {
+    use apex_detect::{AnalysisContext, DetectConfig, DetectorPipeline};
+
+    let lang: Language = args.lang.into();
+    let target_path = args.target.canonicalize()?;
+    let source_cache = build_source_cache(&target_path, lang);
+
+    // Build CPG for Python projects
+    let cpg = if lang == Language::Python {
+        let mut combined_cpg = apex_cpg::Cpg::new();
+        for (path, source) in &source_cache {
+            let file_cpg =
+                apex_cpg::builder::build_python_cpg(source, &path.display().to_string());
+            combined_cpg.merge(file_cpg);
+        }
+        if combined_cpg.node_count() > 0 {
+            Some(Arc::new(combined_cpg))
+        } else {
+            None
+        }
+    } else {
+        None
+    };
+
+    // Run detector pipeline to collect findings
+    let detect_cfg = DetectConfig::default();
+    let ctx = AnalysisContext {
+        target_root: target_path.clone(),
+        language: lang,
+        oracle: Arc::new(CoverageOracle::new()),
+        file_paths: HashMap::new(),
+        known_bugs: vec![],
+        source_cache: source_cache.clone(),
+        fuzz_corpus: None,
+        config: detect_cfg.clone(),
+        runner: Arc::new(apex_core::command::RealCommandRunner),
+        cpg,
+        threat_model: cfg.threat_model.clone(),
+        reverse_path_engine: None,
+    };
+
+    let pipeline = DetectorPipeline::from_config(&detect_cfg, lang);
+    let report = pipeline.run_all(&ctx).await;
+
+    // Collect unique detector IDs
+    let detector_ids: Vec<String> = report
+        .findings
+        .iter()
+        .map(|f| f.detector.clone())
+        .collect::<HashSet<_>>()
+        .into_iter()
+        .collect();
+
+    let framework = args.framework.to_lowercase();
+    let asvs_level = match args.level.to_uppercase().as_str() {
+        "L2" => apex_detect::compliance::asvs::AsvsLevel::L2,
+        "L3" => apex_detect::compliance::asvs::AsvsLevel::L3,
+        _ => apex_detect::compliance::asvs::AsvsLevel::L1,
+    };
+
+    let mut output = String::new();
+    use std::fmt::Write;
+
+    let show_asvs = framework == "all" || framework == "asvs";
+    let show_ssdf = framework == "all" || framework == "ssdf";
+    let show_stride = framework == "all" || framework == "stride";
+
+    if show_asvs {
+        let asvs =
+            apex_detect::compliance::asvs::generate_asvs_report(&detector_ids, asvs_level);
+        match args.output_format {
+            OutputFormat::Json => {
+                let val = serde_json::json!({
+                    "framework": "ASVS",
+                    "level": format!("{:?}", asvs.level),
+                    "total": asvs.coverage.total,
+                    "automated": asvs.coverage.automated,
+                    "verified": asvs.coverage.verified,
+                    "failed": asvs.coverage.failed,
+                    "manual_required": asvs.coverage.manual_required,
+                });
+                writeln!(output, "{}", serde_json::to_string_pretty(&val)?).ok();
+            }
+            OutputFormat::Text => {
+                writeln!(output, "\n=== ASVS Compliance ({:?}) ===\n", asvs.level).ok();
+                writeln!(output, "  Total requirements: {}", asvs.coverage.total).ok();
+                writeln!(output, "  Automated:          {}", asvs.coverage.automated).ok();
+                writeln!(output, "  Verified:           {}", asvs.coverage.verified).ok();
+                writeln!(output, "  Failed:             {}", asvs.coverage.failed).ok();
+                writeln!(output, "  Manual required:    {}", asvs.coverage.manual_required)
+                    .ok();
+            }
+        }
+    }
+
+    if show_ssdf {
+        let ssdf = apex_detect::compliance::ssdf::generate_ssdf_report();
+        match args.output_format {
+            OutputFormat::Json => {
+                let tasks: Vec<serde_json::Value> = ssdf
+                    .tasks
+                    .iter()
+                    .map(|t| {
+                        serde_json::json!({
+                            "id": t.id,
+                            "practice": t.practice,
+                            "satisfied": t.apex_satisfies,
+                            "evidence": t.evidence,
+                        })
+                    })
+                    .collect();
+                let val = serde_json::json!({
+                    "framework": "SSDF",
+                    "satisfied": ssdf.satisfied_count,
+                    "total": ssdf.total_count,
+                    "tasks": tasks,
+                });
+                writeln!(output, "{}", serde_json::to_string_pretty(&val)?).ok();
+            }
+            OutputFormat::Text => {
+                writeln!(
+                    output,
+                    "\n=== SSDF Compliance ({}/{}) ===\n",
+                    ssdf.satisfied_count, ssdf.total_count
+                )
+                .ok();
+                for task in &ssdf.tasks {
+                    let icon = if task.apex_satisfies { "\u{2713}" } else { "\u{2717}" };
+                    writeln!(output, "  {} {} — {}", icon, task.id, task.practice).ok();
+                }
+            }
+        }
+    }
+
+    if show_stride {
+        // Concatenate all sources for STRIDE analysis
+        let all_source: String = source_cache.values().cloned().collect::<Vec<_>>().join("\n");
+        let stride = apex_detect::threat::stride::analyze_stride(&all_source);
+        match args.output_format {
+            OutputFormat::Json => {
+                let entries: Vec<serde_json::Value> = stride
+                    .entries
+                    .iter()
+                    .map(|e| {
+                        serde_json::json!({
+                            "category": format!("{}", e.category),
+                            "risk_level": format!("{:?}", e.risk_level),
+                            "mitigations_found": e.mitigations_found,
+                            "mitigations_missing": e.mitigations_missing,
+                        })
+                    })
+                    .collect();
+                let val = serde_json::json!({
+                    "framework": "STRIDE",
+                    "entries": entries,
+                });
+                writeln!(output, "{}", serde_json::to_string_pretty(&val)?).ok();
+            }
+            OutputFormat::Text => {
+                writeln!(output, "\n=== STRIDE Threat Model ===\n").ok();
+                for entry in &stride.entries {
+                    writeln!(
+                        output,
+                        "  {} — Risk: {:?}",
+                        entry.category, entry.risk_level
+                    )
+                    .ok();
+                    if !entry.mitigations_found.is_empty() {
+                        writeln!(
+                            output,
+                            "    Found:   {}",
+                            entry.mitigations_found.join(", ")
+                        )
+                        .ok();
+                    }
+                    if !entry.mitigations_missing.is_empty() {
+                        writeln!(
+                            output,
+                            "    Missing: {}",
+                            entry.mitigations_missing.join(", ")
+                        )
+                        .ok();
+                    }
+                }
+            }
+        }
+    }
+
+    // Write to file or stdout
+    if let Some(out_path) = args.output {
+        std::fs::write(&out_path, &output)?;
+        println!("Compliance report written to {}", out_path.display());
+    } else {
+        print!("{output}");
     }
 
     Ok(())

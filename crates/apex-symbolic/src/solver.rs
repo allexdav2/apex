@@ -102,17 +102,16 @@ fn solve_z3(
         .collect();
 
     // ── 1. Collect all variable names across every constraint. ──────────────
-    let mut var_names: Vec<String> = Vec::new();
+    let mut var_names: std::collections::HashSet<String> = std::collections::HashSet::new();
     for c in &bounded {
         for v in smtlib::extract_variables(c) {
-            if !var_names.contains(&v) {
-                var_names.push(v);
-            }
+            var_names.insert(v);
         }
     }
 
     // ── 2. Create Z3 context, solver, and declare Int constants. ────────────
-    let cfg = Config::new();
+    let mut cfg = Config::new();
+    cfg.set_param_value("timeout", "30000"); // 30s timeout to prevent unbounded solving
     let ctx = Context::new(&cfg);
     let solver = Solver::new(&ctx);
 

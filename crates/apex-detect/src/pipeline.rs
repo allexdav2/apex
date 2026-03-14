@@ -54,6 +54,12 @@ impl DetectorPipeline {
         if cfg.enabled.contains(&"path-normalize".to_string()) {
             detectors.push(Box::new(PathNormalizationDetector));
         }
+        if cfg.enabled.contains(&"timeout".into()) {
+            detectors.push(Box::new(MissingTimeoutDetector));
+        }
+        if cfg.enabled.contains(&"session-security".into()) {
+            detectors.push(Box::new(SessionSecurityDetector));
+        }
 
         // Rust self-analysis detectors
         if cfg.enabled.contains(&"discarded-async-result".into()) {
@@ -371,7 +377,7 @@ mod tests {
     fn from_config_enables_all_by_default() {
         let cfg = DetectConfig::default();
         let pipeline = DetectorPipeline::from_config(&cfg, Language::Rust);
-        assert_eq!(pipeline.detectors.len(), 18);
+        assert_eq!(pipeline.detectors.len(), 20);
     }
 
     #[test]
@@ -746,7 +752,7 @@ mod tests {
         // Python should get all except unsafe
         let cfg = DetectConfig::default();
         let pipeline = DetectorPipeline::from_config(&cfg, Language::Python);
-        assert_eq!(pipeline.detectors.len(), 17);
+        assert_eq!(pipeline.detectors.len(), 19);
         assert!(pipeline
             .detectors
             .iter()

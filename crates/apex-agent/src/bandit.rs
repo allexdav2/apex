@@ -50,7 +50,7 @@ impl StrategyBandit {
             .max_by(|a, b| {
                 let sa = self.sample_arm(a, rng);
                 let sb = self.sample_arm(b, rng);
-                sa.partial_cmp(&sb).unwrap()
+                sa.partial_cmp(&sb).unwrap_or(std::cmp::Ordering::Equal)
             })
             .map(|s| s.as_str())
             .unwrap_or("")

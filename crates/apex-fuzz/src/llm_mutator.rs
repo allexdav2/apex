@@ -3,12 +3,12 @@
 //! When byte-level mutations stall on structured inputs, the LLM can produce
 //! semantically valid variants. Results are cached to amortize LLM latency.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, VecDeque};
 
 /// A bounded cache mapping input bytes to pre-computed LLM mutation variants.
 pub struct MutationCache {
     cache: HashMap<Vec<u8>, Vec<Vec<u8>>>,
-    order: Vec<Vec<u8>>,
+    order: VecDeque<Vec<u8>>,
     capacity: usize,
 }
 
@@ -16,7 +16,7 @@ impl MutationCache {
     pub fn new(capacity: usize) -> Self {
         MutationCache {
             cache: HashMap::new(),
-            order: Vec::new(),
+            order: VecDeque::new(),
             capacity,
         }
     }
@@ -24,14 +24,13 @@ impl MutationCache {
     /// Insert a set of mutation variants for a given input.
     pub fn insert(&mut self, input: Vec<u8>, variants: Vec<Vec<u8>>) {
         if self.cache.len() >= self.capacity && !self.cache.contains_key(&input) {
-            // Evict oldest.
-            if let Some(oldest) = self.order.first().cloned() {
+            // Evict oldest (O(1) with VecDeque).
+            if let Some(oldest) = self.order.pop_front() {
                 self.cache.remove(&oldest);
-                self.order.remove(0);
             }
         }
         if !self.cache.contains_key(&input) {
-            self.order.push(input.clone());
+            self.order.push_back(input.clone());
         }
         self.cache.insert(input, variants);
     }

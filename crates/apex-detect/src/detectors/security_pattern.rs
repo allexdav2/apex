@@ -6,6 +6,7 @@ use uuid::Uuid;
 use super::util::{in_test_block, is_comment, is_test_file, strip_string_literals};
 use crate::context::AnalysisContext;
 use crate::finding::{Finding, FindingCategory, Severity};
+use crate::threat_model::should_suppress;
 use crate::Detector;
 
 pub struct SecurityPatternDetector;
@@ -531,21 +532,52 @@ const JAVA_SECURITY_PATTERNS: &[SecurityPattern] = &[
 
 const CONTEXT_WINDOW: usize = 3;
 
+/// Indicators that are code patterns (not input sources). These should be
+/// excluded from threat model trust classification since they describe how
+/// data is used, not where it comes from.
+const CODE_PATTERN_INDICATORS: &[&str] = &[
+    "shell=true",
+    "shell=false",
+    "format!",
+    "format(",
+    "f\"",
+    "%s",
+    "%s,",
+    "%",
+    "+",
+    "open(",
+    "read",
+    "parameterize",
+    "placeholder",
+    "?",
+];
+
 fn has_indicator(lines: &[&str], line_num: usize, indicators: &[&str]) -> bool {
+    !collect_matched_indicators(lines, line_num, indicators).is_empty()
+}
+
+/// Like `has_indicator`, but returns the matched indicator strings.
+/// Used by threat-model-aware suppression to classify trust per indicator.
+fn collect_matched_indicators<'a>(
+    lines: &[&str],
+    line_num: usize,
+    indicators: &[&'a str],
+) -> Vec<&'a str> {
     if indicators.is_empty() {
-        return false;
+        return Vec::new();
     }
     let start = line_num.saturating_sub(CONTEXT_WINDOW);
     let end = (line_num + CONTEXT_WINDOW + 1).min(lines.len());
+    let mut matched = Vec::new();
     for line in lines.iter().take(end).skip(start) {
         let line_lower = line.to_lowercase();
         for indicator in indicators {
-            if line_lower.contains(&indicator.to_lowercase()) {
-                return true;
+            if line_lower.contains(&indicator.to_lowercase()) && !matched.contains(indicator) {
+                matched.push(*indicator);
             }
         }
     }
-    false
+    matched
 }
 
 fn adjust_severity(
@@ -626,11 +658,33 @@ impl Detector for SecurityPatternDetector {
                     if stripped.contains(pattern.sink) {
                         let line_1based = (line_num + 1) as u32;
 
-                        let has_user_input =
-                            has_indicator(&all_lines, line_num, pattern.user_input_indicators);
+                        let matched_user_inputs = collect_matched_indicators(
+                            &all_lines,
+                            line_num,
+                            pattern.user_input_indicators,
+                        );
+                        let has_user_input = !matched_user_inputs.is_empty();
                         let has_sanitization =
                             has_indicator(&all_lines, line_num, pattern.sanitization_indicators);
                         let indicators_defined = !pattern.user_input_indicators.is_empty();
+
+                        // Threat model suppression: filter out code patterns
+                        // (shell=True, format!, etc.) and only classify actual
+                        // input source indicators.
+                        let source_indicators: Vec<&str> = matched_user_inputs
+                            .iter()
+                            .copied()
+                            .filter(|ind| {
+                                !CODE_PATTERN_INDICATORS
+                                    .iter()
+                                    .any(|cp| ind.eq_ignore_ascii_case(cp))
+                            })
+                            .collect();
+                        if let Some(true) =
+                            should_suppress(&ctx.threat_model, &source_indicators)
+                        {
+                            break;
+                        }
 
                         let severity = adjust_severity(
                             pattern.base_severity,
@@ -1187,5 +1241,135 @@ mod tests {
         let ctx = make_ctx(files, Language::Java);
         let findings = SecurityPatternDetector.analyze(&ctx).await.unwrap();
         assert!(findings.is_empty());
+    }
+
+    // -- Threat model suppression tests --
+
+    fn make_ctx_with_threat_model(
+        source_files: HashMap<PathBuf, String>,
+        lang: Language,
+        threat_model: apex_core::config::ThreatModelConfig,
+    ) -> AnalysisContext {
+        let mut ctx = make_ctx(source_files, lang);
+        ctx.threat_model = threat_model;
+        ctx
+    }
+
+    #[tokio::test]
+    async fn cli_tool_suppresses_argv_command_injection() {
+        // CLI tool that runs a command with user input from arg() — trusted for CLI
+        let mut files = HashMap::new();
+        files.insert(
+            PathBuf::from("src/main.rs"),
+            "fn main() {\n    let input = matches.get_one(\"cmd\");\n    Command::new(input);\n}\n"
+                .into(),
+        );
+        let tm = apex_core::config::ThreatModelConfig {
+            model_type: Some(apex_core::config::ThreatModelType::CliTool),
+            trusted_sources: vec![],
+            untrusted_sources: vec![],
+        };
+        let ctx = make_ctx_with_threat_model(files, Language::Rust, tm);
+        let findings = SecurityPatternDetector.analyze(&ctx).await.unwrap();
+        // "input" indicator is trusted for cli-tool → suppressed
+        assert!(findings.is_empty(), "expected suppression for CLI input, got {findings:?}");
+    }
+
+    #[tokio::test]
+    async fn web_service_does_not_suppress_request_injection() {
+        // Web service with request.args flowing into subprocess — untrusted, NOT suppressed
+        let mut files = HashMap::new();
+        files.insert(
+            PathBuf::from("app.py"),
+            "def run():\n    cmd = request.args.get('cmd')\n    subprocess.call(cmd, shell=True)\n"
+                .into(),
+        );
+        let tm = apex_core::config::ThreatModelConfig {
+            model_type: Some(apex_core::config::ThreatModelType::WebService),
+            trusted_sources: vec![],
+            untrusted_sources: vec![],
+        };
+        let ctx = make_ctx_with_threat_model(files, Language::Python, tm);
+        let findings = SecurityPatternDetector.analyze(&ctx).await.unwrap();
+        assert!(!findings.is_empty(), "web service request input should NOT be suppressed");
+    }
+
+    #[tokio::test]
+    async fn no_threat_model_reports_all_findings() {
+        // No threat model configured — all findings reported (same as before)
+        let mut files = HashMap::new();
+        files.insert(
+            PathBuf::from("src/main.rs"),
+            "fn main() {\n    let arg = std::env::args().next();\n    Command::new(arg);\n}\n"
+                .into(),
+        );
+        let ctx = make_ctx(files, Language::Rust); // default = no threat model
+        let findings = SecurityPatternDetector.analyze(&ctx).await.unwrap();
+        assert!(!findings.is_empty(), "without threat model, all findings reported");
+    }
+
+    #[tokio::test]
+    async fn cli_tool_does_not_suppress_socket_input() {
+        // CLI tool with socket input — untrusted even for CLI
+        let mut files = HashMap::new();
+        files.insert(
+            PathBuf::from("app.py"),
+            "def run():\n    data = socket.recv(1024)\n    subprocess.call(data, shell=True)\n"
+                .into(),
+        );
+        let tm = apex_core::config::ThreatModelConfig {
+            model_type: Some(apex_core::config::ThreatModelType::CliTool),
+            trusted_sources: vec![],
+            untrusted_sources: vec![],
+        };
+        let ctx = make_ctx_with_threat_model(files, Language::Python, tm);
+        let findings = SecurityPatternDetector.analyze(&ctx).await.unwrap();
+        assert!(!findings.is_empty(), "socket input is untrusted even for CLI tools");
+    }
+
+    #[tokio::test]
+    async fn user_override_trusted_suppresses() {
+        // Web service but user explicitly trusts "request" — suppressed
+        let mut files = HashMap::new();
+        files.insert(
+            PathBuf::from("app.py"),
+            "def run():\n    cmd = request.args.get('cmd')\n    subprocess.call(cmd, shell=True)\n"
+                .into(),
+        );
+        let tm = apex_core::config::ThreatModelConfig {
+            model_type: Some(apex_core::config::ThreatModelType::WebService),
+            trusted_sources: vec!["request".into()],
+            untrusted_sources: vec![],
+        };
+        let ctx = make_ctx_with_threat_model(files, Language::Python, tm);
+        let findings = SecurityPatternDetector.analyze(&ctx).await.unwrap();
+        assert!(
+            findings.is_empty(),
+            "user-override trusted 'request' should suppress, got {findings:?}"
+        );
+    }
+
+    #[test]
+    fn collect_matched_indicators_returns_matches() {
+        let lines = vec![
+            "def run():",
+            "    cmd = request.args.get('cmd')",
+            "    subprocess.call(cmd, shell=True)",
+        ];
+        let indicators = &["request", "argv", "input"];
+        let matched = collect_matched_indicators(&lines, 2, indicators);
+        assert_eq!(matched, vec!["request"]);
+    }
+
+    #[test]
+    fn collect_matched_indicators_deduplicates() {
+        let lines = vec![
+            "request = get_request()",
+            "x = request.args",
+            "subprocess.call(x)",
+        ];
+        let indicators = &["request"];
+        let matched = collect_matched_indicators(&lines, 2, indicators);
+        assert_eq!(matched.len(), 1);
     }
 }

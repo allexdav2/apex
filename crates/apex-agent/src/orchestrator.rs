@@ -109,9 +109,34 @@ impl AgentCluster {
                 break;
             }
 
+            // Build priority-scored candidates from uncovered branches.
+            let candidates: Vec<crate::priority::BranchCandidate> = uncovered
+                .iter()
+                .map(|branch| {
+                    let heuristic = self.oracle.best_heuristic(branch);
+                    crate::priority::BranchCandidate {
+                        id: branch.clone(),
+                        heuristic,
+                        attempts_since_progress: stall_count,
+                        depth_in_cfg: branch.col as u32, // approximate depth from col
+                        hit_count: 0, // TODO: track per-branch hit counts
+                    }
+                })
+                .collect();
+
+            // Focus on top-K most promising branches.
+            let top_k = 20.min(candidates.len());
+            let focused = crate::priority::select_top_targets(&candidates, top_k);
+
+            // Log recommended strategy for the highest-priority candidate.
+            if let Some(top) = candidates.first() {
+                let rec = crate::priority::recommend_strategy(top.heuristic, stall_count);
+                info!(?rec, branches = focused.len(), "priority selection");
+            }
+
             let ctx = ExplorationContext {
                 target: self.target.clone(),
-                uncovered_branches: uncovered.clone(),
+                uncovered_branches: focused,
                 iteration,
             };
 

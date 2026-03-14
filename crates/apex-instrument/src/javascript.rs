@@ -1,3 +1,4 @@
+use crate::v8_coverage;
 use apex_core::{
     command::{CommandRunner, CommandSpec, RealCommandRunner},
     error::{ApexError, Result},
@@ -5,6 +6,7 @@ use apex_core::{
     traits::Instrumentor,
     types::{BranchId, InstrumentedTarget, Target},
 };
+use apex_lang::js_env::{self, JsEnvironment, JsRuntime, JsTestRunner, ModuleSystem};
 use async_trait::async_trait;
 use serde::Deserialize;
 use std::{
@@ -13,6 +15,144 @@ use std::{
     sync::Arc,
 };
 use tracing::{info, warn};
+
+// ---------------------------------------------------------------------------
+// Coverage tool selection
+// ---------------------------------------------------------------------------
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum CoverageTool {
+    Nyc,
+    C8,
+    Vitest,
+    Bun,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum CoverageFormat {
+    V8,
+    Istanbul,
+}
+
+#[derive(Debug)]
+enum CoverageOutput {
+    FilePath(PathBuf),
+    Stdout,
+}
+
+struct CoverageToolConfig {
+    tool: CoverageTool,
+    command: Vec<String>,
+    output_path: CoverageOutput,
+    format: CoverageFormat,
+}
+
+fn select_coverage_tool(env: &JsEnvironment, target: &Path) -> CoverageToolConfig {
+    match env.runtime {
+        JsRuntime::Bun => CoverageToolConfig {
+            tool: CoverageTool::Bun,
+            command: vec!["bun".into(), "test".into(), "--coverage".into()],
+            output_path: CoverageOutput::Stdout,
+            format: CoverageFormat::V8,
+        },
+        JsRuntime::Node => {
+            if env.test_runner == JsTestRunner::Vitest {
+                let has_vitest_v8 = target.join("node_modules/@vitest/coverage-v8").exists();
+                if has_vitest_v8 {
+                    let report_dir = target.join(".apex_coverage_js");
+                    return CoverageToolConfig {
+                        tool: CoverageTool::Vitest,
+                        command: vec![
+                            "npx".into(),
+                            "vitest".into(),
+                            "run".into(),
+                            "--coverage".into(),
+                            "--coverage.reporter=v8".into(),
+                            format!("--coverage.reportsDirectory={}", report_dir.display()),
+                        ],
+                        output_path: CoverageOutput::FilePath(
+                            report_dir.join("coverage-final.json"),
+                        ),
+                        format: CoverageFormat::V8,
+                    };
+                }
+            }
+            match env.module_system {
+                ModuleSystem::ESM | ModuleSystem::Mixed => {
+                    let report_dir = target.join(".apex_coverage_js");
+                    CoverageToolConfig {
+                        tool: CoverageTool::C8,
+                        command: {
+                            let (bin, args) = js_env::test_command(env);
+                            let mut cmd = vec![
+                                "npx".into(),
+                                "c8".into(),
+                                "--reporter=json".into(),
+                                format!("--reports-dir={}", report_dir.display()),
+                                bin,
+                            ];
+                            cmd.extend(args);
+                            cmd
+                        },
+                        output_path: CoverageOutput::FilePath(
+                            report_dir.join("coverage-final.json"),
+                        ),
+                        format: CoverageFormat::V8,
+                    }
+                }
+                ModuleSystem::CommonJS => {
+                    let has_nyc = target.join("node_modules/.bin/nyc").exists();
+                    if has_nyc {
+                        let report_dir = target.join(".apex_coverage_js");
+                        CoverageToolConfig {
+                            tool: CoverageTool::Nyc,
+                            command: {
+                                let (bin, args) = js_env::test_command(env);
+                                let mut cmd = vec![
+                                    "npx".into(),
+                                    "nyc".into(),
+                                    "--reporter=json".into(),
+                                    format!("--report-dir={}", report_dir.display()),
+                                    "--temp-dir=.nyc_output".into(),
+                                    "--include=**/*.js".into(),
+                                    "--exclude=node_modules/**".into(),
+                                    bin,
+                                ];
+                                cmd.extend(args);
+                                cmd
+                            },
+                            output_path: CoverageOutput::FilePath(
+                                report_dir.join("coverage-final.json"),
+                            ),
+                            format: CoverageFormat::Istanbul,
+                        }
+                    } else {
+                        let report_dir = target.join(".apex_coverage_js");
+                        CoverageToolConfig {
+                            tool: CoverageTool::C8,
+                            command: {
+                                let (bin, args) = js_env::test_command(env);
+                                let mut cmd = vec![
+                                    "npx".into(),
+                                    "c8".into(),
+                                    "--reporter=json".into(),
+                                    format!("--reports-dir={}", report_dir.display()),
+                                    bin,
+                                ];
+                                cmd.extend(args);
+                                cmd
+                            },
+                            output_path: CoverageOutput::FilePath(
+                                report_dir.join("coverage-final.json"),
+                            ),
+                            format: CoverageFormat::V8,
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
 
 // ---------------------------------------------------------------------------
 // Istanbul / nyc coverage-final.json schema
@@ -82,60 +222,6 @@ impl JavaScriptInstrumentor {
             file_paths: HashMap::new(),
             work_dir: None,
             runner,
-        }
-    }
-
-    /// Run `npx nyc` over the project and return the path to
-    /// `.apex_coverage_js/coverage-final.json`.
-    async fn run_nyc(&self, target: &Path, test_cmd: &[String]) -> Result<PathBuf> {
-        let report_dir = target.join(".apex_coverage_js");
-        std::fs::create_dir_all(&report_dir)
-            .map_err(|e| ApexError::Instrumentation(format!("create report dir: {e}")))?;
-
-        // Build the nyc command.
-        let effective_cmd: Vec<String> = if test_cmd.is_empty() {
-            vec!["npm".to_string(), "test".to_string()]
-        } else {
-            test_cmd.to_vec()
-        };
-
-        let mut args: Vec<String> = vec![
-            "nyc".to_string(),
-            "--reporter=json".to_string(),
-            format!("--report-dir={}", report_dir.display()),
-            "--temp-dir=.nyc_output".to_string(),
-            "--include=**/*.js".to_string(),
-            "--exclude=node_modules/**".to_string(),
-        ];
-        args.extend(effective_cmd);
-
-        info!(
-            target = %target.display(),
-            cmd = ?args,
-            "running JavaScript instrumentation via nyc"
-        );
-
-        let spec = CommandSpec::new("npx", target).args(args);
-        let output = self
-            .runner
-            .run_command(&spec)
-            .await
-            .map_err(|e| ApexError::Instrumentation(format!("spawn npx nyc: {e}")))?;
-
-        if output.exit_code != 0 {
-            warn!(
-                exit = output.exit_code,
-                "nyc/test run returned non-zero (coverage data may still be valid)"
-            );
-        }
-
-        let json_path = report_dir.join("coverage-final.json");
-        if json_path.exists() {
-            Ok(json_path)
-        } else {
-            Err(ApexError::Instrumentation(
-                "coverage-final.json not produced; is nyc installed? (npx nyc)".into(),
-            ))
         }
     }
 
@@ -222,16 +308,145 @@ impl Default for JavaScriptInstrumentor {
 #[async_trait]
 impl Instrumentor for JavaScriptInstrumentor {
     async fn instrument(&self, target: &Target) -> Result<InstrumentedTarget> {
-        let mut inner = JavaScriptInstrumentor::with_runner(self.runner.clone());
-        inner.work_dir = Some(target.root.clone());
+        // --- Stage 1: Detect JS environment ---
+        let env = JsEnvironment::detect(&target.root).ok_or_else(|| {
+            ApexError::Instrumentation(format!(
+                "no package.json found at {}; is this a JS/TS project?",
+                target.root.display()
+            ))
+        })?;
 
-        let json_path = inner.run_nyc(&target.root, &target.test_command).await?;
-        inner.parse_istanbul_json(&json_path, &target.root)?;
+        info!(
+            runtime = ?env.runtime,
+            test_runner = ?env.test_runner,
+            module_system = ?env.module_system,
+            typescript = env.is_typescript,
+            "detected JS environment"
+        );
 
-        let branch_ids = inner.branch_ids.clone();
-        let executed_branch_ids = inner.executed_branch_ids.clone();
-        let file_paths = inner.file_paths.clone();
-        let work_dir = inner.work_dir.unwrap_or_else(|| target.root.clone());
+        // --- Stage 2: Select coverage tool ---
+        let config = select_coverage_tool(&env, &target.root);
+
+        info!(
+            tool = ?config.tool,
+            format = ?config.format,
+            "selected coverage tool"
+        );
+
+        // --- Stage 3: Build effective command and run ---
+        let effective_cmd = if target.test_command.is_empty() {
+            config.command.clone()
+        } else {
+            // User provided a custom test command — wrap it with the coverage tool.
+            match config.tool {
+                CoverageTool::Nyc => {
+                    let report_dir = target.root.join(".apex_coverage_js");
+                    let mut cmd = vec![
+                        "npx".into(),
+                        "nyc".into(),
+                        "--reporter=json".into(),
+                        format!("--report-dir={}", report_dir.display()),
+                        "--temp-dir=.nyc_output".into(),
+                        "--include=**/*.js".into(),
+                        "--exclude=node_modules/**".into(),
+                    ];
+                    cmd.extend(target.test_command.clone());
+                    cmd
+                }
+                CoverageTool::C8 => {
+                    let report_dir = target.root.join(".apex_coverage_js");
+                    let mut cmd = vec![
+                        "npx".into(),
+                        "c8".into(),
+                        "--reporter=json".into(),
+                        format!("--reports-dir={}", report_dir.display()),
+                    ];
+                    cmd.extend(target.test_command.clone());
+                    cmd
+                }
+                _ => config.command.clone(),
+            }
+        };
+
+        let report_dir = target.root.join(".apex_coverage_js");
+        std::fs::create_dir_all(&report_dir)
+            .map_err(|e| ApexError::Instrumentation(format!("create report dir: {e}")))?;
+
+        info!(
+            target = %target.root.display(),
+            cmd = ?effective_cmd,
+            "running JavaScript instrumentation"
+        );
+
+        let (program, args) = effective_cmd
+            .split_first()
+            .ok_or_else(|| ApexError::Instrumentation("empty command".into()))?;
+
+        let spec = CommandSpec::new(program, &target.root).args(args.to_vec());
+        let output = self
+            .runner
+            .run_command(&spec)
+            .await
+            .map_err(|e| ApexError::Instrumentation(format!("spawn coverage tool: {e}")))?;
+
+        if output.exit_code != 0 {
+            warn!(
+                exit = output.exit_code,
+                tool = ?config.tool,
+                "coverage/test run returned non-zero (coverage data may still be valid)"
+            );
+        }
+
+        // --- Stage 4: Parse coverage output ---
+        let (branch_ids, executed_branch_ids, file_paths) = match config.format {
+            CoverageFormat::Istanbul => {
+                let json_path = match &config.output_path {
+                    CoverageOutput::FilePath(p) => p.clone(),
+                    CoverageOutput::Stdout => {
+                        return Err(ApexError::Instrumentation(
+                            "Istanbul format with stdout output is not supported".into(),
+                        ));
+                    }
+                };
+                if !json_path.exists() {
+                    return Err(ApexError::Instrumentation(
+                        "coverage-final.json not produced; is nyc installed? (npx nyc)".into(),
+                    ));
+                }
+                let mut inner = JavaScriptInstrumentor::with_runner(self.runner.clone());
+                inner.parse_istanbul_json(&json_path, &target.root)?;
+                (inner.branch_ids, inner.executed_branch_ids, inner.file_paths)
+            }
+            CoverageFormat::V8 => {
+                let json_path = match &config.output_path {
+                    CoverageOutput::FilePath(p) => p.clone(),
+                    CoverageOutput::Stdout => {
+                        // TODO: Parse V8 coverage from stdout
+                        return Err(ApexError::Instrumentation(
+                            "V8 coverage from stdout not yet implemented".into(),
+                        ));
+                    }
+                };
+                if !json_path.exists() {
+                    return Err(ApexError::Instrumentation(format!(
+                        "coverage JSON not produced at {}; is the coverage tool installed?",
+                        json_path.display()
+                    )));
+                }
+                let json_str = std::fs::read_to_string(&json_path).map_err(|e| {
+                    ApexError::Instrumentation(format!("read V8 coverage json: {e}"))
+                })?;
+                v8_coverage::parse_v8_coverage(&json_str, &target.root, &|path| {
+                    std::fs::read_to_string(path).ok()
+                })
+                .map_err(|e| ApexError::Instrumentation(e))?
+            }
+        };
+
+        // --- Stage 5: Source map remapping ---
+        // TODO: Implement source map remapping
+
+        let work_dir = target.root.clone();
 
         Ok(InstrumentedTarget {
             target: target.clone(),
@@ -299,6 +514,21 @@ mod tests {
                 stderr: Vec::new(),
             })
         }
+    }
+
+    /// Set up a temp dir as a CommonJS Node project with nyc installed,
+    /// so JsEnvironment::detect works and selects Istanbul/nyc.
+    fn setup_nyc_project(root: &Path) {
+        // package.json with jest (CommonJS by default)
+        std::fs::write(
+            root.join("package.json"),
+            r#"{"name": "test-proj", "devDependencies": {"jest": "^29"}}"#,
+        )
+        .unwrap();
+        // Marker for nyc being installed
+        let nyc_bin = root.join("node_modules/.bin");
+        std::fs::create_dir_all(&nyc_bin).unwrap();
+        std::fs::write(nyc_bin.join("nyc"), "").unwrap();
     }
 
     /// Sample Istanbul coverage-final.json with two branch points in one file.
@@ -574,7 +804,10 @@ mod tests {
         let tmp = tempfile::tempdir().unwrap();
         let repo_root = tmp.path();
 
-        // Pre-create the coverage JSON that run_nyc expects to find
+        // Set up as a nyc-based CommonJS project
+        setup_nyc_project(repo_root);
+
+        // Pre-create the coverage JSON that the pipeline expects to find
         let report_dir = repo_root.join(".apex_coverage_js");
         std::fs::create_dir_all(&report_dir).unwrap();
         let json = sample_istanbul_json(repo_root.to_str().unwrap());
@@ -600,6 +833,8 @@ mod tests {
         let tmp = tempfile::tempdir().unwrap();
         let repo_root = tmp.path();
 
+        setup_nyc_project(repo_root);
+
         let report_dir = repo_root.join(".apex_coverage_js");
         std::fs::create_dir_all(&report_dir).unwrap();
         let json = sample_istanbul_json(repo_root.to_str().unwrap());
@@ -623,6 +858,8 @@ mod tests {
         let tmp = tempfile::tempdir().unwrap();
         let repo_root = tmp.path();
 
+        setup_nyc_project(repo_root);
+
         let runner = Arc::new(FakeRunner::spawn_error());
         let inst = JavaScriptInstrumentor::with_runner(runner);
 
@@ -640,6 +877,8 @@ mod tests {
     async fn test_instrument_missing_coverage_json() {
         let tmp = tempfile::tempdir().unwrap();
         let repo_root = tmp.path();
+
+        setup_nyc_project(repo_root);
         // Do NOT create coverage-final.json
 
         let runner = Arc::new(FakeRunner::success());
@@ -655,6 +894,27 @@ mod tests {
         assert!(result.is_err());
         let err_msg = format!("{}", result.unwrap_err());
         assert!(err_msg.contains("coverage-final.json not produced"));
+    }
+
+    #[tokio::test]
+    async fn test_instrument_no_package_json() {
+        let tmp = tempfile::tempdir().unwrap();
+        let repo_root = tmp.path();
+        // No package.json — should fail at stage 1
+
+        let runner = Arc::new(FakeRunner::success());
+        let inst = JavaScriptInstrumentor::with_runner(runner);
+
+        let target = Target {
+            root: repo_root.to_path_buf(),
+            language: apex_core::types::Language::JavaScript,
+            test_command: Vec::new(),
+        };
+
+        let result = inst.instrument(&target).await;
+        assert!(result.is_err());
+        let err_msg = format!("{}", result.unwrap_err());
+        assert!(err_msg.contains("no package.json"));
     }
 
     // -----------------------------------------------------------------------
@@ -884,6 +1144,8 @@ mod tests {
         let tmp = tempfile::tempdir().unwrap();
         let repo_root = tmp.path();
 
+        setup_nyc_project(repo_root);
+
         let report_dir = repo_root.join(".apex_coverage_js");
         std::fs::create_dir_all(&report_dir).unwrap();
         std::fs::write(report_dir.join("coverage-final.json"), "{}").unwrap();
@@ -900,5 +1162,98 @@ mod tests {
         let result = inst.instrument(&target).await.unwrap();
         assert!(result.branch_ids.is_empty());
         assert_eq!(result.work_dir, repo_root.to_path_buf());
+    }
+
+    // -----------------------------------------------------------------------
+    // Coverage tool selection tests
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn test_select_bun_runtime() {
+        let tmp = tempfile::tempdir().unwrap();
+        let env = JsEnvironment {
+            runtime: JsRuntime::Bun,
+            pkg_manager: apex_lang::js_env::PkgManager::Bun,
+            test_runner: JsTestRunner::BunTest,
+            module_system: ModuleSystem::ESM,
+            is_typescript: false,
+            source_maps: false,
+            monorepo: None,
+        };
+        let config = select_coverage_tool(&env, tmp.path());
+        assert_eq!(config.tool, CoverageTool::Bun);
+        assert_eq!(config.format, CoverageFormat::V8);
+    }
+
+    #[test]
+    fn test_select_vitest_with_v8() {
+        let tmp = tempfile::tempdir().unwrap();
+        std::fs::create_dir_all(tmp.path().join("node_modules/@vitest/coverage-v8")).unwrap();
+        let env = JsEnvironment {
+            runtime: JsRuntime::Node,
+            pkg_manager: apex_lang::js_env::PkgManager::Npm,
+            test_runner: JsTestRunner::Vitest,
+            module_system: ModuleSystem::ESM,
+            is_typescript: false,
+            source_maps: false,
+            monorepo: None,
+        };
+        let config = select_coverage_tool(&env, tmp.path());
+        assert_eq!(config.tool, CoverageTool::Vitest);
+        assert_eq!(config.format, CoverageFormat::V8);
+    }
+
+    #[test]
+    fn test_select_c8_for_esm() {
+        let tmp = tempfile::tempdir().unwrap();
+        let env = JsEnvironment {
+            runtime: JsRuntime::Node,
+            pkg_manager: apex_lang::js_env::PkgManager::Npm,
+            test_runner: JsTestRunner::Jest,
+            module_system: ModuleSystem::ESM,
+            is_typescript: false,
+            source_maps: false,
+            monorepo: None,
+        };
+        let config = select_coverage_tool(&env, tmp.path());
+        assert_eq!(config.tool, CoverageTool::C8);
+        assert_eq!(config.format, CoverageFormat::V8);
+    }
+
+    #[test]
+    fn test_select_nyc_for_commonjs_with_nyc() {
+        let tmp = tempfile::tempdir().unwrap();
+        let nyc_bin = tmp.path().join("node_modules/.bin");
+        std::fs::create_dir_all(&nyc_bin).unwrap();
+        std::fs::write(nyc_bin.join("nyc"), "").unwrap();
+        let env = JsEnvironment {
+            runtime: JsRuntime::Node,
+            pkg_manager: apex_lang::js_env::PkgManager::Npm,
+            test_runner: JsTestRunner::Jest,
+            module_system: ModuleSystem::CommonJS,
+            is_typescript: false,
+            source_maps: false,
+            monorepo: None,
+        };
+        let config = select_coverage_tool(&env, tmp.path());
+        assert_eq!(config.tool, CoverageTool::Nyc);
+        assert_eq!(config.format, CoverageFormat::Istanbul);
+    }
+
+    #[test]
+    fn test_select_c8_fallback_for_commonjs_without_nyc() {
+        let tmp = tempfile::tempdir().unwrap();
+        let env = JsEnvironment {
+            runtime: JsRuntime::Node,
+            pkg_manager: apex_lang::js_env::PkgManager::Npm,
+            test_runner: JsTestRunner::Jest,
+            module_system: ModuleSystem::CommonJS,
+            is_typescript: false,
+            source_maps: false,
+            monorepo: None,
+        };
+        let config = select_coverage_tool(&env, tmp.path());
+        assert_eq!(config.tool, CoverageTool::C8);
+        assert_eq!(config.format, CoverageFormat::V8);
     }
 }

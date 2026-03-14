@@ -162,6 +162,7 @@ dependencies = [
  "apex-index",
  "apex-instrument",
  "apex-lang",
+ "apex-reach",
  "apex-sandbox",
  "apex-symbolic",
  "apex-synth",
@@ -174,7 +175,6 @@ dependencies = [
  "scopeguard",
  "serde",
  "serde_json",
- "sha2",
  "tempfile",
  "thiserror 1.0.69",
  "tokio",
@@ -248,6 +248,7 @@ dependencies = [
  "apex-core",
  "apex-coverage",
  "apex-cpg",
+ "apex-reach",
  "async-trait",
  "futures",
  "mockall",
@@ -345,6 +346,15 @@ dependencies = [
  "apex-core",
  "proptest",
  "serde",
+]
+
+[[package]]
+name = "apex-reach"
+version = "0.1.0"
+dependencies = [
+ "apex-core",
+ "regex",
+ "tempfile",
 ]
 
 [[package]]

@@ -24,6 +24,7 @@ pub struct AnalysisContext {
     pub runner: Arc<dyn CommandRunner>,
     pub cpg: Option<Arc<apex_cpg::Cpg>>,
     pub threat_model: ThreatModelConfig,
+    pub reverse_path_engine: Option<Arc<apex_reach::ReversePathEngine>>,
 }
 
 impl fmt::Debug for AnalysisContext {
@@ -37,6 +38,7 @@ impl fmt::Debug for AnalysisContext {
             .field("runner", &"<CommandRunner>")
             .field("cpg", &self.cpg.as_ref().map(|c| c.node_count()))
             .field("threat_model", &self.threat_model.model_type)
+            .field("reverse_path_engine", &self.reverse_path_engine.is_some())
             .finish()
     }
 }
@@ -58,6 +60,7 @@ impl AnalysisContext {
             runner: Arc::new(apex_core::command::RealCommandRunner),
             cpg: None,
             threat_model: ThreatModelConfig::default(),
+            reverse_path_engine: None,
         }
     }
 }

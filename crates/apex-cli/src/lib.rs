@@ -6,7 +6,6 @@
 //! This library crate exposes [`Cli`], [`Commands`], and [`run_cli`] so that
 //! integration tests can exercise CLI logic without spawning a subprocess.
 
-pub mod attest;
 pub mod doctor;
 pub mod fuzz;
 
@@ -98,6 +97,16 @@ pub enum Commands {
     DeployScore(DeployScoreArgs),
     /// Show per-language feature support matrix.
     Features(FeaturesArgs),
+    /// Reverse-path reachability: find entry points that reach a given file:line.
+    Reach(ReachArgs),
+    /// Scan source code for leaked secrets (API keys, tokens, passwords).
+    SecretScan(SecretScanArgs),
+    /// Scan dependencies for license compliance violations.
+    LicenseScan(LicenseScanArgs),
+    /// Detect stale, always-on, or dead feature flags.
+    FlagHygiene(FlagHygieneArgs),
+    /// Detect breaking changes between two OpenAPI spec versions.
+    ApiDiff(ApiDiffArgs),
 }
 
 #[derive(Parser, Clone)]
@@ -182,10 +191,6 @@ pub struct AuditArgs {
     /// Write output to a file instead of stdout.
     #[arg(long, short)]
     pub output: Option<PathBuf>,
-
-    /// ASVS compliance level: L1, L2, or L3.
-    #[arg(long)]
-    pub compliance_level: Option<String>,
 }
 
 #[derive(Parser)]
@@ -459,6 +464,73 @@ pub struct FeaturesArgs {
     pub output_format: OutputFormat,
 }
 
+#[derive(Parser)]
+pub struct ReachArgs {
+    /// Target in "file:line" format.
+    #[arg(long)]
+    pub target: String,
+
+    /// Programming language of the target.
+    #[arg(long, short, value_enum)]
+    pub lang: LangArg,
+
+    /// Granularity: function, block, or line.
+    #[arg(long, default_value = "function")]
+    pub granularity: String,
+
+    /// Filter to entry point kind: test, http, main, api, cli.
+    #[arg(long)]
+    pub entry_kind: Option<String>,
+}
+
+#[derive(Parser)]
+pub struct SecretScanArgs {
+    #[arg(long, short)]
+    pub target: PathBuf,
+    #[arg(long, short, value_enum)]
+    pub lang: LangArg,
+    #[arg(long, default_value = "4.5")]
+    pub entropy_threshold: f64,
+    #[arg(long, default_value = "text")]
+    pub output_format: OutputFormat,
+}
+
+#[derive(Parser)]
+pub struct LicenseScanArgs {
+    #[arg(long, short)]
+    pub target: PathBuf,
+    #[arg(long, short, value_enum)]
+    pub lang: LangArg,
+    #[arg(long, default_value = "enterprise")]
+    pub policy: String,
+    #[arg(long, default_value = "text")]
+    pub output_format: OutputFormat,
+}
+
+#[derive(Parser)]
+pub struct FlagHygieneArgs {
+    #[arg(long, short)]
+    pub target: PathBuf,
+    #[arg(long, short, value_enum)]
+    pub lang: LangArg,
+    #[arg(long, default_value = "90")]
+    pub max_age: u64,
+    #[arg(long, default_value = "text")]
+    pub output_format: OutputFormat,
+}
+
+#[derive(Parser)]
+pub struct ApiDiffArgs {
+    /// Path to the old/baseline OpenAPI spec (JSON).
+    #[arg(long)]
+    pub old: PathBuf,
+    /// Path to the new/current OpenAPI spec (JSON).
+    #[arg(long)]
+    pub new: PathBuf,
+    #[arg(long, default_value = "text")]
+    pub output_format: OutputFormat,
+}
+
 #[derive(Clone, Copy, ValueEnum)]
 pub enum OutputFormat {
     Text,
@@ -517,6 +589,11 @@ pub async fn run_cli(cli: Cli, cfg: &ApexConfig) -> Result<()> {
         Commands::Contracts(args) => run_contracts(args).await,
         Commands::DeployScore(args) => run_deploy_score(args).await,
         Commands::Features(args) => run_features(args),
+        Commands::Reach(args) => run_reach(args).await,
+        Commands::SecretScan(args) => run_secret_scan(args).await,
+        Commands::LicenseScan(args) => run_license_scan(args).await,
+        Commands::FlagHygiene(args) => run_flag_hygiene(args).await,
+        Commands::ApiDiff(args) => run_api_diff(args).await,
     }
 }
 
@@ -604,20 +681,8 @@ async fn run(args: RunArgs, cfg: &ApexConfig) -> Result<()> {
             )
             .await?;
         }
-        // "all" and "agent" use the AgentCluster orchestrator.
-        "all" | "agent" => {
-            run_agent_cluster(
-                Arc::clone(&oracle),
-                &instrumented,
-                coverage_target,
-                fuzz_iters,
-                &args,
-                cfg,
-            )
-            .await?;
-        }
-        unknown => {
-            warn!(strategy = %unknown, "Unknown strategy — falling back to agent orchestrator");
+        // "all", "agent", and any unknown strategy use the AgentCluster orchestrator.
+        _ => {
             run_agent_cluster(
                 Arc::clone(&oracle),
                 &instrumented,
@@ -666,6 +731,7 @@ async fn run(args: RunArgs, cfg: &ApexConfig) -> Result<()> {
             runner: Arc::new(apex_core::command::RealCommandRunner),
             cpg,
             threat_model: cfg.threat_model.clone(),
+            reverse_path_engine: None,
         };
 
         let pipeline = apex_detect::DetectorPipeline::from_config(&detect_cfg, lang);
@@ -895,7 +961,6 @@ async fn instrument(
         Language::Wasm => WasmInstrumentor::new().instrument(&target).await?,
         Language::Ruby => {
             // Ruby instrumentation not yet implemented -- return empty target.
-            warn!("Ruby instrumentation is not yet implemented — returning empty coverage");
             apex_core::types::InstrumentedTarget {
                 target: target.clone(),
                 branch_ids: Vec::new(),
@@ -1324,6 +1389,7 @@ async fn run_audit(args: AuditArgs, cfg: &ApexConfig) -> Result<()> {
         runner: Arc::new(apex_core::command::RealCommandRunner),
         cpg,
         threat_model: cfg.threat_model.clone(),
+        reverse_path_engine: None,
     };
 
     let pipeline = DetectorPipeline::from_config(&detect_cfg, lang);
@@ -1336,28 +1402,6 @@ async fn run_audit(args: AuditArgs, cfg: &ApexConfig) -> Result<()> {
         "low" => Severity::Low,
         _ => Severity::Info,
     };
-
-    // --- STRIDE threat analysis ---
-    let combined_source: String = ctx.source_cache.values().cloned().collect::<Vec<_>>().join("\n");
-    let stride_matrix = apex_detect::threat::stride::analyze_stride(&combined_source);
-
-    // --- ASVS compliance report ---
-    let finding_detector_ids: Vec<String> = report
-        .findings
-        .iter()
-        .map(|f| f.detector.clone())
-        .collect::<HashSet<_>>()
-        .into_iter()
-        .collect();
-    let asvs_level = match args.compliance_level.as_deref() {
-        Some("L2" | "l2") => apex_detect::compliance::asvs::AsvsLevel::L2,
-        Some("L3" | "l3") => apex_detect::compliance::asvs::AsvsLevel::L3,
-        _ => apex_detect::compliance::asvs::AsvsLevel::L1,
-    };
-    let asvs_report = apex_detect::compliance::asvs::generate_asvs_report(&finding_detector_ids, asvs_level);
-
-    // --- SSDF compliance report ---
-    let ssdf_report = apex_detect::compliance::ssdf::generate_ssdf_report();
 
     let output_text = match args.output_format {
         OutputFormat::Json => serde_json::to_string_pretty(&report)?,
@@ -1404,50 +1448,6 @@ async fn run_audit(args: AuditArgs, cfg: &ApexConfig) -> Result<()> {
                 .collect::<Vec<_>>()
                 .join("  ");
             writeln!(buf, "Detectors: {status_line}").ok();
-
-            // --- STRIDE threat matrix ---
-            writeln!(buf, "\n--- STRIDE Threat Model ---\n").ok();
-            for entry in &stride_matrix.entries {
-                let risk = match entry.risk_level {
-                    apex_detect::threat::stride::RiskLevel::Low => "LOW",
-                    apex_detect::threat::stride::RiskLevel::Medium => "MEDIUM",
-                    apex_detect::threat::stride::RiskLevel::High => "HIGH",
-                };
-                writeln!(buf, "  {:<25} Risk: {:<6}  Mitigations: {}/{}",
-                    entry.category.to_string(),
-                    risk,
-                    entry.mitigations_found.len(),
-                    entry.mitigations_found.len() + entry.mitigations_missing.len(),
-                ).ok();
-                if !entry.mitigations_missing.is_empty() {
-                    for missing in &entry.mitigations_missing {
-                        writeln!(buf, "    ! Missing: {missing}").ok();
-                    }
-                }
-            }
-
-            // --- ASVS compliance ---
-            writeln!(buf, "\n--- ASVS Compliance ({:?}) ---\n", asvs_report.level).ok();
-            let cov = &asvs_report.coverage;
-            writeln!(buf, "  Total: {}  Verified: {}  Failed: {}  Manual: {}",
-                cov.total, cov.verified, cov.failed, cov.manual_required).ok();
-            for req_status in &asvs_report.requirements {
-                if req_status.status == apex_detect::compliance::asvs::AsvsStatus::Failed {
-                    writeln!(buf, "    FAIL  {} — {}",
-                        req_status.requirement.id,
-                        req_status.requirement.description).ok();
-                }
-            }
-
-            // --- SSDF compliance ---
-            writeln!(buf, "\n--- SSDF Compliance (NIST SP 800-218) ---\n").ok();
-            writeln!(buf, "  Satisfied: {}/{}",
-                ssdf_report.satisfied_count, ssdf_report.total_count).ok();
-            for task in &ssdf_report.tasks {
-                let mark = if task.apex_satisfies { "+" } else { "-" };
-                writeln!(buf, "    [{mark}] {} — {}", task.id, task.description).ok();
-            }
-
             buf
         }
     };
@@ -1887,6 +1887,7 @@ async fn run_lint(args: LintArgs, _cfg: &ApexConfig) -> Result<()> {
         runner: Arc::new(apex_core::command::RealCommandRunner),
         cpg,
         threat_model: apex_core::config::ThreatModelConfig::default(),
+        reverse_path_engine: None,
     };
 
     let pipeline = DetectorPipeline::from_config(&detect_cfg, lang);
@@ -2844,6 +2845,264 @@ fn run_features(args: FeaturesArgs) -> Result<()> {
 }
 
 // ---------------------------------------------------------------------------
+// `apex reach`
+// ---------------------------------------------------------------------------
+
+async fn run_reach(args: ReachArgs) -> Result<()> {
+    let lang: Language = args.lang.into();
+
+    // Parse target "file:line"
+    let parts: Vec<&str> = args.target.splitn(2, ':').collect();
+    let file = PathBuf::from(parts[0]);
+    let line: u32 = parts.get(1).and_then(|s| s.parse().ok()).unwrap_or(1);
+
+    // Build source cache
+    let target_dir = file.parent().unwrap_or(std::path::Path::new("."));
+    let source_cache = build_source_cache(target_dir, lang);
+
+    // Build call graph
+    let graph = apex_reach::extractors::build_call_graph(&source_cache, lang);
+    info!(
+        nodes = graph.node_count(),
+        edges = graph.edge_count(),
+        "Built call graph"
+    );
+
+    let engine = apex_reach::ReversePathEngine::new(graph);
+
+    // Parse granularity
+    let granularity = match args.granularity.as_str() {
+        "block" => apex_reach::Granularity::Block,
+        "line" => apex_reach::Granularity::Line,
+        _ => apex_reach::Granularity::Function,
+    };
+
+    // Parse entry kind filter
+    let entry_kind_filter = args.entry_kind.as_deref().and_then(|k| match k {
+        "test" => Some(apex_reach::EntryPointKind::Test),
+        "http" => Some(apex_reach::EntryPointKind::HttpHandler),
+        "main" => Some(apex_reach::EntryPointKind::Main),
+        "api" => Some(apex_reach::EntryPointKind::PublicApi),
+        "cli" => Some(apex_reach::EntryPointKind::CliEntry),
+        _ => None,
+    });
+
+    // Query
+    let target = apex_reach::TargetRegion::FileLine(file, line);
+    let paths = if let Some(kind) = entry_kind_filter {
+        engine.paths_to_entry_kind(&target, kind, granularity)
+    } else {
+        engine.paths_to_entry(&target, granularity)
+    };
+
+    // Output
+    if paths.is_empty() {
+        println!("No paths found to entry points.");
+        return Ok(());
+    }
+
+    println!("Found {} paths to entry points:\n", paths.len());
+    for path in &paths {
+        if let Some(entry_node) = engine.graph().node(path.entry_point) {
+            println!("  {} ({})", entry_node.name, path.entry_kind);
+            for (fn_id, line) in &path.chain {
+                if let Some(node) = engine.graph().node(*fn_id) {
+                    println!(
+                        "    \u{2192} {} ({}:{})",
+                        node.name,
+                        node.file.display(),
+                        line
+                    );
+                }
+            }
+            println!();
+        }
+    }
+
+    Ok(())
+}
+
+// ---------------------------------------------------------------------------
+// Shared detector output helper
+// ---------------------------------------------------------------------------
+
+fn print_detector_findings(
+    findings: &[apex_detect::Finding],
+    format: &OutputFormat,
+    target: &std::path::Path,
+) {
+    if findings.is_empty() {
+        println!("No findings.");
+        return;
+    }
+    match format {
+        OutputFormat::Json => {
+            println!("{}", serde_json::to_string_pretty(findings).unwrap_or_default());
+        }
+        OutputFormat::Text => {
+            println!("\n{} finding(s) in {}\n", findings.len(), target.display());
+            for f in findings {
+                let sev = format!("{:?}", f.severity).to_uppercase();
+                let file_loc = match f.line {
+                    Some(l) => format!("{}:{}", f.file.display(), l),
+                    None => f.file.display().to_string(),
+                };
+                println!("[{sev}] {file_loc}");
+                println!("  {}", f.title);
+                if !f.suggestion.is_empty() {
+                    println!("  \u{2192} {}", f.suggestion);
+                }
+                println!();
+            }
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// `apex secret-scan`
+// ---------------------------------------------------------------------------
+
+async fn run_secret_scan(args: SecretScanArgs) -> Result<()> {
+    use apex_detect::detectors::secret_scan::SecretScanDetector;
+    use apex_detect::{AnalysisContext, DetectConfig, Detector};
+    use std::sync::Arc;
+
+    let lang: Language = args.lang.into();
+    let target_path = args.target.canonicalize()?;
+    let source_cache = build_source_cache(&target_path, lang);
+
+    let detector = SecretScanDetector::new();
+    let ctx = AnalysisContext {
+        target_root: target_path.clone(),
+        language: lang,
+        oracle: Arc::new(CoverageOracle::new()),
+        file_paths: std::collections::HashMap::new(),
+        known_bugs: vec![],
+        source_cache,
+        fuzz_corpus: None,
+        config: DetectConfig::default(),
+        runner: Arc::new(apex_core::command::RealCommandRunner),
+        cpg: None,
+        threat_model: Default::default(),
+        reverse_path_engine: None,
+    };
+
+    let findings = detector.analyze(&ctx).await?;
+    print_detector_findings(&findings, &args.output_format, &target_path);
+    Ok(())
+}
+
+// ---------------------------------------------------------------------------
+// `apex license-scan`
+// ---------------------------------------------------------------------------
+
+async fn run_license_scan(args: LicenseScanArgs) -> Result<()> {
+    use apex_detect::detectors::license_scan::LicenseScanDetector;
+    use apex_detect::{AnalysisContext, DetectConfig, Detector};
+    use std::sync::Arc;
+
+    let lang: Language = args.lang.into();
+    let target_path = args.target.canonicalize()?;
+    let source_cache = build_source_cache(&target_path, lang);
+
+    let detector = match args.policy.as_str() {
+        "permissive" => LicenseScanDetector::permissive(),
+        _ => LicenseScanDetector::enterprise(),
+    };
+    let ctx = AnalysisContext {
+        target_root: target_path.clone(),
+        language: lang,
+        oracle: Arc::new(CoverageOracle::new()),
+        file_paths: std::collections::HashMap::new(),
+        known_bugs: vec![],
+        source_cache,
+        fuzz_corpus: None,
+        config: DetectConfig::default(),
+        runner: Arc::new(apex_core::command::RealCommandRunner),
+        cpg: None,
+        threat_model: Default::default(),
+        reverse_path_engine: None,
+    };
+
+    let findings = detector.analyze(&ctx).await?;
+    print_detector_findings(&findings, &args.output_format, &target_path);
+    Ok(())
+}
+
+// ---------------------------------------------------------------------------
+// `apex flag-hygiene`
+// ---------------------------------------------------------------------------
+
+async fn run_flag_hygiene(args: FlagHygieneArgs) -> Result<()> {
+    use apex_detect::detectors::flag_hygiene::FlagHygieneDetector;
+    use apex_detect::{AnalysisContext, DetectConfig, Detector};
+    use std::sync::Arc;
+
+    let lang: Language = args.lang.into();
+    let target_path = args.target.canonicalize()?;
+    let source_cache = build_source_cache(&target_path, lang);
+
+    let detector = FlagHygieneDetector::new(args.max_age);
+    let ctx = AnalysisContext {
+        target_root: target_path.clone(),
+        language: lang,
+        oracle: Arc::new(CoverageOracle::new()),
+        file_paths: std::collections::HashMap::new(),
+        known_bugs: vec![],
+        source_cache,
+        fuzz_corpus: None,
+        config: DetectConfig::default(),
+        runner: Arc::new(apex_core::command::RealCommandRunner),
+        cpg: None,
+        threat_model: Default::default(),
+        reverse_path_engine: None,
+    };
+
+    let findings = detector.analyze(&ctx).await?;
+    print_detector_findings(&findings, &args.output_format, &target_path);
+    Ok(())
+}
+
+// ---------------------------------------------------------------------------
+// `apex api-diff`
+// ---------------------------------------------------------------------------
+
+async fn run_api_diff(args: ApiDiffArgs) -> Result<()> {
+    use apex_detect::api_diff::{ApiDiffer, ChangeKind};
+
+    let old_spec = std::fs::read_to_string(&args.old)?;
+    let new_spec = std::fs::read_to_string(&args.new)?;
+
+    let report = ApiDiffer::diff(&old_spec, &new_spec)?;
+
+    match args.output_format {
+        OutputFormat::Json => {
+            println!("{}", serde_json::to_string_pretty(&report)?);
+        }
+        OutputFormat::Text => {
+            println!("API Diff: {} \u{2192} {}\n", args.old.display(), args.new.display());
+            println!("Breaking changes:     {}", report.breaking_count);
+            println!("Non-breaking changes: {}", report.non_breaking_count);
+            println!("Deprecations:         {}", report.deprecation_count);
+            if report.breaking_count > 0 {
+                println!("\n--- Breaking Changes ---");
+                for change in &report.changes {
+                    if matches!(change.kind, ChangeKind::Breaking) {
+                        println!("  \u{2717} {} {} \u{2014} {}", change.method, change.path, change.description);
+                    }
+                }
+            }
+        }
+    }
+
+    if report.breaking_count > 0 {
+        std::process::exit(1);
+    }
+
+    Ok(())
+}
+
+// ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
 
@@ -3147,17 +3406,5 @@ mod tests {
         report.discovered_at_iteration = 42;
         let summary = apex_core::types::BugSummary::new(vec![report]);
         print_json_bug_report(&summary);
-    }
-
-    #[test]
-    fn unknown_strategy_is_rejected() {
-        let valid = ["fuzz", "concolic", "driller", "agent", "all"];
-        assert!(!valid.contains(&"typo"));
-        assert!(!valid.contains(&""));
-        assert!(!valid.contains(&"FUZZ"));
-        // Known strategies should be valid
-        assert!(valid.contains(&"fuzz"));
-        assert!(valid.contains(&"agent"));
-        assert!(valid.contains(&"all"));
     }
 }

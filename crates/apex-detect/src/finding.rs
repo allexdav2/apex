@@ -59,6 +59,8 @@ pub enum FindingCategory {
     LogicBug,
     SecuritySmell,
     PathTraversal,
+    HardcodedSecret,
+    LicenseViolation,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -358,6 +360,8 @@ mod tests {
             FindingCategory::LogicBug,
             FindingCategory::SecuritySmell,
             FindingCategory::PathTraversal,
+            FindingCategory::HardcodedSecret,
+            FindingCategory::LicenseViolation,
         ];
         for cat in cats {
             let json = serde_json::to_string(&cat).unwrap();

@@ -45,6 +45,15 @@ impl DetectorPipeline {
         if cfg.enabled.contains(&"path-normalize".to_string()) {
             detectors.push(Box::new(PathNormalizationDetector));
         }
+        if cfg.enabled.contains(&"secret-scan".to_string()) {
+            detectors.push(Box::new(SecretScanDetector::new()));
+        }
+        if cfg.enabled.contains(&"license-scan".to_string()) {
+            detectors.push(Box::new(LicenseScanDetector::permissive()));
+        }
+        if cfg.enabled.contains(&"flag-hygiene".to_string()) {
+            detectors.push(Box::new(FlagHygieneDetector::default_max_age()));
+        }
 
         Self { detectors }
     }
@@ -306,7 +315,7 @@ mod tests {
     fn from_config_enables_all_by_default() {
         let cfg = DetectConfig::default();
         let pipeline = DetectorPipeline::from_config(&cfg, Language::Rust);
-        assert_eq!(pipeline.detectors.len(), 7);
+        assert_eq!(pipeline.detectors.len(), 8);
     }
 
     #[test]

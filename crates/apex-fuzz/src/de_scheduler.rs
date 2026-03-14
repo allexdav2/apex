@@ -15,7 +15,9 @@ impl DeScheduler {
         }
     }
 
-    pub fn weights(&self) -> &[f64] { &self.weights }
+    pub fn weights(&self) -> &[f64] {
+        &self.weights
+    }
 
     /// Record `reward` (e.g. new branches found) for operator `idx`.
     pub fn update_reward(&mut self, idx: usize, reward: f64) {
@@ -39,7 +41,9 @@ impl DeScheduler {
         let mut r = (rng.next_u64() as f64) / (u64::MAX as f64);
         for (i, &w) in self.weights.iter().enumerate() {
             r -= w;
-            if r <= 0.0 { return i; }
+            if r <= 0.0 {
+                return i;
+            }
         }
         self.weights.len() - 1
     }

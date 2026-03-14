@@ -10,7 +10,11 @@ pub struct SemanticSignals {
 pub fn extract_signals(observed_values: &[u64], stderr: &str) -> SemanticSignals {
     let unique_value_count = observed_values.iter().collect::<HashSet<_>>().len();
     let assertion_distance = parse_assertion_distance(stderr);
-    SemanticSignals { stack_depth_max: 0, unique_value_count, assertion_distance }
+    SemanticSignals {
+        stack_depth_max: 0,
+        unique_value_count,
+        assertion_distance,
+    }
 }
 
 fn parse_assertion_distance(stderr: &str) -> f64 {

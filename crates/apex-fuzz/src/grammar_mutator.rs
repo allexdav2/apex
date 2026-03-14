@@ -6,9 +6,7 @@ use crate::grammar::ParseNode;
 pub fn count_nodes(node: &ParseNode) -> usize {
     match node {
         ParseNode::Leaf(_) => 1,
-        ParseNode::Interior(_, children) => {
-            1 + children.iter().map(count_nodes).sum::<usize>()
-        }
+        ParseNode::Interior(_, children) => 1 + children.iter().map(count_nodes).sum::<usize>(),
     }
 }
 
@@ -16,9 +14,7 @@ pub fn count_nodes(node: &ParseNode) -> usize {
 pub fn flatten_tree(node: &ParseNode) -> String {
     match node {
         ParseNode::Leaf(s) => s.clone(),
-        ParseNode::Interior(_, children) => {
-            children.iter().map(flatten_tree).collect::<String>()
-        }
+        ParseNode::Interior(_, children) => children.iter().map(flatten_tree).collect::<String>(),
     }
 }
 
@@ -51,15 +47,18 @@ mod tests {
 
     fn simple_grammar() -> Grammar {
         let mut g = Grammar::new("expr");
-        g.add_production("expr", vec![
-            vec![Symbol::Terminal("1".into())],
-            vec![Symbol::Terminal("2".into())],
+        g.add_production(
+            "expr",
             vec![
-                Symbol::NonTerminal("expr".into()),
-                Symbol::Terminal("+".into()),
-                Symbol::NonTerminal("expr".into()),
+                vec![Symbol::Terminal("1".into())],
+                vec![Symbol::Terminal("2".into())],
+                vec![
+                    Symbol::NonTerminal("expr".into()),
+                    Symbol::Terminal("+".into()),
+                    Symbol::NonTerminal("expr".into()),
+                ],
             ],
-        ]);
+        );
         g
     }
 
@@ -83,10 +82,7 @@ mod tests {
     fn flatten_tree_concatenates_leaves() {
         let tree = ParseNode::Interior(
             "expr".into(),
-            vec![
-                ParseNode::Leaf("a".into()),
-                ParseNode::Leaf("b".into()),
-            ],
+            vec![ParseNode::Leaf("a".into()), ParseNode::Leaf("b".into())],
         );
         assert_eq!(flatten_tree(&tree), "ab");
     }
@@ -97,10 +93,7 @@ mod tests {
             "root".into(),
             vec![
                 ParseNode::Leaf("x".into()),
-                ParseNode::Interior(
-                    "inner".into(),
-                    vec![ParseNode::Leaf("y".into())],
-                ),
+                ParseNode::Interior("inner".into(), vec![ParseNode::Leaf("y".into())]),
             ],
         );
         assert_eq!(count_nodes(&tree), 4);

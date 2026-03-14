@@ -240,9 +240,7 @@ const JS_SECURITY_PATTERNS: &[SecurityPattern] = &[
         description: "child_process.spawn — command injection",
         category: FindingCategory::Injection,
         base_severity: Severity::High,
-        user_input_indicators: &[
-            "req.", "request", "params", "query", "body", "input",
-        ],
+        user_input_indicators: &["req.", "request", "params", "query", "body", "input"],
         sanitization_indicators: &["escape", "sanitize"],
         cwe: &[78],
     },
@@ -251,9 +249,7 @@ const JS_SECURITY_PATTERNS: &[SecurityPattern] = &[
         description: "res.write() — XSS if content includes user input",
         category: FindingCategory::Injection,
         base_severity: Severity::High,
-        user_input_indicators: &[
-            "req.", "request", "params", "query", "body", "input",
-        ],
+        user_input_indicators: &["req.", "request", "params", "query", "body", "input"],
         sanitization_indicators: &["escape", "encode", "sanitize", "textContent"],
         cwe: &[79],
     },
@@ -262,9 +258,7 @@ const JS_SECURITY_PATTERNS: &[SecurityPattern] = &[
         description: "res.send() — XSS if content includes user input",
         category: FindingCategory::Injection,
         base_severity: Severity::High,
-        user_input_indicators: &[
-            "req.", "request", "params", "query", "body", "input",
-        ],
+        user_input_indicators: &["req.", "request", "params", "query", "body", "input"],
         sanitization_indicators: &["escape", "encode", "sanitize", "textContent", "json"],
         cwe: &[79],
     },
@@ -699,6 +693,7 @@ mod tests {
             config: DetectConfig::default(),
             runner: Arc::new(apex_core::command::RealCommandRunner),
             cpg: None,
+            threat_model: apex_core::config::ThreatModelConfig::default(),
         }
     }
 

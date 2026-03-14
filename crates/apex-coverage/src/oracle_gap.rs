@@ -9,22 +9,29 @@ pub struct OracleGapScore {
 
 impl OracleGapScore {
     pub fn from_results(results: &[MutationResult]) -> Self {
-        let mut survivors: Vec<MutationResult> = results.iter()
-            .filter(|r| !r.killed)
-            .cloned()
-            .collect();
+        let mut survivors: Vec<MutationResult> =
+            results.iter().filter(|r| !r.killed).cloned().collect();
         survivors.sort_by_key(|s| s.operator.line);
-        Self { total: results.len(), survivors }
+        Self {
+            total: results.len(),
+            survivors,
+        }
     }
 
     /// Percentage of mutants NOT killed (0.0 = perfect, 100.0 = no test suite).
     pub fn gap_percent(&self) -> f64 {
-        if self.total == 0 { return 0.0; }
+        if self.total == 0 {
+            return 0.0;
+        }
         (self.survivors.len() as f64 / self.total as f64) * 100.0
     }
 
-    pub fn survivors(&self) -> &[MutationResult] { &self.survivors }
-    pub fn total(&self) -> usize { self.total }
+    pub fn survivors(&self) -> &[MutationResult] {
+        &self.survivors
+    }
+    pub fn total(&self) -> usize {
+        self.total
+    }
 }
 
 #[cfg(test)]
@@ -33,14 +40,22 @@ mod tests {
     use crate::mutation::{MutationKind, MutationOperator, MutationResult};
 
     fn op(kind: MutationKind, line: u32) -> MutationOperator {
-        MutationOperator { kind, file: "lib.py".into(), line, original: "x".into(), replacement: "y".into() }
+        MutationOperator {
+            kind,
+            file: "lib.py".into(),
+            line,
+            original: "x".into(),
+            replacement: "y".into(),
+        }
     }
 
     #[test]
     fn score_zero_when_all_killed() {
-        let results = vec![
-            MutationResult { operator: op(MutationKind::BoundaryShift, 1), killed: true, killing_tests: vec!["t1".into()] },
-        ];
+        let results = vec![MutationResult {
+            operator: op(MutationKind::BoundaryShift, 1),
+            killed: true,
+            killing_tests: vec!["t1".into()],
+        }];
         let score = OracleGapScore::from_results(&results);
         assert_eq!(score.gap_percent(), 0.0);
         assert!(score.survivors().is_empty());
@@ -49,8 +64,16 @@ mod tests {
     #[test]
     fn score_fifty_percent_when_half_survive() {
         let results = vec![
-            MutationResult { operator: op(MutationKind::BoundaryShift, 1), killed: true,  killing_tests: vec![] },
-            MutationResult { operator: op(MutationKind::ConditionalNegation, 2), killed: false, killing_tests: vec![] },
+            MutationResult {
+                operator: op(MutationKind::BoundaryShift, 1),
+                killed: true,
+                killing_tests: vec![],
+            },
+            MutationResult {
+                operator: op(MutationKind::ConditionalNegation, 2),
+                killed: false,
+                killing_tests: vec![],
+            },
         ];
         let score = OracleGapScore::from_results(&results);
         assert!((score.gap_percent() - 50.0).abs() < 0.01);
@@ -60,8 +83,16 @@ mod tests {
     #[test]
     fn survivors_sorted_by_line() {
         let results = vec![
-            MutationResult { operator: op(MutationKind::ArithmeticReplace, 10), killed: false, killing_tests: vec![] },
-            MutationResult { operator: op(MutationKind::ReturnValueChange, 3),  killed: false, killing_tests: vec![] },
+            MutationResult {
+                operator: op(MutationKind::ArithmeticReplace, 10),
+                killed: false,
+                killing_tests: vec![],
+            },
+            MutationResult {
+                operator: op(MutationKind::ReturnValueChange, 3),
+                killed: false,
+                killing_tests: vec![],
+            },
         ];
         let score = OracleGapScore::from_results(&results);
         let lines: Vec<u32> = score.survivors().iter().map(|s| s.operator.line).collect();

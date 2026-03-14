@@ -19,18 +19,23 @@ pub fn eliminate_irrelevant(source: &str, target_fn: &str) -> String {
         if in_target {
             let cur_indent = line.len() - line.trim_start().len();
             if line.trim().is_empty() || cur_indent > indent_base {
-                out.push(line); continue;
+                out.push(line);
+                continue;
             }
             in_target = false;
         }
         // Keep imports only if the imported name appears in target body.
         if trimmed.starts_with("import ") || trimmed.starts_with("from ") {
             let name = trimmed.split_whitespace().nth(1).unwrap_or("");
-            if target_body.contains(name) { out.push(line); }
+            if target_body.contains(name) {
+                out.push(line);
+            }
             continue;
         }
         // Skip other top-level defs not referenced by target.
-        if trimmed.starts_with("def ") || trimmed.starts_with("class ") { continue; }
+        if trimmed.starts_with("def ") || trimmed.starts_with("class ") {
+            continue;
+        }
     }
     out.join("\n")
 }
@@ -48,8 +53,11 @@ fn extract_function_body(source: &str, fn_name: &str) -> String {
         }
         if in_fn {
             let cur = line.len() - line.trim_start().len();
-            if !line.trim().is_empty() && cur <= base { break; }
-            body.push_str(line); body.push('\n');
+            if !line.trim().is_empty() && cur <= base {
+                break;
+            }
+            body.push_str(line);
+            body.push('\n');
         }
     }
     body
@@ -76,7 +84,10 @@ def bar():  # unrelated
     #[test]
     fn eliminates_imports_not_referenced_in_target() {
         let result = eliminate_irrelevant(SOURCE, "foo");
-        assert!(!result.contains("logging"), "unused import should be removed");
+        assert!(
+            !result.contains("logging"),
+            "unused import should be removed"
+        );
         assert!(result.contains("import os") || result.contains("def foo"));
     }
 

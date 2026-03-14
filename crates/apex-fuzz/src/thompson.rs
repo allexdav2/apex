@@ -8,13 +8,17 @@ pub struct ThompsonScheduler {
 }
 
 impl ThompsonScheduler {
-    pub fn new() -> Self { Self::default() }
+    pub fn new() -> Self {
+        Self::default()
+    }
 
     pub fn add_seed(&mut self, data: Vec<u8>) {
         self.arms.push((data, 1.0, 1.0)); // uniform Beta(1,1) prior
     }
 
-    pub fn arm_count(&self) -> usize { self.arms.len() }
+    pub fn arm_count(&self) -> usize {
+        self.arms.len()
+    }
 
     /// Reward arm `idx` with `new_branches` discovered.
     pub fn reward(&mut self, idx: usize, new_branches: usize) {
@@ -32,15 +36,16 @@ impl ThompsonScheduler {
 
     /// Sample each arm from its Beta distribution; return arm with highest sample.
     pub fn select(&self, rng: &mut dyn RngCore) -> usize {
-        self.arms.iter().enumerate().map(|(i, (_, a, b))| {
-            let sample = Beta::new(*a, *b).ok()
-                .map(|d| d.sample(rng))
-                .unwrap_or(0.0);
-            (i, sample)
-        })
-        .max_by(|x, y| x.1.partial_cmp(&y.1).unwrap())
-        .map(|(i, _)| i)
-        .unwrap_or(0)
+        self.arms
+            .iter()
+            .enumerate()
+            .map(|(i, (_, a, b))| {
+                let sample = Beta::new(*a, *b).ok().map(|d| d.sample(rng)).unwrap_or(0.0);
+                (i, sample)
+            })
+            .max_by(|x, y| x.1.partial_cmp(&y.1).unwrap())
+            .map(|(i, _)| i)
+            .unwrap_or(0)
     }
 
     pub fn seed_data(&self, idx: usize) -> Option<&[u8]> {
@@ -71,7 +76,7 @@ mod tests {
         ts.add_seed(b"a".to_vec());
         ts.add_seed(b"b".to_vec());
         ts.reward(0, 5); // 5 new branches from seed 0
-        // After many samples, seed 0 should dominate
+                         // After many samples, seed 0 should dominate
         let mut rng = rand::thread_rng();
         let picks: Vec<usize> = (0..50).map(|_| ts.select(&mut rng)).collect();
         let count_0 = picks.iter().filter(|&&x| x == 0).count();
@@ -81,10 +86,14 @@ mod tests {
     #[test]
     fn select_uniform_with_no_rewards() {
         let mut ts = ThompsonScheduler::new();
-        for _ in 0..4 { ts.add_seed(b"x".to_vec()); }
+        for _ in 0..4 {
+            ts.add_seed(b"x".to_vec());
+        }
         let mut rng = rand::thread_rng();
         let picks: Vec<usize> = (0..100).map(|_| ts.select(&mut rng)).collect();
         // All 4 arms should be selected at least once
-        for i in 0..4 { assert!(picks.contains(&i)); }
+        for i in 0..4 {
+            assert!(picks.contains(&i));
+        }
     }
 }

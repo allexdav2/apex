@@ -59,9 +59,13 @@ mod tests {
     #[test]
     fn all_variants_distinct() {
         use std::collections::HashSet;
-        let variants = [BranchDifficulty::Trivial, BranchDifficulty::DataFlow,
-                        BranchDifficulty::ExceptionHandler, BranchDifficulty::Concurrency,
-                        BranchDifficulty::Infeasible];
+        let variants = [
+            BranchDifficulty::Trivial,
+            BranchDifficulty::DataFlow,
+            BranchDifficulty::ExceptionHandler,
+            BranchDifficulty::Concurrency,
+            BranchDifficulty::Infeasible,
+        ];
         let set: HashSet<_> = variants.iter().collect();
         assert_eq!(set.len(), 5);
     }

@@ -538,7 +538,10 @@ mod tests {
         let mut dest = [0u8; 16];
         wrapper.fill_bytes(&mut dest);
         // After fill_bytes, dest should no longer be all-zero (probabilistically true)
-        assert_ne!(dest, [0u8; 16], "fill_bytes should have written random data");
+        assert_ne!(
+            dest, [0u8; 16],
+            "fill_bytes should have written random data"
+        );
     }
 
     #[test]
@@ -550,7 +553,10 @@ mod tests {
         let result = wrapper.try_fill_bytes(&mut dest);
         assert!(result.is_ok(), "try_fill_bytes should succeed: {result:?}");
         // Confirm bytes were written
-        assert_ne!(dest, [0u8; 16], "try_fill_bytes should have written random data");
+        assert_ne!(
+            dest, [0u8; 16],
+            "try_fill_bytes should have written random data"
+        );
     }
 
     #[test]

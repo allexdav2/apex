@@ -1,10 +1,10 @@
+use apex_coverage::mutation::{MutationKind, MutationResult};
 /// Bridges `OracleGapScore` into the agent's decision loop.
 ///
 /// Based on Meta ACH (ICSE 2025): branches surrounded by surviving mutants
 /// need tests that assert on specific values, not just code paths. Maps
 /// surviving mutants to assertion hints for the test generation agent.
 use std::collections::{HashMap, HashSet};
-use apex_coverage::mutation::{MutationKind, MutationResult};
 
 pub struct MutationGuide {
     survivors: Vec<MutationResult>,
@@ -16,9 +16,13 @@ impl MutationGuide {
         let mut hints = HashMap::new();
         for s in &survivors {
             let hint = match s.operator.kind {
-                MutationKind::BoundaryShift => "Add assertion on boundary value (e.g., off-by-one).".into(),
+                MutationKind::BoundaryShift => {
+                    "Add assertion on boundary value (e.g., off-by-one).".into()
+                }
                 MutationKind::ReturnValueChange => "Assert on the exact return value.".into(),
-                MutationKind::ConditionalNegation => "Test both true and false branch outcomes.".into(),
+                MutationKind::ConditionalNegation => {
+                    "Test both true and false branch outcomes.".into()
+                }
                 MutationKind::ArithmeticReplace => "Assert on the computed numeric result.".into(),
                 _ => "Add assertion on observable side effect.".into(),
             };
@@ -43,9 +47,15 @@ mod tests {
 
     fn survived(kind: MutationKind, line: u32) -> MutationResult {
         MutationResult {
-            operator: MutationOperator { kind, file: "f.py".into(), line,
-                original: "x".into(), replacement: "y".into() },
-            killed: false, killing_tests: vec![],
+            operator: MutationOperator {
+                kind,
+                file: "f.py".into(),
+                line,
+                original: "x".into(),
+                replacement: "y".into(),
+            },
+            killed: false,
+            killing_tests: vec![],
         }
     }
 

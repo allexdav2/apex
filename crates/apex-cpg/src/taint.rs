@@ -456,8 +456,20 @@ def run(user_input):
         });
 
         // Wire: param →ReachingDef→ sanitizer →ReachingDef→ sink
-        cpg.add_edge(param, san, EdgeKind::ReachingDef { variable: "x".into() });
-        cpg.add_edge(san, sink_node, EdgeKind::ReachingDef { variable: "x".into() });
+        cpg.add_edge(
+            param,
+            san,
+            EdgeKind::ReachingDef {
+                variable: "x".into(),
+            },
+        );
+        cpg.add_edge(
+            san,
+            sink_node,
+            EdgeKind::ReachingDef {
+                variable: "x".into(),
+            },
+        );
 
         let flows = find_taint_flows(&cpg, 10);
         // The sanitizer sits directly on the ReachingDef path — no flow expected.
@@ -489,7 +501,9 @@ def run(user_input):
         cpg.add_edge(
             param,
             sink_node,
-            EdgeKind::ReachingDef { variable: "cmd".into() },
+            EdgeKind::ReachingDef {
+                variable: "cmd".into(),
+            },
         );
 
         let sinks = vec![sink_node];
@@ -525,11 +539,29 @@ def run(user_input):
         });
 
         // Two edges from source → intermediate (same var, simulates duplicate)
-        cpg.add_edge(source_node, intermediate, EdgeKind::ReachingDef { variable: "x".into() });
+        cpg.add_edge(
+            source_node,
+            intermediate,
+            EdgeKind::ReachingDef {
+                variable: "x".into(),
+            },
+        );
         // intermediate → sink
-        cpg.add_edge(intermediate, sink_node, EdgeKind::ReachingDef { variable: "y".into() });
+        cpg.add_edge(
+            intermediate,
+            sink_node,
+            EdgeKind::ReachingDef {
+                variable: "y".into(),
+            },
+        );
         // Also a direct path: source → sink (so we get a flow)
-        cpg.add_edge(source_node, sink_node, EdgeKind::ReachingDef { variable: "x".into() });
+        cpg.add_edge(
+            source_node,
+            sink_node,
+            EdgeKind::ReachingDef {
+                variable: "x".into(),
+            },
+        );
 
         let flows = reachable_by(&cpg, &[sink_node], &[source_node], 10);
         // At minimum one flow must be found; visited guard prevents panics or infinite loops
@@ -558,6 +590,9 @@ def run(user_input):
 
         let flows = reachable_by(&cpg, &[sink_node], &[source_node], 10);
         // source is reached via Argument edge — flow should be found
-        assert!(!flows.is_empty(), "source reachable via Argument should produce a flow");
+        assert!(
+            !flows.is_empty(),
+            "source reachable via Argument should produce a flow"
+        );
     }
 }

@@ -1,13 +1,18 @@
-use std::collections::HashMap;
-use async_trait::async_trait;
-use apex_core::types::BranchId;
 use apex_core::error::Result;
+use apex_core::types::BranchId;
+use async_trait::async_trait;
+use std::collections::HashMap;
 
 /// A pluggable prompt construction strategy for LLM test synthesis.
 #[async_trait]
 pub trait PromptStrategy: Send + Sync {
     fn name(&self) -> &str;
-    async fn build_prompt(&self, gap: &BranchId, history: &GapHistory, source: &str) -> Result<String>;
+    async fn build_prompt(
+        &self,
+        gap: &BranchId,
+        history: &GapHistory,
+        source: &str,
+    ) -> Result<String>;
 }
 
 #[derive(Debug, Default)]
@@ -16,15 +21,24 @@ pub struct GapHistory {
 }
 
 impl GapHistory {
-    pub fn new() -> Self { Default::default() }
+    pub fn new() -> Self {
+        Default::default()
+    }
     pub fn record_attempt(&mut self, key: &str, succeeded: bool) {
-        self.attempts.entry(key.to_string()).or_default().push(succeeded);
+        self.attempts
+            .entry(key.to_string())
+            .or_default()
+            .push(succeeded);
     }
     pub fn attempt_count(&self, key: &str) -> usize {
         self.attempts.get(key).map_or(0, |v| v.len())
     }
     pub fn last_succeeded(&self, key: &str) -> bool {
-        self.attempts.get(key).and_then(|v| v.last()).copied().unwrap_or(false)
+        self.attempts
+            .get(key)
+            .and_then(|v| v.last())
+            .copied()
+            .unwrap_or(false)
     }
 }
 

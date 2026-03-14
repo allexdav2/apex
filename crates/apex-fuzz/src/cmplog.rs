@@ -813,7 +813,10 @@ mod tests {
             }
         }
         assert!(found_grow, "Should grow input when replacement is longer");
-        assert!(found_shrink, "Should shrink input when replacement is shorter");
+        assert!(
+            found_shrink,
+            "Should shrink input when replacement is shorter"
+        );
     }
 
     #[test]

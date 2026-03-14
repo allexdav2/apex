@@ -1,7 +1,7 @@
 //! Coverage delta tracker — diffs two branch lists to find newly covered branches.
 
-use std::collections::HashSet;
 use apex_core::types::BranchId;
+use std::collections::HashSet;
 
 /// Compute the set of branches in `after` that are not in `before`.
 pub fn coverage_delta(before: &[BranchId], after: &[BranchId]) -> Vec<BranchId> {

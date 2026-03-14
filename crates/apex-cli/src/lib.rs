@@ -775,7 +775,7 @@ async fn run(args: RunArgs, cfg: &ApexConfig) -> Result<()> {
                 config: detect_cfg.clone(),
                 runner: Arc::new(apex_core::command::RealCommandRunner),
                 cpg: None,
-            threat_model: cfg.threat_model.clone(),
+                threat_model: cfg.threat_model.clone(),
             };
 
             let pipeline = apex_detect::DetectorPipeline::from_config(&detect_cfg, lang);

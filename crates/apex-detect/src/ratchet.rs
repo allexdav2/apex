@@ -133,7 +133,9 @@ mod tests {
         let delta = security_delta(&current, &baseline);
         assert_eq!(delta.len(), 2);
         // New file
-        assert!(delta.iter().any(|f| f.file == PathBuf::from("src/other.rs")));
+        assert!(delta
+            .iter()
+            .any(|f| f.file == PathBuf::from("src/other.rs")));
         // Same file+line but different detector
         assert!(delta.iter().any(|f| f.detector == "other-det"));
     }

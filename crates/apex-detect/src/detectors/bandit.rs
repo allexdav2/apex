@@ -64,7 +64,8 @@ const BANDIT_RULES: &[BanditRule] = &[
         severity: Severity::Low,
         category: FindingCategory::SecuritySmell,
         title: "Hardcoded /tmp path detected",
-        suggestion: "Use tempfile.mkdtemp() or tempfile.NamedTemporaryFile instead of hardcoded /tmp",
+        suggestion:
+            "Use tempfile.mkdtemp() or tempfile.NamedTemporaryFile instead of hardcoded /tmp",
         suppressor: None,
     },
     BanditRule {
@@ -74,7 +75,8 @@ const BANDIT_RULES: &[BanditRule] = &[
         severity: Severity::High,
         category: FindingCategory::UnsafeCode,
         title: "Pickle deserialization detected",
-        suggestion: "Pickle can execute arbitrary code; use JSON or other safe serialization formats",
+        suggestion:
+            "Pickle can execute arbitrary code; use JSON or other safe serialization formats",
         suppressor: None,
     },
     BanditRule {
@@ -231,10 +233,7 @@ impl Detector for BanditRuleDetector {
                         category: cr.rule.category,
                         file: path.clone(),
                         line: Some(line_1based),
-                        title: format!(
-                            "[{}] {} (CWE-{})",
-                            cr.rule.id, cr.rule.title, cr.rule.cwe
-                        ),
+                        title: format!("[{}] {} (CWE-{})", cr.rule.id, cr.rule.title, cr.rule.cwe),
                         description: format!(
                             "Bandit rule {} matched in {}:{}",
                             cr.rule.id,
@@ -272,10 +271,7 @@ impl Detector for BanditRuleDetector {
 }
 
 /// Scan for B110: bare `except:` followed by `pass` on the next non-empty line.
-fn find_b110_findings(
-    path: &std::path::Path,
-    source: &str,
-) -> Vec<Finding> {
+fn find_b110_findings(path: &std::path::Path, source: &str) -> Vec<Finding> {
     let lines: Vec<&str> = source.lines().collect();
     let mut findings = Vec::new();
 
@@ -291,8 +287,8 @@ fn find_b110_findings(
                 continue;
             }
             // Look at subsequent non-empty lines for `pass`
-            for j in (i + 1)..lines.len() {
-                let next = lines[j].trim();
+            for next_line in &lines[(i + 1)..] {
+                let next = next_line.trim();
                 if next.is_empty() || is_comment(next, Language::Python) {
                     continue;
                 }
@@ -357,6 +353,7 @@ mod tests {
             config: DetectConfig::default(),
             runner: Arc::new(apex_core::command::RealCommandRunner),
             cpg: None,
+            threat_model: apex_core::config::ThreatModelConfig::default(),
         }
     }
 
@@ -604,10 +601,7 @@ mod tests {
 
     #[tokio::test]
     async fn b506_yaml_load_with_safe_loader_suppressed() {
-        let files = py(
-            "src/config.py",
-            "data = yaml.load(f, Loader=SafeLoader)\n",
-        );
+        let files = py("src/config.py", "data = yaml.load(f, Loader=SafeLoader)\n");
         let ctx = make_ctx(files, Language::Python);
         let findings = BanditRuleDetector.analyze(&ctx).await.unwrap();
         assert!(!findings.iter().any(|f| f.title.contains("B506")));
@@ -675,7 +669,9 @@ mod tests {
         assert_eq!(f.evidence.len(), 1);
         match &f.evidence[0] {
             Evidence::StaticAnalysis {
-                tool, rule_id, sarif,
+                tool,
+                rule_id,
+                sarif,
             } => {
                 assert_eq!(tool, "bandit");
                 assert!(!rule_id.is_empty());
@@ -710,10 +706,7 @@ mod tests {
 
     #[tokio::test]
     async fn b110_via_analyze() {
-        let files = py(
-            "src/app.py",
-            "try:\n    do_thing()\nexcept:\n    pass\n",
-        );
+        let files = py("src/app.py", "try:\n    do_thing()\nexcept:\n    pass\n");
         let ctx = make_ctx(files, Language::Python);
         let findings = BanditRuleDetector.analyze(&ctx).await.unwrap();
         assert!(findings.iter().any(|f| f.title.contains("B110")));

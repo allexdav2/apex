@@ -373,6 +373,7 @@ mod tests {
             config: DetectConfig::default(),
             runner: Arc::new(runner),
             cpg: None,
+            threat_model: apex_core::config::ThreatModelConfig::default(),
         }
     }
 
@@ -388,6 +389,7 @@ mod tests {
             config: DetectConfig::default(),
             runner: Arc::new(runner),
             cpg: None,
+            threat_model: apex_core::config::ThreatModelConfig::default(),
         }
     }
 

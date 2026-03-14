@@ -370,6 +370,8 @@ if feature_flag("beta"): pass
             fuzz_corpus: None,
             config: DetectConfig::default(),
             runner: Arc::new(RealCommandRunner),
+            cpg: None,
+            threat_model: apex_core::config::ThreatModelConfig::default(),
         };
 
         let detector = FlagHygieneDetector::default_max_age();

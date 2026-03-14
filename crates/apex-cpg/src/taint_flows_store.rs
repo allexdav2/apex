@@ -49,9 +49,7 @@ pub fn find_taint_flows_with_store(
     let mut flows = Vec::new();
     for &src in &sources {
         for &sink in &sinks {
-            if let Some(path) =
-                reachable_without_sanitizer(src, sink, edges, &sanitizer_ids)
-            {
+            if let Some(path) = reachable_without_sanitizer(src, sink, edges, &sanitizer_ids) {
                 flows.push(TaintFlow {
                     source_node: src,
                     sink_node: sink,
@@ -97,7 +95,10 @@ mod tests {
     use crate::taint_store::TaintSpecStore;
 
     fn make_node(id: u32, name: &str) -> CpgNode {
-        CpgNode { id, name: name.into() }
+        CpgNode {
+            id,
+            name: name.into(),
+        }
     }
 
     #[test]

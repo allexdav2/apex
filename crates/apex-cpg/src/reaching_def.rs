@@ -415,19 +415,13 @@ mod tests {
             })
             .collect();
 
-        assert!(
-            x_assigns.len() >= 2,
-            "need two x-assignments for this test"
-        );
+        assert!(x_assigns.len() >= 2, "need two x-assignments for this test");
 
         // ReachingDef edges for `x` should exist
         let rd_x: Vec<_> = cpg
             .edges()
             .filter(|(_, _, k)| matches!(k, EdgeKind::ReachingDef { variable } if variable == "x"))
             .collect();
-        assert!(
-            !rd_x.is_empty(),
-            "should have ReachingDef edges for x"
-        );
+        assert!(!rd_x.is_empty(), "should have ReachingDef edges for x");
     }
 }

@@ -1,7 +1,7 @@
 //! Feedback aggregator — merges strategy outputs into a unified signal.
 
-use std::collections::HashSet;
 use apex_core::types::BranchId;
+use std::collections::HashSet;
 
 /// Feedback from a single strategy execution round.
 #[derive(Debug, Clone)]
@@ -93,11 +93,14 @@ mod tests {
     #[test]
     fn aggregate_single_strategy() {
         let mut agg = FeedbackAggregator::new();
-        agg.record("fuzz", StrategyFeedback {
-            new_branches: vec![BranchId::new(1, 1, 0, 0)],
-            best_heuristic: 0.8,
-            errors: 0,
-        });
+        agg.record(
+            "fuzz",
+            StrategyFeedback {
+                new_branches: vec![BranchId::new(1, 1, 0, 0)],
+                best_heuristic: 0.8,
+                errors: 0,
+            },
+        );
         let summary = agg.summarize();
         assert_eq!(summary.total_new_branches, 1);
         assert_eq!(summary.strategies.len(), 1);
@@ -106,16 +109,22 @@ mod tests {
     #[test]
     fn aggregate_multiple_strategies() {
         let mut agg = FeedbackAggregator::new();
-        agg.record("fuzz", StrategyFeedback {
-            new_branches: vec![BranchId::new(1, 1, 0, 0), BranchId::new(1, 2, 0, 0)],
-            best_heuristic: 0.6,
-            errors: 1,
-        });
-        agg.record("solver", StrategyFeedback {
-            new_branches: vec![BranchId::new(1, 3, 0, 0)],
-            best_heuristic: 0.95,
-            errors: 0,
-        });
+        agg.record(
+            "fuzz",
+            StrategyFeedback {
+                new_branches: vec![BranchId::new(1, 1, 0, 0), BranchId::new(1, 2, 0, 0)],
+                best_heuristic: 0.6,
+                errors: 1,
+            },
+        );
+        agg.record(
+            "solver",
+            StrategyFeedback {
+                new_branches: vec![BranchId::new(1, 3, 0, 0)],
+                best_heuristic: 0.95,
+                errors: 0,
+            },
+        );
         let summary = agg.summarize();
         assert_eq!(summary.total_new_branches, 3);
         assert_eq!(summary.best_heuristic, 0.95);
@@ -126,16 +135,22 @@ mod tests {
     fn aggregate_deduplicates_branches() {
         let mut agg = FeedbackAggregator::new();
         let branch = BranchId::new(1, 1, 0, 0);
-        agg.record("fuzz", StrategyFeedback {
-            new_branches: vec![branch.clone()],
-            best_heuristic: 0.5,
-            errors: 0,
-        });
-        agg.record("solver", StrategyFeedback {
-            new_branches: vec![branch],
-            best_heuristic: 0.5,
-            errors: 0,
-        });
+        agg.record(
+            "fuzz",
+            StrategyFeedback {
+                new_branches: vec![branch.clone()],
+                best_heuristic: 0.5,
+                errors: 0,
+            },
+        );
+        agg.record(
+            "solver",
+            StrategyFeedback {
+                new_branches: vec![branch],
+                best_heuristic: 0.5,
+                errors: 0,
+            },
+        );
         let summary = agg.summarize();
         // Same branch from both strategies — deduped to 1.
         assert_eq!(summary.total_new_branches, 1);
@@ -144,11 +159,14 @@ mod tests {
     #[test]
     fn clear_resets_aggregator() {
         let mut agg = FeedbackAggregator::new();
-        agg.record("fuzz", StrategyFeedback {
-            new_branches: vec![BranchId::new(1, 1, 0, 0)],
-            best_heuristic: 0.5,
-            errors: 0,
-        });
+        agg.record(
+            "fuzz",
+            StrategyFeedback {
+                new_branches: vec![BranchId::new(1, 1, 0, 0)],
+                best_heuristic: 0.5,
+                errors: 0,
+            },
+        );
         agg.clear();
         let summary = agg.summarize();
         assert_eq!(summary.total_new_branches, 0);

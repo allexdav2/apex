@@ -5,8 +5,7 @@
 
 use crate::taint_flows_store::TaintFlow;
 
-const HIGH_SEVERITY_SINKS: &[&str] =
-    &["exec", "eval", "subprocess", "os.system", "pickle.loads"];
+const HIGH_SEVERITY_SINKS: &[&str] = &["exec", "eval", "subprocess", "os.system", "pickle.loads"];
 
 /// A taint flow annotated with its triage score.
 #[derive(Debug)]
@@ -42,7 +41,11 @@ impl TaintTriageScorer {
             .into_iter()
             .map(|(f, s)| {
                 let score = self.score(&f, &s);
-                TriagedFlow { flow: f, sink_name: s, score }
+                TriagedFlow {
+                    flow: f,
+                    sink_name: s,
+                    score,
+                }
             })
             .collect();
         triaged.sort_by(|a, b| b.score.partial_cmp(&a.score).unwrap());

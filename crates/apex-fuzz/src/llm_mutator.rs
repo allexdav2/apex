@@ -44,12 +44,19 @@ impl MutationCache {
 
 /// Format a mutation prompt for the LLM, including the input to mutate.
 pub fn format_mutation_prompt(input: &[u8], format_hint: &str) -> String {
-    let input_repr = if input.iter().all(|b| b.is_ascii_graphic() || b.is_ascii_whitespace()) {
+    let input_repr = if input
+        .iter()
+        .all(|b| b.is_ascii_graphic() || b.is_ascii_whitespace())
+    {
         String::from_utf8_lossy(input).to_string()
     } else {
         format!(
             "hex: {}",
-            input.iter().map(|b| format!("{b:02x}")).collect::<Vec<_>>().join(" ")
+            input
+                .iter()
+                .map(|b| format!("{b:02x}"))
+                .collect::<Vec<_>>()
+                .join(" ")
         )
     };
 

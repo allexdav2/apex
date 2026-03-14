@@ -467,6 +467,8 @@ mod tests {
             fuzz_corpus: None,
             config: DetectConfig::default(),
             runner: Arc::new(apex_core::command::RealCommandRunner),
+            cpg: None,
+            threat_model: apex_core::config::ThreatModelConfig::default(),
         }
     }
 

@@ -550,7 +550,9 @@ mod tests {
         let source = "def foo():\n    return\n";
         let cpg = build_python_cpg(source, "test.py");
         // A Return node is created …
-        assert!(cpg.nodes().any(|(_, k)| matches!(k, NodeKind::Return { .. })));
+        assert!(cpg
+            .nodes()
+            .any(|(_, k)| matches!(k, NodeKind::Return { .. })));
         // … but no Identifier or Call hangs off it (nothing attached by attach_expr).
         let ret_id = cpg
             .nodes()
@@ -561,7 +563,10 @@ mod tests {
             .iter()
             .filter(|(_, _, k)| matches!(k, EdgeKind::Argument { .. }))
             .count();
-        assert_eq!(child_edges, 0, "bare return should have no argument children");
+        assert_eq!(
+            child_edges, 0,
+            "bare return should have no argument children"
+        );
     }
 
     /// Line 166: `parse_one_statement` identifier-like fallback returns an Identifier node.
@@ -573,7 +578,10 @@ mod tests {
         let has_ident = cpg
             .nodes()
             .any(|(_, k)| matches!(k, NodeKind::Identifier { name, .. } if name == "some_var"));
-        assert!(has_ident, "plain identifier statement should yield Identifier node");
+        assert!(
+            has_ident,
+            "plain identifier statement should yield Identifier node"
+        );
     }
 
     /// Line 168: `parse_statement` returns `None` for a statement that is neither a
@@ -585,10 +593,14 @@ mod tests {
         let source = "def foo():\n    x[0]\n";
         let cpg = build_python_cpg(source, "test.py");
         // No Identifier/Call/Assignment node should exist beyond the Method itself
-        let non_method = cpg.nodes().filter(|(_, k)| {
-            !matches!(k, NodeKind::Method { .. } | NodeKind::Parameter { .. })
-        });
-        assert_eq!(non_method.count(), 0, "unrecognised statement should produce no CPG node");
+        let non_method = cpg
+            .nodes()
+            .filter(|(_, k)| !matches!(k, NodeKind::Method { .. } | NodeKind::Parameter { .. }));
+        assert_eq!(
+            non_method.count(),
+            0,
+            "unrecognised statement should produce no CPG node"
+        );
     }
 
     /// Line 182: `attach_expr` called with an empty string returns immediately.
@@ -618,7 +630,9 @@ mod tests {
         let cpg = build_python_cpg(source, "test.py");
         let call_id = cpg
             .nodes()
-            .find_map(|(id, k)| matches!(k, NodeKind::Call { name, .. } if name == "bar").then_some(id))
+            .find_map(|(id, k)| {
+                matches!(k, NodeKind::Call { name, .. } if name == "bar").then_some(id)
+            })
             .expect("call node for bar");
         // The whitespace-only argument must produce zero argument edges
         let arg_edges = cpg
@@ -626,7 +640,10 @@ mod tests {
             .iter()
             .filter(|(_, _, k)| matches!(k, EdgeKind::Argument { .. }))
             .count();
-        assert_eq!(arg_edges, 0, "whitespace arg should not create an Argument edge");
+        assert_eq!(
+            arg_edges, 0,
+            "whitespace arg should not create an Argument edge"
+        );
     }
 
     /// Line 230: end of `attach_expr` — plain identifier/dotted name branch.
@@ -641,7 +658,10 @@ mod tests {
         let has_ident = cpg
             .nodes()
             .any(|(_, k)| matches!(k, NodeKind::Identifier { name, .. } if name == "obj.attr"));
-        assert!(has_ident, "dotted name argument should produce an Identifier node named 'obj.attr'");
+        assert!(
+            has_ident,
+            "dotted name argument should produce an Identifier node named 'obj.attr'"
+        );
     }
 
     /// Line 239: `try_parse_call` returns `None` when `(` is at position 0.
@@ -692,14 +712,19 @@ mod tests {
         let cpg = build_python_cpg(source, "test.py");
         let call_id = cpg
             .nodes()
-            .find_map(|(id, k)| matches!(k, NodeKind::Call { name, .. } if name == "bar").then_some(id))
+            .find_map(|(id, k)| {
+                matches!(k, NodeKind::Call { name, .. } if name == "bar").then_some(id)
+            })
             .expect("call node for bar");
         let arg_edges = cpg
             .edges_from(call_id)
             .iter()
             .filter(|(_, _, k)| matches!(k, EdgeKind::Argument { .. }))
             .count();
-        assert_eq!(arg_edges, 0, "call with no args should have zero argument edges");
+        assert_eq!(
+            arg_edges, 0,
+            "call with no args should have zero argument edges"
+        );
     }
 
     /// Line 299: `parse_def_signature` returns `vec![]` when there are no parens.
@@ -713,11 +738,16 @@ mod tests {
         let cpg = build_python_cpg(source, "test.py");
         // At least one method node was created (name = "bare:")
         assert!(
-            cpg.nodes().any(|(_, k)| matches!(k, NodeKind::Method { .. })),
+            cpg.nodes()
+                .any(|(_, k)| matches!(k, NodeKind::Method { .. })),
             "def without parens should still produce a Method node"
         );
         // The else branch at line 298-299 is taken → no params
-        assert_eq!(param_names(&cpg).len(), 0, "def without parens must have no parameters");
+        assert_eq!(
+            param_names(&cpg).len(),
+            0,
+            "def without parens must have no parameters"
+        );
     }
 
     /// Line 309: `CtrlKind::While`
@@ -725,10 +755,19 @@ mod tests {
     fn builder_detects_while_control_structure() {
         let source = "def foo():\n    while True:\n        pass\n";
         let cpg = build_python_cpg(source, "test.py");
-        let has_while = cpg
-            .nodes()
-            .any(|(_, k)| matches!(k, NodeKind::ControlStructure { kind: CtrlKind::While, .. }));
-        assert!(has_while, "while statement should produce a While ControlStructure node");
+        let has_while = cpg.nodes().any(|(_, k)| {
+            matches!(
+                k,
+                NodeKind::ControlStructure {
+                    kind: CtrlKind::While,
+                    ..
+                }
+            )
+        });
+        assert!(
+            has_while,
+            "while statement should produce a While ControlStructure node"
+        );
     }
 
     /// Line 311: `CtrlKind::For`
@@ -736,10 +775,19 @@ mod tests {
     fn builder_detects_for_control_structure() {
         let source = "def foo():\n    for x in items:\n        pass\n";
         let cpg = build_python_cpg(source, "test.py");
-        let has_for = cpg
-            .nodes()
-            .any(|(_, k)| matches!(k, NodeKind::ControlStructure { kind: CtrlKind::For, .. }));
-        assert!(has_for, "for statement should produce a For ControlStructure node");
+        let has_for = cpg.nodes().any(|(_, k)| {
+            matches!(
+                k,
+                NodeKind::ControlStructure {
+                    kind: CtrlKind::For,
+                    ..
+                }
+            )
+        });
+        assert!(
+            has_for,
+            "for statement should produce a For ControlStructure node"
+        );
     }
 
     /// Line 313: `CtrlKind::Try`
@@ -747,10 +795,19 @@ mod tests {
     fn builder_detects_try_control_structure() {
         let source = "def foo():\n    try:\n        pass\n";
         let cpg = build_python_cpg(source, "test.py");
-        let has_try = cpg
-            .nodes()
-            .any(|(_, k)| matches!(k, NodeKind::ControlStructure { kind: CtrlKind::Try, .. }));
-        assert!(has_try, "try: statement should produce a Try ControlStructure node");
+        let has_try = cpg.nodes().any(|(_, k)| {
+            matches!(
+                k,
+                NodeKind::ControlStructure {
+                    kind: CtrlKind::Try,
+                    ..
+                }
+            )
+        });
+        assert!(
+            has_try,
+            "try: statement should produce a Try ControlStructure node"
+        );
     }
 
     /// Lines 327-341: `parse_assignment` — augmented assignment `+=`.
@@ -761,7 +818,10 @@ mod tests {
         let has_assign = cpg
             .nodes()
             .any(|(_, k)| matches!(k, NodeKind::Assignment { lhs, .. } if lhs == "x"));
-        assert!(has_assign, "+= should produce an Assignment node with lhs = \"x\"");
+        assert!(
+            has_assign,
+            "+= should produce an Assignment node with lhs = \"x\""
+        );
     }
 
     /// Lines 327-341: `parse_assignment` — augmented assignment `-=`.
@@ -772,7 +832,10 @@ mod tests {
         let has_assign = cpg
             .nodes()
             .any(|(_, k)| matches!(k, NodeKind::Assignment { lhs, .. } if lhs == "count"));
-        assert!(has_assign, "-= should produce an Assignment node with lhs = \"count\"");
+        assert!(
+            has_assign,
+            "-= should produce an Assignment node with lhs = \"count\""
+        );
     }
 
     /// Lines 327-341: `parse_assignment` — `==` must be skipped (next byte is `=`).
@@ -782,7 +845,8 @@ mod tests {
         let source = "def foo(x, y):\n    if x == y:\n        pass\n";
         let cpg = build_python_cpg(source, "test.py");
         assert!(
-            !cpg.nodes().any(|(_, k)| matches!(k, NodeKind::Assignment { .. })),
+            !cpg.nodes()
+                .any(|(_, k)| matches!(k, NodeKind::Assignment { .. })),
             "== comparison must not be parsed as an assignment"
         );
     }
@@ -793,7 +857,8 @@ mod tests {
         let source = "def foo(x, y):\n    if x != y:\n        pass\n";
         let cpg = build_python_cpg(source, "test.py");
         assert!(
-            !cpg.nodes().any(|(_, k)| matches!(k, NodeKind::Assignment { .. })),
+            !cpg.nodes()
+                .any(|(_, k)| matches!(k, NodeKind::Assignment { .. })),
             "!= must not be parsed as an assignment"
         );
     }
@@ -813,6 +878,9 @@ mod tests {
             .nodes()
             .filter(|(_, k)| !matches!(k, NodeKind::Method { .. }))
             .count();
-        assert_eq!(non_method_count, 0, "all-blank body should produce no statement nodes");
+        assert_eq!(
+            non_method_count, 0,
+            "all-blank body should produce no statement nodes"
+        );
     }
 }

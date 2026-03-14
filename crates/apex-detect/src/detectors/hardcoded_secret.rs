@@ -206,9 +206,18 @@ impl Detector for HardcodedSecretDetector {
 
 /// Secret variable name patterns (case-insensitive) for the standalone scanner.
 const SECRET_VAR_NAMES: &[&str] = &[
-    "password", "passwd", "secret", "api_key", "apikey",
-    "auth_token", "access_token", "secret_key", "private_key",
-    "token", "credentials", "api_secret",
+    "password",
+    "passwd",
+    "secret",
+    "api_key",
+    "apikey",
+    "auth_token",
+    "access_token",
+    "secret_key",
+    "private_key",
+    "token",
+    "credentials",
+    "api_secret",
 ];
 
 /// Compute Shannon entropy of a string (bits per character).
@@ -238,17 +247,17 @@ fn shannon_entropy(s: &str) -> f64 {
 pub fn scan_hardcoded_secrets(source: &str, file_path: &str) -> Vec<Finding> {
     let mut findings = Vec::new();
     // Match: var_name = "string_value" or var_name = 'string_value'
-    let assignment = Regex::new(
-        r#"([a-zA-Z_][a-zA-Z0-9_]*)\s*=\s*["']([^"']+)["']"#
-    ).unwrap();
+    let assignment = Regex::new(r#"([a-zA-Z_][a-zA-Z0-9_]*)\s*=\s*["']([^"']+)["']"#).unwrap();
 
     for (line_num, line) in source.lines().enumerate() {
         let line_1based = (line_num + 1) as u32;
         let trimmed = line.trim();
 
         // Skip environment variable lookups.
-        if trimmed.contains("os.environ") || trimmed.contains("env.get")
-            || trimmed.contains("getenv") || trimmed.contains("ENV[")
+        if trimmed.contains("os.environ")
+            || trimmed.contains("env.get")
+            || trimmed.contains("getenv")
+            || trimmed.contains("ENV[")
         {
             continue;
         }

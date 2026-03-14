@@ -65,23 +65,23 @@ pub fn parse_requirements_txt(content: &str, manifest: &Path) -> Vec<Dependency>
 
         // Split on version specifier operators: ==, >=, <=, ~=, !=, >, <
         // Order matters: check two-char operators before single-char.
-        let (name_part, version) =
-            if let Some(pos) = find_version_operator(line) {
-                let name_part = line[..pos].trim();
-                let rest = &line[pos..];
-                // Skip the operator (1 or 2 chars)
-                let op_len = if rest.len() >= 2 && matches!(&rest[..2], "==" | ">=" | "<=" | "~=" | "!=") {
+        let (name_part, version) = if let Some(pos) = find_version_operator(line) {
+            let name_part = line[..pos].trim();
+            let rest = &line[pos..];
+            // Skip the operator (1 or 2 chars)
+            let op_len =
+                if rest.len() >= 2 && matches!(&rest[..2], "==" | ">=" | "<=" | "~=" | "!=") {
                     2
                 } else {
                     1
                 };
-                let version = rest[op_len..].trim();
-                // Handle multiple version specifiers (e.g. ">=1.0,<2.0") — take first
-                let version = version.split(',').next().unwrap_or("").trim();
-                (name_part, version)
-            } else {
-                (line, "")
-            };
+            let version = rest[op_len..].trim();
+            // Handle multiple version specifiers (e.g. ">=1.0,<2.0") — take first
+            let version = version.split(',').next().unwrap_or("").trim();
+            (name_part, version)
+        } else {
+            (line, "")
+        };
 
         // Strip extras from name: `name[extra1,extra2]` -> `name`
         let name = if let Some(bracket) = name_part.find('[') {
@@ -211,8 +211,7 @@ fn build_cargo_line_map(content: &str) -> std::collections::HashMap<String, u32>
                 && !key.starts_with('[')
                 && !key.starts_with('#')
             {
-                map.entry(key.to_string())
-                    .or_insert((idx + 1) as u32);
+                map.entry(key.to_string()).or_insert((idx + 1) as u32);
             }
         }
     }
@@ -261,12 +260,11 @@ fn build_json_line_map(content: &str) -> std::collections::HashMap<String, u32> 
     for (idx, line) in content.lines().enumerate() {
         let trimmed = line.trim();
         // Match patterns like `"package-name": "version"`
-        if trimmed.starts_with('"') {
-            if let Some(end_quote) = trimmed[1..].find('"') {
-                let key = &trimmed[1..1 + end_quote];
-                if trimmed[1 + end_quote + 1..].trim_start().starts_with(':') {
-                    map.entry(key.to_string())
-                        .or_insert((idx + 1) as u32);
+        if let Some(rest) = trimmed.strip_prefix('"') {
+            if let Some(end_quote) = rest.find('"') {
+                let key = &rest[..end_quote];
+                if rest[end_quote + 1..].trim_start().starts_with(':') {
+                    map.entry(key.to_string()).or_insert((idx + 1) as u32);
                 }
             }
         }

@@ -18,7 +18,7 @@ pub mod thompson;
 pub mod traits;
 
 pub use de_scheduler::DeScheduler;
-pub use semantic_feedback::{SemanticFeedback, SemFeedbackScore};
+pub use semantic_feedback::{SemFeedbackScore, SemanticFeedback};
 pub use thompson::ThompsonScheduler;
 
 use crate::corpus::Corpus;

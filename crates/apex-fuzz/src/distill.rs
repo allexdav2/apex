@@ -3,8 +3,8 @@
 //! Uses a greedy set-cover algorithm: repeatedly pick the seed covering the
 //! most uncovered branches, until all branches are covered.
 
-use std::collections::HashSet;
 use apex_core::types::BranchId;
+use std::collections::HashSet;
 
 /// A corpus entry with its input data and the branches it covers.
 #[derive(Debug, Clone)]
@@ -35,7 +35,11 @@ pub fn distill_corpus(entries: &[CorpusEntry]) -> Vec<CorpusEntry> {
         let best = remaining.remove(idx);
 
         // If it covers zero new branches, stop.
-        let new_coverage: Vec<_> = best.branches.iter().filter(|b| uncovered.contains(b)).collect();
+        let new_coverage: Vec<_> = best
+            .branches
+            .iter()
+            .filter(|b| uncovered.contains(b))
+            .collect();
         if new_coverage.is_empty() {
             break;
         }

@@ -165,12 +165,7 @@ const JS_SINKS: &[&str] = &[
     "fs.unlink(",
 ];
 
-const RUST_SINKS: &[&str] = &[
-    "fs::read(",
-    "fs::write(",
-    "fs::remove_file(",
-    "File::open(",
-];
+const RUST_SINKS: &[&str] = &["fs::read(", "fs::write(", "fs::remove_file(", "File::open("];
 
 // User-input indicators per language.
 const PYTHON_USER_INPUT: &[&str] = &[
@@ -191,12 +186,7 @@ const PYTHON_EXPR_NORM: &[&str] = &[
     "send_from_directory",
 ];
 
-const JS_EXPR_NORM: &[&str] = &[
-    "path.normalize",
-    "path.resolve",
-    "sanitize",
-    "basename",
-];
+const JS_EXPR_NORM: &[&str] = &["path.normalize", "path.resolve", "sanitize", "basename"];
 
 const RUST_EXPR_NORM: &[&str] = &["canonicalize", "normalize", "sanitize"];
 
@@ -287,9 +277,7 @@ fn find_expression_sinks(
             category: FindingCategory::PathTraversal,
             file: path.to_path_buf(),
             line: Some(line_1based),
-            title: format!(
-                "File operation with unsanitized input at line {line_1based}"
-            ),
+            title: format!("File operation with unsanitized input at line {line_1based}"),
             description: format!(
                 "File operation at {}:{} uses a path that may come from user \
                  input without normalization or validation, risking path traversal.",
@@ -400,8 +388,7 @@ impl Detector for PathNormalizationDetector {
             }
 
             // Pass 2: expression-level file-operation sink scanning.
-            let expr_findings =
-                find_expression_sinks(&lines, lang, path, self.name());
+            let expr_findings = find_expression_sinks(&lines, lang, path, self.name());
             findings.extend(expr_findings);
         }
 
@@ -434,6 +421,7 @@ mod tests {
             config: DetectConfig::default(),
             runner: Arc::new(RealCommandRunner),
             cpg: None,
+            threat_model: apex_core::config::ThreatModelConfig::default(),
         }
     }
 
@@ -632,8 +620,7 @@ def test_open():
     path = request.args.get('file')
     open(path)
 ";
-        let ctx =
-            make_ctx_with_source("tests/test_app.py", src, Language::Python);
+        let ctx = make_ctx_with_source("tests/test_app.py", src, Language::Python);
         let findings = PathNormalizationDetector.analyze(&ctx).await.unwrap();
         assert!(findings.is_empty());
     }

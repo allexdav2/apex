@@ -11,8 +11,13 @@ use uuid::Uuid;
 
 /// SQL execution function patterns.
 const SQL_EXEC_PATTERNS: &[&str] = &[
-    "execute(", "executemany(", "raw(", "cursor.execute(",
-    "db.execute(", "conn.execute(", "session.execute(",
+    "execute(",
+    "executemany(",
+    "raw(",
+    "cursor.execute(",
+    "db.execute(",
+    "conn.execute(",
+    "session.execute(",
 ];
 
 /// Scan source code for SQL injection vulnerabilities.
@@ -20,19 +25,16 @@ pub fn scan_sql_injection(source: &str, file_path: &str) -> Vec<Finding> {
     let mut findings = Vec::new();
 
     // Pattern 1: f-string with SQL keywords
-    let fstring_sql = Regex::new(
-        r#"f["'](?i)(SELECT|INSERT|UPDATE|DELETE|DROP)\s.*\{[^}]+\}.*["']"#
-    ).unwrap();
+    let fstring_sql =
+        Regex::new(r#"f["'](?i)(SELECT|INSERT|UPDATE|DELETE|DROP)\s.*\{[^}]+\}.*["']"#).unwrap();
 
     // Pattern 2: % formatting with SQL keywords
-    let percent_sql = Regex::new(
-        r#"["'](?i)(SELECT|INSERT|UPDATE|DELETE|DROP)\s.*%[sd].*["']\s*%"#
-    ).unwrap();
+    let percent_sql =
+        Regex::new(r#"["'](?i)(SELECT|INSERT|UPDATE|DELETE|DROP)\s.*%[sd].*["']\s*%"#).unwrap();
 
     // Pattern 3: String concatenation with SQL keywords
-    let concat_sql = Regex::new(
-        r#"["'](?i)(SELECT|INSERT|UPDATE|DELETE|DROP)\s.*["']\s*\+"#
-    ).unwrap();
+    let concat_sql =
+        Regex::new(r#"["'](?i)(SELECT|INSERT|UPDATE|DELETE|DROP)\s.*["']\s*\+"#).unwrap();
 
     for (line_num, line) in source.lines().enumerate() {
         let line_1based = (line_num + 1) as u32;
@@ -40,8 +42,10 @@ pub fn scan_sql_injection(source: &str, file_path: &str) -> Vec<Finding> {
 
         // Skip parameterized queries (safe pattern).
         if SQL_EXEC_PATTERNS.iter().any(|p| trimmed.contains(p))
-            && (trimmed.contains("%s\", (") || trimmed.contains("%s\", [")
-                || trimmed.contains("?, (") || trimmed.contains("?, ["))
+            && (trimmed.contains("%s\", (")
+                || trimmed.contains("%s\", [")
+                || trimmed.contains("?, (")
+                || trimmed.contains("?, ["))
         {
             continue;
         }

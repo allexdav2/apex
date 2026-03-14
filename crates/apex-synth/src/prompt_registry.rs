@@ -47,8 +47,10 @@ impl PromptRegistry {
 
     /// Register a template for a `(language, gap_kind)` pair.
     pub fn register(&mut self, language: &str, gap_kind: &str, template: &str) {
-        self.templates
-            .insert((language.to_string(), gap_kind.to_string()), template.to_string());
+        self.templates.insert(
+            (language.to_string(), gap_kind.to_string()),
+            template.to_string(),
+        );
     }
 
     /// Look up a template by `(language, gap_kind)`.

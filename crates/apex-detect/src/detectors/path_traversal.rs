@@ -21,9 +21,8 @@ pub fn scan_path_traversal(source: &str, file_path: &str) -> Vec<Finding> {
     for (line_num, line) in source.lines().enumerate() {
         let line_1based = (line_num + 1) as u32;
         let trimmed = line.trim();
-        let is_string_only = has_open_literal.is_match(trimmed)
-            && !trimmed.contains('+')
-            && !trimmed.contains('{');
+        let is_string_only =
+            has_open_literal.is_match(trimmed) && !trimmed.contains('+') && !trimmed.contains('{');
 
         let mut is_vuln = false;
 

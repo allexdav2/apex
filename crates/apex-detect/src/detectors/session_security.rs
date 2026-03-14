@@ -13,28 +13,24 @@ use crate::Detector;
 pub struct SessionSecurityDetector;
 
 // Python patterns for hardcoded secret keys
-static PY_APP_SECRET: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r#"app\.secret_key\s*=\s*['"]"#).expect("invalid regex")
-});
+static PY_APP_SECRET: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r#"app\.secret_key\s*=\s*['"]"#).expect("invalid regex"));
 
-static PY_SECRET_KEY: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r#"SECRET_KEY\s*=\s*['"]"#).expect("invalid regex")
-});
+static PY_SECRET_KEY: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r#"SECRET_KEY\s*=\s*['"]"#).expect("invalid regex"));
 
 const PY_ENV_MARKERS: &[&str] = &["os.environ", "os.getenv", "config[", "settings."];
 
 // JavaScript patterns
-static JS_SESSION_CALL: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r"session\s*\(").expect("invalid regex")
-});
+static JS_SESSION_CALL: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"session\s*\(").expect("invalid regex"));
 
 static JS_COOKIE_SESSION: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r#"require\s*\(\s*['"]cookie-session['"]\s*\)"#).expect("invalid regex")
 });
 
-static JS_HARDCODED_SECRET: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r#"secret\s*:\s*['"][^'"]+['"]"#).expect("invalid regex")
-});
+static JS_HARDCODED_SECRET: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r#"secret\s*:\s*['"][^'"]+['"]"#).expect("invalid regex"));
 
 fn py_uses_env(line: &str) -> bool {
     PY_ENV_MARKERS.iter().any(|m| line.contains(m))
@@ -138,15 +134,15 @@ impl Detector for SessionSecurityDetector {
                         let has_cookie_session = JS_COOKIE_SESSION.is_match(trimmed);
 
                         if has_session_call || has_cookie_session {
-                            let (block, start_line, _end_line) =
-                                collect_session_block(&lines, i);
+                            let (block, start_line, _end_line) = collect_session_block(&lines, i);
 
                             // Check for hardcoded secret
                             if JS_HARDCODED_SECRET.is_match(&block) {
                                 // Find the exact line with the secret
-                                let secret_line = block.lines().enumerate().find(|(_, l)| {
-                                    JS_HARDCODED_SECRET.is_match(l)
-                                });
+                                let secret_line = block
+                                    .lines()
+                                    .enumerate()
+                                    .find(|(_, l)| JS_HARDCODED_SECRET.is_match(l));
                                 let finding_line = secret_line
                                     .map(|(offset, _)| start_line + offset as u32)
                                     .unwrap_or(start_line);
@@ -177,7 +173,9 @@ impl Detector for SessionSecurityDetector {
                             // Check for missing security flags
                             let block_lower = block.to_lowercase();
 
-                            if !block_lower.contains("secure") || !block_lower.contains("secure: true") {
+                            if !block_lower.contains("secure")
+                                || !block_lower.contains("secure: true")
+                            {
                                 findings.push(Finding {
                                     id: Uuid::new_v4(),
                                     detector: self.name().into(),
@@ -194,14 +192,18 @@ impl Detector for SessionSecurityDetector {
                                     ),
                                     evidence: vec![],
                                     covered: false,
-                                    suggestion: "Add secure: true to the session cookie configuration".into(),
+                                    suggestion:
+                                        "Add secure: true to the session cookie configuration"
+                                            .into(),
                                     explanation: None,
                                     fix: None,
                                     cwe_ids: vec![614],
                                 });
                             }
 
-                            if !block_lower.contains("httponly") || !block_lower.contains("httponly: true") {
+                            if !block_lower.contains("httponly")
+                                || !block_lower.contains("httponly: true")
+                            {
                                 findings.push(Finding {
                                     id: Uuid::new_v4(),
                                     detector: self.name().into(),
@@ -286,6 +288,7 @@ mod tests {
             config: DetectConfig::default(),
             runner: Arc::new(apex_core::command::RealCommandRunner),
             cpg: None,
+            threat_model: apex_core::config::ThreatModelConfig::default(),
         }
     }
 
@@ -347,7 +350,10 @@ mod tests {
         );
         let findings = SessionSecurityDetector.analyze(&ctx).await.unwrap();
         // Should detect: hardcoded secret, missing secure, missing httpOnly, missing sameSite
-        let hardcoded: Vec<_> = findings.iter().filter(|f| f.severity == Severity::High).collect();
+        let hardcoded: Vec<_> = findings
+            .iter()
+            .filter(|f| f.severity == Severity::High)
+            .collect();
         assert!(!hardcoded.is_empty(), "should detect hardcoded secret");
     }
 

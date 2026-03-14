@@ -77,11 +77,7 @@ pub fn load_models(model_dir: &Path) -> Result<TaintModel> {
     let mut entries: Vec<_> = std::fs::read_dir(model_dir)
         .with_context(|| format!("failed to read model directory: {}", model_dir.display()))?
         .filter_map(|e| e.ok())
-        .filter(|e| {
-            e.path()
-                .extension()
-                .map_or(false, |ext| ext == "toml")
-        })
+        .filter(|e| e.path().extension().is_some_and(|ext| ext == "toml"))
         .collect();
 
     // Sort for deterministic merge order.
@@ -183,8 +179,7 @@ kind = "UserInput"
 
     #[test]
     fn flask_model_has_expected_sources_and_sinks() {
-        let flask_path =
-            Path::new(env!("CARGO_MANIFEST_DIR")).join("models/flask.toml");
+        let flask_path = Path::new(env!("CARGO_MANIFEST_DIR")).join("models/flask.toml");
         let model = load_model(&flask_path).unwrap();
         assert_eq!(model.metadata.framework, "flask");
         assert_eq!(model.sources.len(), 5);
@@ -206,16 +201,11 @@ kind = "UserInput"
 
     #[test]
     fn django_model_has_expected_cwe_ids() {
-        let django_path =
-            Path::new(env!("CARGO_MANIFEST_DIR")).join("models/django.toml");
+        let django_path = Path::new(env!("CARGO_MANIFEST_DIR")).join("models/django.toml");
         let model = load_model(&django_path).unwrap();
         assert_eq!(model.metadata.framework, "django");
 
-        let cwes: Vec<u32> = model
-            .sinks
-            .iter()
-            .filter_map(|s| s.cwe)
-            .collect();
+        let cwes: Vec<u32> = model.sinks.iter().filter_map(|s| s.cwe).collect();
         assert!(cwes.contains(&78), "expected CWE-78 (command injection)");
         assert!(cwes.contains(&89), "expected CWE-89 (SQL injection)");
     }

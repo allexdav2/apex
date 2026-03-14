@@ -679,10 +679,7 @@ mod tests {
         // The minimum raw value is PROB_MIN (0.01), but after normalization
         // the actual floor depends on the total. We check it stays > 0.
         for (i, &p) in s.operator_probs.iter().enumerate() {
-            assert!(
-                p > 0.0,
-                "operator {i} probability should be > 0, got {p}"
-            );
+            assert!(p > 0.0, "operator {i} probability should be > 0, got {p}");
         }
     }
 }

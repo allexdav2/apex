@@ -9,12 +9,17 @@ pub struct SemanticFeedback {
 
 impl SemanticFeedback {
     pub fn new(branch_weight: f64, semantic_weight: f64) -> Self {
-        Self { branch_weight, semantic_weight }
+        Self {
+            branch_weight,
+            semantic_weight,
+        }
     }
 }
 
 impl Default for SemanticFeedback {
-    fn default() -> Self { Self::new(1.0, 0.5) }
+    fn default() -> Self {
+        Self::new(1.0, 0.5)
+    }
 }
 
 #[derive(Debug, Default)]
@@ -24,7 +29,9 @@ pub struct SemFeedbackScore {
 }
 
 impl SemFeedbackScore {
-    pub fn total(&self) -> f64 { self.branch_score + self.semantic_score }
+    pub fn total(&self) -> f64 {
+        self.branch_score + self.semantic_score
+    }
 }
 
 impl SemanticFeedback {
@@ -32,7 +39,10 @@ impl SemanticFeedback {
         let branch_score = result.new_branches.len() as f64 * self.branch_weight;
         let sig = extract_signals(&[], &result.stderr);
         let semantic_score = sig.assertion_distance * self.semantic_weight;
-        SemFeedbackScore { branch_score, semantic_score }
+        SemFeedbackScore {
+            branch_score,
+            semantic_score,
+        }
     }
 }
 
@@ -48,8 +58,11 @@ mod tests {
             new_branches: (0..new_branches)
                 .map(|i| apex_core::types::BranchId::new(1, i as u32, 0, 0))
                 .collect(),
-            trace: None, duration_ms: 1,
-            stdout: String::new(), stderr: stderr.into(), input: None,
+            trace: None,
+            duration_ms: 1,
+            stdout: String::new(),
+            stderr: stderr.into(),
+            input: None,
         }
     }
 

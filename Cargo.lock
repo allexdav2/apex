@@ -220,6 +220,7 @@ dependencies = [
  "dashmap",
  "proptest",
  "serde",
+ "serde_json",
  "thiserror 1.0.69",
 ]
 
@@ -227,7 +228,10 @@ dependencies = [
 name = "apex-cpg"
 version = "0.1.0"
 dependencies = [
+ "anyhow",
  "serde",
+ "tempfile",
+ "toml",
 ]
 
 [[package]]

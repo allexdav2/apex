@@ -35,6 +35,8 @@ cargo run --bin apex --manifest-path $APEX_HOME/Cargo.toml -- \
 ```
 Capture JSON output. Parse `summary`, `gaps`, and `blocked` arrays.
 
+**Terminology:** "Gaps" are **uncovered branches** (if/else arms, match arms, loop entries) — NOT bugs or security findings. The `difficulty` field rates how hard it is to write a test for each branch: easy (unit test), medium (needs setup/mocks), hard (integration/async), blocked (external service).
+
 **Step 2 — Analyze.** Sort gaps by `bang_for_buck` descending. For each gap, select strategy.
 
 **Step 3 — Act.**

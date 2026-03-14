@@ -285,4 +285,28 @@ mod tests {
         assert_eq!(solver.hit_count(), 4);
         assert_eq!(solver.inner.call_count(), 1);
     }
+
+    // ------------------------------------------------------------------
+    // Inner-solver name() coverage
+    // ------------------------------------------------------------------
+
+    /// Calls `name()` directly on `CountingSolver` (lines 100-102).
+    #[test]
+    fn counting_solver_name_is_counting() {
+        let solver = CountingSolver::new();
+        assert_eq!(solver.name(), "counting");
+    }
+
+    /// Calls `name()` and `set_logic()` directly on `SatCountingSolver`
+    /// (lines 173-176).
+    #[test]
+    fn sat_counting_solver_name_and_set_logic() {
+        let mut solver = SatCountingSolver::new();
+        assert_eq!(solver.name(), "sat_counting");
+        // set_logic is a no-op but must be exercised for branch coverage.
+        solver.set_logic(SolverLogic::QfLia);
+        solver.set_logic(SolverLogic::QfAbv);
+        solver.set_logic(SolverLogic::QfS);
+        solver.set_logic(SolverLogic::Auto);
+    }
 }

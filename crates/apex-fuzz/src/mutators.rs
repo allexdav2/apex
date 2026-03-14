@@ -528,6 +528,31 @@ mod tests {
         assert_eq!(m.name(), "duplicate_block");
     }
 
+    // Exercise RngCoreWrapper::fill_bytes and try_fill_bytes directly.
+    // These are the two branches reported uncovered (lines 147-152).
+    #[test]
+    fn rng_core_wrapper_fill_bytes() {
+        use rand::RngCore;
+        let mut inner = StdRng::seed_from_u64(1);
+        let mut wrapper = RngCoreWrapper(&mut inner);
+        let mut dest = [0u8; 16];
+        wrapper.fill_bytes(&mut dest);
+        // After fill_bytes, dest should no longer be all-zero (probabilistically true)
+        assert_ne!(dest, [0u8; 16], "fill_bytes should have written random data");
+    }
+
+    #[test]
+    fn rng_core_wrapper_try_fill_bytes() {
+        use rand::RngCore;
+        let mut inner = StdRng::seed_from_u64(2);
+        let mut wrapper = RngCoreWrapper(&mut inner);
+        let mut dest = [0u8; 16];
+        let result = wrapper.try_fill_bytes(&mut dest);
+        assert!(result.is_ok(), "try_fill_bytes should succeed: {result:?}");
+        // Confirm bytes were written
+        assert_ne!(dest, [0u8; 16], "try_fill_bytes should have written random data");
+    }
+
     #[test]
     fn all_builtin_mutators_implement_trait() {
         use crate::traits::Mutator;

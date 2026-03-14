@@ -145,4 +145,35 @@ mod tests {
         let cache = SolverCache::default();
         assert!(cache.is_empty());
     }
+
+    /// Exercises the false branch of the inner `if` at line 40:
+    /// the constraint has `(not …)` form, so `strip_prefix`/`strip_suffix`
+    /// succeeds and we enter the outer `if let`, but the inner constraint
+    /// is NOT cached as `Unsat` (it's absent), so the branch falls through
+    /// to `None` (line 44).
+    #[test]
+    fn negation_inference_inner_not_unsat_returns_none() {
+        let cache = SolverCache::new();
+        // "(not (> x 5))" strips to "(> x 5)" which is not in cache at all.
+        assert_eq!(cache.check("(not (> x 5))"), None);
+    }
+
+    /// Same false branch but the inner constraint IS present and cached as `Sat`
+    /// (not `Unsat`), so negation inference must not fire.
+    #[test]
+    fn negation_inference_inner_sat_returns_none() {
+        let mut cache = SolverCache::new();
+        cache.insert("(> x 5)".into(), SatResult::Sat);
+        // "(not (> x 5))" is not in cache; "(not (not (> x 5)))" is not either;
+        // inner is Sat (≠ Unsat), so no inference → None.
+        assert_eq!(cache.check("(not (> x 5))"), None);
+    }
+
+    /// Same false branch with inner cached as `Unknown`.
+    #[test]
+    fn negation_inference_inner_unknown_returns_none() {
+        let mut cache = SolverCache::new();
+        cache.insert("(> x 5)".into(), SatResult::Unknown);
+        assert_eq!(cache.check("(not (> x 5))"), None);
+    }
 }

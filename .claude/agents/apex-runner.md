@@ -202,6 +202,7 @@ Available intelligence commands (all require `apex index` first):
 
 After a run, interpret results:
 - Report baseline coverage %
-- Explain which files have the most gaps
-- For JSON output: parse gaps, select strategy per gap, execute
-- **Bug report**: If bugs are found, log them with class, location, and message.
+- Explain which files have the most uncovered branches
+- For JSON output: parse gaps (uncovered branches), select strategy per gap, execute
+
+**Important:** "Gaps" are **uncovered branches** (if/else arms, match arms, loop entries) — NOT bugs or security findings. Always label them as "N uncovered branches" in output to avoid confusion with actual defects. Security findings come from `apex audit`, not the gap report.

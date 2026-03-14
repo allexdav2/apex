@@ -166,4 +166,23 @@ mod tests {
         assert_eq!(seg.start_line, 0);
         assert_eq!(seg.end_line, 0);
     }
+
+    /// The `else` branch returning `vec![]` in `tagged_lines` (line 52) is
+    /// structurally unreachable given the guard and clamping logic: the target
+    /// line is always within [start_line, end_line] for any valid input.
+    /// This test documents and verifies that invariant: even with a large
+    /// context window the target line is always tagged.
+    #[test]
+    fn tagged_lines_always_includes_target_line() {
+        let src = "a\nb\nc\nd\ne\n";
+        for target in 1u32..=5 {
+            for ctx in 0u32..=10 {
+                let seg = extract_segment(src, target, ctx);
+                assert!(
+                    seg.tagged_lines.contains(&target),
+                    "target_line={target} ctx={ctx} should always be tagged"
+                );
+            }
+        }
+    }
 }

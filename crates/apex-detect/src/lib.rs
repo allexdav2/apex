@@ -4,15 +4,18 @@
 
 pub mod config;
 pub mod context;
+pub mod cvss;
 pub mod detectors;
 pub mod finding;
 pub mod pipeline;
+pub mod ratchet;
 pub mod report;
+pub mod sarif;
 
 pub use config::DetectConfig;
 pub use context::AnalysisContext;
 pub use finding::{Evidence, Finding, FindingCategory, Fix, Severity};
-pub use pipeline::DetectorPipeline;
+pub use pipeline::{DetectMode, DetectorPipeline};
 pub use report::{AnalysisReport, SecuritySummary};
 
 use apex_core::error::Result;

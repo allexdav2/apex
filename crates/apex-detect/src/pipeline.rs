@@ -12,6 +12,16 @@ use crate::finding::{Finding, FindingCategory};
 use crate::report::AnalysisReport;
 use crate::Detector;
 
+/// Controls which detectors are registered in the pipeline.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DetectMode {
+    /// Pattern-matching only — no CPG, taint, or subprocess tools.
+    /// Designed for <2s pre-commit feedback.
+    Fast,
+    /// All detectors including CPG/taint/subprocess.
+    Full,
+}
+
 pub struct DetectorPipeline {
     pub(crate) detectors: Vec<Box<dyn Detector>>,
 }
@@ -45,8 +55,42 @@ impl DetectorPipeline {
         if cfg.enabled.contains(&"path-normalize".to_string()) {
             detectors.push(Box::new(PathNormalizationDetector));
         }
+        if cfg.enabled.contains(&"timeout".to_string()) {
+            detectors.push(Box::new(MissingTimeoutDetector));
+        }
 
         Self { detectors }
+    }
+
+    /// Build a pipeline filtered by [`DetectMode`].
+    ///
+    /// * `Fast` — only pure AST-pattern detectors (no subprocess, no CPG/taint).
+    /// * `Full` — identical to [`from_config`](Self::from_config).
+    pub fn from_config_with_mode(cfg: &DetectConfig, lang: Language, mode: DetectMode) -> Self {
+        match mode {
+            DetectMode::Full => Self::from_config(cfg, lang),
+            DetectMode::Fast => {
+                let mut detectors: Vec<Box<dyn Detector>> = Vec::new();
+
+                if cfg.enabled.contains(&"panic".to_string()) {
+                    detectors.push(Box::new(PanicPatternDetector));
+                }
+                if cfg.enabled.contains(&"security".to_string()) {
+                    detectors.push(Box::new(SecurityPatternDetector));
+                }
+                if cfg.enabled.contains(&"secrets".to_string()) {
+                    detectors.push(Box::new(HardcodedSecretDetector));
+                }
+                if cfg.enabled.contains(&"path-normalize".to_string()) {
+                    detectors.push(Box::new(PathNormalizationDetector));
+                }
+                if cfg.enabled.contains(&"timeout".to_string()) {
+                    detectors.push(Box::new(MissingTimeoutDetector));
+                }
+
+                Self { detectors }
+            }
+        }
     }
 
     pub async fn run_all(&self, ctx: &AnalysisContext) -> AnalysisReport {
@@ -306,7 +350,7 @@ mod tests {
     fn from_config_enables_all_by_default() {
         let cfg = DetectConfig::default();
         let pipeline = DetectorPipeline::from_config(&cfg, Language::Rust);
-        assert_eq!(pipeline.detectors.len(), 7);
+        assert_eq!(pipeline.detectors.len(), 8);
     }
 
     #[test]
@@ -581,6 +625,52 @@ mod tests {
         deduplicate(&mut findings);
         assert_eq!(findings.len(), 1);
         assert_eq!(findings[0].evidence.len(), 2); // evidence merged from both
+    }
+
+    // -----------------------------------------------------------------------
+    // DetectMode tests
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn fast_mode_skips_subprocess_detectors() {
+        let cfg = DetectConfig::default();
+        let pipeline =
+            DetectorPipeline::from_config_with_mode(&cfg, Language::Rust, DetectMode::Fast);
+        let names: Vec<&str> = pipeline.detectors.iter().map(|d| d.name()).collect();
+        assert!(!names.contains(&"static-analysis"));
+        assert!(!names.contains(&"dependency-audit"));
+        assert!(!names.contains(&"unsafe-reachability"));
+    }
+
+    #[test]
+    fn fast_mode_includes_pattern_detectors() {
+        let cfg = DetectConfig::default();
+        let pipeline =
+            DetectorPipeline::from_config_with_mode(&cfg, Language::Rust, DetectMode::Fast);
+        let names: Vec<&str> = pipeline.detectors.iter().map(|d| d.name()).collect();
+        assert!(names.contains(&"panic-pattern"));
+        assert!(names.contains(&"security-pattern"));
+        assert!(names.contains(&"hardcoded-secret"));
+        assert!(names.contains(&"path-normalize"));
+        assert!(names.contains(&"timeout"));
+    }
+
+    #[test]
+    fn full_mode_includes_all_detectors() {
+        let cfg = DetectConfig::default();
+        let pipeline =
+            DetectorPipeline::from_config_with_mode(&cfg, Language::Rust, DetectMode::Full);
+        let full_pipeline = DetectorPipeline::from_config(&cfg, Language::Rust);
+        assert_eq!(pipeline.detectors.len(), full_pipeline.detectors.len());
+    }
+
+    #[test]
+    fn fast_mode_detector_count() {
+        let cfg = DetectConfig::default();
+        let pipeline =
+            DetectorPipeline::from_config_with_mode(&cfg, Language::Rust, DetectMode::Fast);
+        // panic, security, secrets, path-normalize, timeout = 5 detectors
+        assert_eq!(pipeline.detectors.len(), 5);
     }
 
     #[tokio::test]

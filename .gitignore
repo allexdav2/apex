@@ -52,3 +52,7 @@ fuzz/
 
 # Worktrees
 .worktrees/
+.claude/worktrees/
+
+# Plans (internal planning docs, not shipped)
+/plans/

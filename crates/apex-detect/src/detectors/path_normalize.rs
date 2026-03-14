@@ -372,4 +372,180 @@ function serveFile(path) {
         let findings = PathNormalizationDetector.analyze(&ctx).await.unwrap();
         assert!(findings.is_empty(), "expected no findings, got: {findings:?}");
     }
+
+    // 8. sig_has_path_param returns false — function with no path/url/uri in sig
+    #[test]
+    fn sig_has_path_param_false_for_unrelated_sig() {
+        assert!(!sig_has_path_param("def compute(value: int) -> int:"));
+        assert!(!sig_has_path_param("fn add(a: i32, b: i32) -> i32 {"));
+        assert!(!sig_has_path_param("function greet(name) {"));
+    }
+
+    // 9. sig_has_path_param returns true for path/url/uri
+    #[test]
+    fn sig_has_path_param_true_for_path_url_uri() {
+        assert!(sig_has_path_param("def load(path: str):"));
+        assert!(sig_has_path_param("fn fetch(url: &str) {"));
+        assert!(sig_has_path_param("fn redirect(uri: &str) {"));
+        // case-insensitive
+        assert!(sig_has_path_param("def load(PATH: str):"));
+    }
+
+    // 10. Unsupported language (Java) → collect_suspect_function_ranges returns empty
+    #[test]
+    fn unsupported_language_returns_no_ranges() {
+        let src = "public void loadFile(String path) {}";
+        let ranges = collect_suspect_function_ranges(src, Language::Java);
+        assert!(ranges.is_empty(), "expected empty ranges for Java");
+    }
+
+    // 11. find_python_fn_end: blank lines (continue branch) and dedent (break branch)
+    #[test]
+    fn find_python_fn_end_blank_lines_and_dedent() {
+        // Function with a blank line inside then code outside (dedent triggers break)
+        let src = "\
+def load(path):
+
+    data = open(path).read()
+
+def other():
+    pass
+";
+        let lines: Vec<&str> = src.lines().collect();
+        // start=0 is "def load(path):", end should be before "def other():"
+        let end = find_python_fn_end(&lines, 0);
+        // line indices: 0="def load(path):", 1="", 2="    data = open(path).read()", 3="", 4="def other():"
+        // blank lines: continue; "def other():" has same indent as def → break → last=2
+        assert_eq!(end, 2, "expected fn end at line 2, got {end}");
+    }
+
+    // 12. find_python_fn_end: single-line fallback (last == start)
+    #[test]
+    fn find_python_fn_end_single_line_fallback() {
+        // Function at the last line of the file — no lines after start
+        let src = "def serve(path): pass";
+        let lines: Vec<&str> = src.lines().collect();
+        // Only one line. start=0, loop skips (start+1 = 1, out of bounds), last remains 0.
+        // Fallback: last = (0+1).min(0) = 0 (saturating_sub(1) = 0)
+        let end = find_python_fn_end(&lines, 0);
+        // lines.len() = 1, so saturating_sub(1) = 0; min(0,0) = 0
+        assert_eq!(end, 0);
+    }
+
+    // 13. find_python_fn_end: single-line function followed by more code
+    #[test]
+    fn find_python_fn_end_fallback_next_line() {
+        // def at line 0 followed by an indented body line immediately at line 1
+        // But if the loop sees the body line, last is updated. Let's test a case where
+        // the "def" is the last non-empty line: def at index 1, followed by blank EOF.
+        let src = "\
+x = 1
+def serve(path): pass
+";
+        let lines: Vec<&str> = src.lines().collect();
+        // start=1 "def serve(path): pass", line[2] doesn't exist (empty after trailing newline)
+        // Actually "x = 1\ndef serve(path): pass\n".lines() = ["x = 1", "def serve(path): pass"]
+        // start=1, loop skip(2) → nothing, last=1 == start → fallback to min(2, 1) = 1
+        let end = find_python_fn_end(&lines, 1);
+        assert_eq!(end, 1);
+    }
+
+    // 14. find_brace_fn_end: returns line index of closing brace
+    #[test]
+    fn find_brace_fn_end_returns_closing_brace_line() {
+        let src = "\
+fn read(path: &Path) {
+    fs::read(path)
+}
+";
+        let lines: Vec<&str> = src.lines().collect();
+        // line 0: "fn read(path: &Path) {" — depth=1 started=true
+        // line 1: "    fs::read(path)"
+        // line 2: "}" — depth=0, started && depth<=0 → return 2
+        let end = find_brace_fn_end(&lines, 0);
+        assert_eq!(end, 2, "expected closing brace at line 2, got {end}");
+    }
+
+    // 15. find_brace_fn_end: no closing brace → returns lines.len().saturating_sub(1)
+    #[test]
+    fn find_brace_fn_end_no_closing_brace() {
+        let src = "\
+fn open(path: &Path) {
+    let f = File::open(path);
+    f.read_to_string()
+";
+        let lines: Vec<&str> = src.lines().collect();
+        let expected = lines.len().saturating_sub(1);
+        let end = find_brace_fn_end(&lines, 0);
+        assert_eq!(end, expected, "expected fallback to last line");
+    }
+
+    // 16. has_normalization: unsupported language → &[] (no norm calls checked) → false
+    #[test]
+    fn has_normalization_unsupported_language_returns_false() {
+        let lines = &["path.normalize(input)", "os.path.normpath(p)", ".canonicalize()"];
+        // Language::Java matches `_ => &[]`, so all those calls are irrelevant
+        assert!(!has_normalization(lines, Language::Java));
+    }
+
+    // 17. has_normalization: validation pattern returns true (line 169)
+    #[test]
+    fn has_normalization_validation_pattern_returns_true() {
+        // Use ".." validation pattern (Python/Rust: if path.contains(".."))
+        let lines = &[r#"    if user_path.contains("..") { return Err(...); }"#];
+        assert!(has_normalization(lines, Language::Rust));
+
+        let lines2 = &["    if '..' in path: raise ValueError"];
+        assert!(has_normalization(lines2, Language::Python));
+    }
+
+    // 18. uses_cargo_subprocess returns false
+    #[test]
+    fn uses_cargo_subprocess_returns_false() {
+        assert!(!PathNormalizationDetector.uses_cargo_subprocess());
+    }
+
+    // 19. Unsupported language in analyze → no findings (early continue)
+    #[tokio::test]
+    async fn analyze_unsupported_language_no_findings() {
+        let src = "public void loadPath(String path) { readFile(path); }";
+        let ctx = make_ctx_with_source("src/Main.java", src, Language::Java);
+        let findings = PathNormalizationDetector.analyze(&ctx).await.unwrap();
+        assert!(findings.is_empty(), "Java should be skipped entirely");
+    }
+
+    // 20. Python with blank lines in body + validation pattern → no finding
+    #[tokio::test]
+    async fn python_blank_lines_in_body_with_validation_no_finding() {
+        let src = "\
+def fetch(path):
+
+    if '..' in path:
+        raise ValueError('bad path')
+
+    return open(path).read()
+
+def other():
+    pass
+";
+        let ctx = make_ctx_with_source("src/views.py", src, Language::Python);
+        let findings = PathNormalizationDetector.analyze(&ctx).await.unwrap();
+        assert!(findings.is_empty(), "expected no findings, got: {findings:?}");
+    }
+
+    // 21. Rust with dotdot validation → no finding
+    #[tokio::test]
+    async fn rust_dotdot_validation_no_finding() {
+        let src = r#"
+fn serve(path: &str) {
+    if path.contains("..") {
+        return;
+    }
+    fs::read(path).unwrap();
+}
+"#;
+        let ctx = make_ctx_with_source("src/handler.rs", src, Language::Rust);
+        let findings = PathNormalizationDetector.analyze(&ctx).await.unwrap();
+        assert!(findings.is_empty(), "expected no findings, got: {findings:?}");
+    }
 }

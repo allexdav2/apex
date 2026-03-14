@@ -608,6 +608,24 @@ mod tests {
         assert!(pairs.is_empty());
     }
 
+    // Both directions registered but neither covered → no independence pair.
+    // This exercises the BranchState::Covered match returning false on line 75
+    // and the i_covered != j_covered check being false (both false).
+    #[test]
+    fn mcdc_independence_pairs_both_uncovered_no_pair() {
+        let oracle = CoverageOracle::new();
+        let b_true = BranchId::new_mcdc(1, 20, 0, 0, Some(0));
+        let b_false = BranchId::new_mcdc(1, 20, 0, 1, Some(0));
+        oracle.register_branches([b_true.clone(), b_false.clone()]);
+        // Neither branch is covered — both BranchState::Uncovered
+        // i_covered = false, j_covered = false → i_covered != j_covered is false → no pair
+        let pairs = oracle.mcdc_independence_pairs(1, 20);
+        assert!(
+            pairs.is_empty(),
+            "both-uncovered should produce no independence pair, got: {pairs:?}"
+        );
+    }
+
     #[test]
     fn mcdc_independence_pairs_wrong_file_id() {
         let oracle = CoverageOracle::new();

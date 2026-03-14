@@ -521,4 +521,279 @@ mod tests {
             .count();
         assert_eq!(arg_edges, 2);
     }
+
+    // ── New tests targeting previously uncovered branches ───────────────────
+
+    /// Line 133: `attach_expr` on a bare `return` with no expression.
+    /// The `if !rest.is_empty()` guard must be false → attach_expr not called.
+    #[test]
+    fn return_no_expr_creates_return_node_only() {
+        let source = "def foo():\n    return\n";
+        let cpg = build_python_cpg(source, "test.py");
+        // A Return node is created …
+        assert!(cpg.nodes().any(|(_, k)| matches!(k, NodeKind::Return { .. })));
+        // … but no Identifier or Call hangs off it (nothing attached by attach_expr).
+        let ret_id = cpg
+            .nodes()
+            .find_map(|(id, k)| matches!(k, NodeKind::Return { .. }).then_some(id))
+            .unwrap();
+        let child_edges = cpg
+            .edges_from(ret_id)
+            .iter()
+            .filter(|(_, _, k)| matches!(k, EdgeKind::Argument { .. }))
+            .count();
+        assert_eq!(child_edges, 0, "bare return should have no argument children");
+    }
+
+    /// Line 166: `parse_one_statement` identifier-like fallback returns an Identifier node.
+    /// A statement that is a plain word with no call syntax hits the alphanumeric guard.
+    #[test]
+    fn bare_identifier_statement_creates_identifier_node() {
+        let source = "def foo():\n    some_var\n";
+        let cpg = build_python_cpg(source, "test.py");
+        let has_ident = cpg
+            .nodes()
+            .any(|(_, k)| matches!(k, NodeKind::Identifier { name, .. } if name == "some_var"));
+        assert!(has_ident, "plain identifier statement should yield Identifier node");
+    }
+
+    /// Line 168: `parse_statement` returns `None` for a statement that is neither a
+    /// recognised keyword, assignment, valid call, nor plain identifier.
+    /// A line like `x[0]` contains `[` so it fails the alphanumeric test and falls through.
+    #[test]
+    fn unrecognised_statement_produces_no_node() {
+        // subscript expression — not a call, not plain identifier, not assignment
+        let source = "def foo():\n    x[0]\n";
+        let cpg = build_python_cpg(source, "test.py");
+        // No Identifier/Call/Assignment node should exist beyond the Method itself
+        let non_method = cpg.nodes().filter(|(_, k)| {
+            !matches!(k, NodeKind::Method { .. } | NodeKind::Parameter { .. })
+        });
+        assert_eq!(non_method.count(), 0, "unrecognised statement should produce no CPG node");
+    }
+
+    /// Line 182: `attach_expr` called with an empty string returns immediately.
+    /// Achieved via an assignment whose rhs trims to empty — parse_assignment won't
+    /// match that, so we drive attach_expr directly via a return of a whitespace expr
+    /// inside a function. The safest indirect path: `return  ` (all whitespace after
+    /// "return") — rest.trim() is empty → guard at line 130 prevents attach_expr call.
+    /// To hit line 182 directly, pass a string that is all spaces as the expr arg.
+    /// We do this through an assignment `x =   ` which parse_assignment skips (rhs empty).
+    /// Verify indirectly: the node count must not grow due to the empty attach_expr path.
+    #[test]
+    fn attach_expr_empty_string_is_noop() {
+        // `return   ` — rest after "return" is only spaces, trim gives "", so the
+        // `if !rest.is_empty()` guard at line 130 is false and attach_expr is NOT called.
+        // But we can still hit line 182 via `self.attach_expr("  ", ...)` from
+        // parse_statement's assignment path — however that branch won't reach there
+        // because parse_assignment requires non-empty rhs.
+        //
+        // The simplest public-surface route: a call with an empty argument slot
+        // produced by a trailing comma, e.g. `foo(x,)`.  split_args produces ["x",""]
+        // so the inner loop checks `if !arg.is_empty()` and skips the empty slot —
+        // that `if` guard IS the line-265 branch. attach_expr itself at line 182 is
+        // reached only when the caller passes a non-empty string that trims to empty.
+        // We exercise it through `foo( )` — the args_str is " ", split_args returns
+        // [" "], attach_expr is called with " ", trims to "" and returns early.
+        let source = "def foo():\n    bar( )\n";
+        let cpg = build_python_cpg(source, "test.py");
+        let call_id = cpg
+            .nodes()
+            .find_map(|(id, k)| matches!(k, NodeKind::Call { name, .. } if name == "bar").then_some(id))
+            .expect("call node for bar");
+        // The whitespace-only argument must produce zero argument edges
+        let arg_edges = cpg
+            .edges_from(call_id)
+            .iter()
+            .filter(|(_, _, k)| matches!(k, EdgeKind::Argument { .. }))
+            .count();
+        assert_eq!(arg_edges, 0, "whitespace arg should not create an Argument edge");
+    }
+
+    /// Line 230: end of `attach_expr` — plain identifier/dotted name branch.
+    /// Verified by ensuring a dotted identifier in an argument position creates an
+    /// Identifier node connected via an Argument edge.
+    #[test]
+    fn attach_expr_plain_dotted_name() {
+        // `obj.attr` contains only alphanumeric, `_`, and `.` chars so it is kept
+        // whole by the split and stored as the full dotted name.
+        let source = "def foo():\n    bar(obj.attr)\n";
+        let cpg = build_python_cpg(source, "test.py");
+        let has_ident = cpg
+            .nodes()
+            .any(|(_, k)| matches!(k, NodeKind::Identifier { name, .. } if name == "obj.attr"));
+        assert!(has_ident, "dotted name argument should produce an Identifier node named 'obj.attr'");
+    }
+
+    /// Line 239: `try_parse_call` returns `None` when `(` is at position 0.
+    /// This is exercised by a statement starting with `(`, which falls through
+    /// try_parse_call and then fails the alphanumeric test → `None` from parse_statement.
+    #[test]
+    fn try_parse_call_paren_at_start_returns_none() {
+        let source = "def foo():\n    (x + y)\n";
+        let cpg = build_python_cpg(source, "test.py");
+        // No Call node should be produced
+        assert!(
+            !cpg.nodes().any(|(_, k)| matches!(k, NodeKind::Call { .. })),
+            "expression starting with '(' should not produce a Call node"
+        );
+    }
+
+    /// Line 247: `try_parse_call` returns `None` when callee contains non-identifier chars.
+    /// e.g. `"str"(x)` — callee `"str"` has quotes so the dotted-name check fails.
+    #[test]
+    fn try_parse_call_invalid_callee_returns_none() {
+        let source = "def foo():\n    \"str\"(x)\n";
+        let cpg = build_python_cpg(source, "test.py");
+        assert!(
+            !cpg.nodes().any(|(_, k)| matches!(k, NodeKind::Call { .. })),
+            "callee with non-identifier chars should not produce a Call node"
+        );
+    }
+
+    /// Line 250 / 252: `rfind(')')` fails or `close < paren`.
+    /// An expression like `foo(bar` has an open paren but no closing paren,
+    /// so `rfind(')')` returns `None` and `try_parse_call` returns `None`.
+    #[test]
+    fn try_parse_call_no_closing_paren_returns_none() {
+        let source = "def foo():\n    bar(x\n";
+        let cpg = build_python_cpg(source, "test.py");
+        assert!(
+            !cpg.nodes().any(|(_, k)| matches!(k, NodeKind::Call { .. })),
+            "call without closing paren should not produce a Call node"
+        );
+    }
+
+    /// Line 267: end of arg-parsing loop — call with zero non-empty arguments.
+    /// `foo()` has an empty args_str so the loop body never executes; we verify
+    /// a Call node exists with no Argument edges.
+    #[test]
+    fn try_parse_call_no_args_loop_exits_cleanly() {
+        let source = "def foo():\n    bar()\n";
+        let cpg = build_python_cpg(source, "test.py");
+        let call_id = cpg
+            .nodes()
+            .find_map(|(id, k)| matches!(k, NodeKind::Call { name, .. } if name == "bar").then_some(id))
+            .expect("call node for bar");
+        let arg_edges = cpg
+            .edges_from(call_id)
+            .iter()
+            .filter(|(_, _, k)| matches!(k, EdgeKind::Argument { .. }))
+            .count();
+        assert_eq!(arg_edges, 0, "call with no args should have zero argument edges");
+    }
+
+    /// Line 299: `parse_def_signature` returns `vec![]` when there are no parens.
+    /// A `def` line without parentheses still creates a Method node with no params.
+    /// The name will include any trailing colon since no paren delimiter is found.
+    #[test]
+    fn parse_def_signature_no_parens_yields_empty_params() {
+        // Without parens, `find('(').unwrap_or(line.len())` returns the full length,
+        // so `name` = the whole trimmed string (e.g. "bare:").
+        let source = "def bare:\n    pass\n";
+        let cpg = build_python_cpg(source, "test.py");
+        // At least one method node was created (name = "bare:")
+        assert!(
+            cpg.nodes().any(|(_, k)| matches!(k, NodeKind::Method { .. })),
+            "def without parens should still produce a Method node"
+        );
+        // The else branch at line 298-299 is taken → no params
+        assert_eq!(param_names(&cpg).len(), 0, "def without parens must have no parameters");
+    }
+
+    /// Line 309: `CtrlKind::While`
+    #[test]
+    fn builder_detects_while_control_structure() {
+        let source = "def foo():\n    while True:\n        pass\n";
+        let cpg = build_python_cpg(source, "test.py");
+        let has_while = cpg
+            .nodes()
+            .any(|(_, k)| matches!(k, NodeKind::ControlStructure { kind: CtrlKind::While, .. }));
+        assert!(has_while, "while statement should produce a While ControlStructure node");
+    }
+
+    /// Line 311: `CtrlKind::For`
+    #[test]
+    fn builder_detects_for_control_structure() {
+        let source = "def foo():\n    for x in items:\n        pass\n";
+        let cpg = build_python_cpg(source, "test.py");
+        let has_for = cpg
+            .nodes()
+            .any(|(_, k)| matches!(k, NodeKind::ControlStructure { kind: CtrlKind::For, .. }));
+        assert!(has_for, "for statement should produce a For ControlStructure node");
+    }
+
+    /// Line 313: `CtrlKind::Try`
+    #[test]
+    fn builder_detects_try_control_structure() {
+        let source = "def foo():\n    try:\n        pass\n";
+        let cpg = build_python_cpg(source, "test.py");
+        let has_try = cpg
+            .nodes()
+            .any(|(_, k)| matches!(k, NodeKind::ControlStructure { kind: CtrlKind::Try, .. }));
+        assert!(has_try, "try: statement should produce a Try ControlStructure node");
+    }
+
+    /// Lines 327-341: `parse_assignment` — augmented assignment `+=`.
+    #[test]
+    fn parse_assignment_augmented_plus_equals() {
+        let source = "def foo():\n    x += 1\n";
+        let cpg = build_python_cpg(source, "test.py");
+        let has_assign = cpg
+            .nodes()
+            .any(|(_, k)| matches!(k, NodeKind::Assignment { lhs, .. } if lhs == "x"));
+        assert!(has_assign, "+= should produce an Assignment node with lhs = \"x\"");
+    }
+
+    /// Lines 327-341: `parse_assignment` — augmented assignment `-=`.
+    #[test]
+    fn parse_assignment_augmented_minus_equals() {
+        let source = "def foo():\n    count -= 1\n";
+        let cpg = build_python_cpg(source, "test.py");
+        let has_assign = cpg
+            .nodes()
+            .any(|(_, k)| matches!(k, NodeKind::Assignment { lhs, .. } if lhs == "count"));
+        assert!(has_assign, "-= should produce an Assignment node with lhs = \"count\"");
+    }
+
+    /// Lines 327-341: `parse_assignment` — `==` must be skipped (next byte is `=`).
+    #[test]
+    fn parse_assignment_skips_equality_comparison() {
+        // `if x == y:` must not produce an Assignment node
+        let source = "def foo(x, y):\n    if x == y:\n        pass\n";
+        let cpg = build_python_cpg(source, "test.py");
+        assert!(
+            !cpg.nodes().any(|(_, k)| matches!(k, NodeKind::Assignment { .. })),
+            "== comparison must not be parsed as an assignment"
+        );
+    }
+
+    /// Lines 327-341: `parse_assignment` — `!=` must be skipped (prev byte is `!`).
+    #[test]
+    fn parse_assignment_skips_not_equal() {
+        let source = "def foo(x, y):\n    if x != y:\n        pass\n";
+        let cpg = build_python_cpg(source, "test.py");
+        assert!(
+            !cpg.nodes().any(|(_, k)| matches!(k, NodeKind::Assignment { .. })),
+            "!= must not be parsed as an assignment"
+        );
+    }
+
+    /// Line 357: `body_indentation` loop exhausts all lines without finding a
+    /// non-blank line (function body is entirely blank lines).
+    /// Line 359: the function falls through to the default indent of 4.
+    #[test]
+    fn body_indentation_all_blank_returns_default_four() {
+        // Function with only blank lines in the body — body_indentation returns 4.
+        // The parse loop will find no statements, but the Method node is still created.
+        let source = "def foo():\n\n\n";
+        let cpg = build_python_cpg(source, "test.py");
+        assert!(method_names(&cpg).contains(&"foo".to_string()));
+        // No statements produced — only the Method node
+        let non_method_count = cpg
+            .nodes()
+            .filter(|(_, k)| !matches!(k, NodeKind::Method { .. }))
+            .count();
+        assert_eq!(non_method_count, 0, "all-blank body should produce no statement nodes");
+    }
 }

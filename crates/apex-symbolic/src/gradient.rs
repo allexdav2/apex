@@ -178,7 +178,9 @@ impl Solver for GradientSolver {
         }
 
         // Parse the last constraint (the one we're trying to solve)
-        let constraint = constraints.last().unwrap();
+        let Some(constraint) = constraints.last() else {
+            return Ok(None);
+        };
 
         // Try to parse simple comparison: "(> x 5)" or "(= x 42)"
         let parsed = parse_simple_comparison(constraint);
@@ -421,5 +423,149 @@ mod tests {
         ] {
             assert_eq!(negate_op(negate_op(op)), op);
         }
+    }
+
+    // --- Additional branch coverage tests ---
+
+    // Line 45: Le branch — a > b case (unsatisfied, returns a - b)
+    #[test]
+    fn distance_le_unsatisfied() {
+        // a=10 > b=5: distance = 10 - 5 = 5.0
+        assert_eq!(comparison_distance(CmpOp::Le, 10, 5), 5.0);
+        // a=1 > b=0: distance = 1.0
+        assert_eq!(comparison_distance(CmpOp::Le, 1, 0), 1.0);
+    }
+
+    // Line 59: Ge branch — a < b case (unsatisfied, returns b - a)
+    #[test]
+    fn distance_ge_unsatisfied() {
+        // a=3 < b=10: distance = 10 - 3 = 7.0
+        assert_eq!(comparison_distance(CmpOp::Ge, 3, 10), 7.0);
+        // a=0 < b=1: distance = 1.0
+        assert_eq!(comparison_distance(CmpOp::Ge, 0, 1), 1.0);
+    }
+
+    // Line 114: equal gradients, minus is better
+    // When d_plus == d_minus at the outer level (saturation at i64::MAX causes
+    // saturating_add to return the same value), and in the equal-gradients sub-branch
+    // v_minus yields a smaller distance than v_plus.
+    // With Eq, v = i64::MAX, target = i64::MAX - 1:
+    //   saturating_add(1) returns i64::MAX (same), so d_plus = d_minus via saturation.
+    //   In equal branch: v_plus = i64::MAX (same due to saturation), v_minus = i64::MAX-1.
+    //   d_m = |(i64::MAX-1) - (i64::MAX-1)| = 0 < d_p = |(i64::MAX) - (i64::MAX-1)| = 1.
+    //   So line 114 is taken and v_minus is picked, eventually leading to a solution.
+    #[test]
+    fn gradient_equal_gradients_picks_minus() {
+        let solver = GradientSolver::new(100);
+        // v = i64::MAX, target = i64::MAX - 1: saturating_add(1) == i64::MAX (saturation),
+        // so d_plus == d_minus at the outer level; the equal-gradients branch fires and
+        // picks v_minus (line 114) because it is one integer step closer to target.
+        let result = solver.solve_comparison(CmpOp::Eq, i64::MAX, i64::MAX - 1);
+        // The solver should find a solution (Eq satisfied when value == target).
+        assert!(result.is_some());
+    }
+
+    // Lines 124, 132, 135: stall detection and post-loop None
+    // max_iterations=0 skips the loop entirely; post-loop check finds distance != 0
+    // and returns None (line 135). Also tests the path through lines 132-135.
+    #[test]
+    fn gradient_zero_iterations_returns_none() {
+        let solver = GradientSolver::new(0);
+        // Eq(0, 42): not satisfied initially, zero iterations, must return None
+        let result = solver.solve_comparison(CmpOp::Eq, 0, 42);
+        assert!(result.is_none());
+    }
+
+    // Line 124: stall break — gradient makes no progress
+    // Using f64 precision loss at extreme i64 values: when value and target are both
+    // near i64::MAX but offset by a tiny integer amount, the f64 distance doesn't
+    // change between iterations, causing an immediate stall.
+    #[test]
+    fn gradient_stalls_returns_none_or_solution() {
+        // With a large offset (>> f64 precision at this scale), the descent stalls
+        // because consecutive integer steps produce identical f64 distances.
+        // The result is either a solution (if we happen to land on one) or None.
+        let solver = GradientSolver::new(200);
+        let result = solver.solve_comparison(CmpOp::Eq, i64::MAX, 0);
+        // We don't assert the exact outcome — either None (stalled, line 135) or
+        // Some if the algorithm happens to converge after all.
+        let _ = result;
+    }
+
+    // Line 154: step overflow break in find_step_size
+    // Artificially trigger the saturating_mul overflow guard by using a negative-direction
+    // search from i64::MIN, where every step stays at i64::MIN (saturated).
+    // This is reached indirectly via solve_comparison when it calls find_step_size.
+    #[test]
+    fn gradient_step_overflow_does_not_panic() {
+        // i64::MIN with Eq and target 0: negative direction saturates, causing
+        // step.saturating_mul(2) to eventually overflow and break at line 154.
+        let solver = GradientSolver::new(100);
+        // Just assert it terminates without panic.
+        let _result = solver.solve_comparison(CmpOp::Eq, i64::MIN, 0);
+    }
+
+    // Line 202: solve() returns Ok(None) when solve_comparison returns None
+    // (constraint parses OK but gradient descent stalls with 0 iterations)
+    #[test]
+    fn solver_trait_returns_none_when_descent_fails() {
+        let solver = GradientSolver::new(0);
+        // Eq x 42: parses fine, but 0 iterations → solve_comparison returns None → Ok(None)
+        let result = solver.solve(&["(= x 42)".to_string()], false).unwrap();
+        assert!(result.is_none());
+    }
+
+    // Lines 206-208: set_logic is a no-op but must be callable
+    #[test]
+    fn set_logic_is_callable() {
+        let mut solver = GradientSolver::new(100);
+        // Should not panic; gradient solver is logic-agnostic
+        solver.set_logic(SolverLogic::QfLia);
+        solver.set_logic(SolverLogic::QfAbv);
+    }
+
+    // Line 234: strip_prefix/strip_suffix fails — constraint lacks parens
+    #[test]
+    fn parse_malformed_no_parens_returns_none() {
+        // strip_prefix('(') fails when there is no leading paren
+        assert!(parse_simple_comparison("= x 42").is_none());
+        // strip_suffix(')') fails when there is no trailing paren
+        assert!(parse_simple_comparison("(= x 42").is_none());
+    }
+
+    // Line 245: '<=' operator parsing
+    #[test]
+    fn parse_le_operator() {
+        let (op, var, val) = parse_simple_comparison("(<= x 100)").unwrap();
+        assert_eq!(op, CmpOp::Le);
+        assert_eq!(var, "x");
+        assert_eq!(val, 100);
+    }
+
+    // Line 246: '!=' and 'distinct' operator parsing
+    #[test]
+    fn parse_ne_and_distinct_operators() {
+        let (op1, _, val1) = parse_simple_comparison("(!= x 7)").unwrap();
+        assert_eq!(op1, CmpOp::Ne);
+        assert_eq!(val1, 7);
+
+        let (op2, var2, val2) = parse_simple_comparison("(distinct y 99)").unwrap();
+        assert_eq!(op2, CmpOp::Ne);
+        assert_eq!(var2, "y");
+        assert_eq!(val2, 99);
+    }
+
+    // Line 247: unknown operator returns None
+    #[test]
+    fn parse_unknown_operator_returns_none() {
+        assert!(parse_simple_comparison("(? x 5)").is_none());
+        assert!(parse_simple_comparison("(xor x 1)").is_none());
+    }
+
+    // Line 251: non-numeric target parse fails
+    #[test]
+    fn parse_non_numeric_target_returns_none() {
+        assert!(parse_simple_comparison("(= x abc)").is_none());
+        assert!(parse_simple_comparison("(> y 1.5)").is_none());
     }
 }

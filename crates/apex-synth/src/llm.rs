@@ -466,4 +466,51 @@ mod tests {
         );
         assert!(result.is_err());
     }
+
+    // -----------------------------------------------------------------------
+    // Gap-filling tests: uncovered branches
+    // -----------------------------------------------------------------------
+
+    /// `format_uncovered_lines` with an empty `uncovered_lines` list falls back
+    /// to formatting with `target_line` (line 114 branch).
+    #[test]
+    fn format_uncovered_lines_empty_uses_target_line() {
+        let synth = LlmSynthesizer::new(LlmConfig::default());
+        let gap = CoverageGap {
+            file_path: "empty.py".into(),
+            target_line: 42,
+            function_name: None,
+            source_segment: String::new(),
+            uncovered_lines: vec![], // <-- triggers the is_empty() branch
+        };
+        let messages = synth.initial_prompt(&gap);
+        // The user message must reference "line 42" (the target_line fallback).
+        assert!(
+            messages[1].content.contains("line 42"),
+            "expected 'line 42' in prompt, got: {}",
+            messages[1].content
+        );
+    }
+
+    /// `fill_gap` with `Success(vec![])` returned immediately on the first call.
+    /// The `vec![]` branch of `TestResult::Success` (line 465 callback path)
+    /// must be reachable when the run_test callback is actually invoked.
+    #[test]
+    fn fill_gap_success_with_empty_coverage_delta() {
+        let synth = LlmSynthesizer::new(LlmConfig::default());
+        let gap = make_gap();
+        let result = synth
+            .fill_gap(
+                &gap,
+                |_msgs| Ok("def test_nothing(): pass".into()),
+                |_code| TestResult::Success(vec![]),
+            )
+            .unwrap();
+        let attempt = result.expect("expected a successful attempt");
+        assert_eq!(attempt.attempt_number, 1);
+        assert!(
+            attempt.coverage_delta.is_empty(),
+            "coverage_delta should be empty"
+        );
+    }
 }

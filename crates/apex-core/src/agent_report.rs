@@ -8,6 +8,10 @@ use crate::types::BranchId;
 
 /// Rich gap report designed for external agent consumption (Claude Code).
 /// Produced by `--strategy agent --output-format json`.
+///
+/// **Note:** "gaps" are *uncovered branches* in the source code — not bugs or
+/// security findings.  The `difficulty` field estimates how hard it would be to
+/// write a test that exercises each branch (easy / medium / hard / blocked).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AgentGapReport {
     pub summary: GapSummary,
@@ -52,6 +56,12 @@ pub struct BlockedEntry {
     pub reason: String,
 }
 
+/// How hard it is to write a test covering this uncovered branch.
+///
+/// - **Easy**: pure function, simple inputs, no external deps — unit test suffices.
+/// - **Medium**: needs mocking, config setup, or filesystem access.
+/// - **Hard**: async I/O, network, FFI, or process spawning — integration test needed.
+/// - **Blocked**: cannot be tested without an external service or harness.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum GapDifficulty {

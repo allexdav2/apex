@@ -215,7 +215,9 @@ async fn run_per_test_coverage(
         let idx = i + idx_offset;
 
         let handle = tokio::spawn(async move {
-            let _permit = sem.acquire().await.unwrap();
+            let _permit = sem.acquire().await.map_err(|e| {
+                apex_core::error::ApexError::Agent(format!("semaphore closed: {e}"))
+            })?;
             run_single_test(&root, &name, idx).await
         });
         handles.push(handle);

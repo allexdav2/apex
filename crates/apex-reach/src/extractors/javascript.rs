@@ -4,6 +4,16 @@ use crate::graph::{CallEdge, CallGraph, FnId, FnNode};
 use apex_core::types::Language;
 use regex::Regex;
 use std::collections::HashMap;
+use std::sync::LazyLock;
+
+static RE_FN_DECL: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^\s*(?:async\s+)?function\s+(\w+)\s*\(").unwrap());
+static RE_ARROW: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^\s*(?:export\s+)?(?:const|let|var)\s+(\w+)\s*=\s*(?:async\s+)?(?:\([^)]*\)|[a-zA-Z_]\w*)\s*=>").unwrap());
+static RE_METHOD: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^\s*(?:async\s+)?(\w+)\s*\([^)]*\)\s*\{").unwrap());
+static RE_EXPORT_FN: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^\s*export\s+(?:default\s+)?(?:async\s+)?function\s+(\w+)\s*\(").unwrap());
+static RE_TEST_CALL: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^\s*(describe|it|test)\s*\(").unwrap());
+static RE_JS_CALL: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"(\w+)\s*\(").unwrap());
+static RE_JS_METHOD_CALL: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"(\w+)\.(\w+)\s*\(").unwrap());
+static RE_REQUIRE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r#"require\s*\(\s*['"]([^'"]+)['"]\s*\)"#).unwrap());
 use std::path::{Path, PathBuf};
 
 pub struct JsExtractor;
@@ -238,19 +248,12 @@ fn extract_functions(source: &str) -> Vec<FnDef> {
     let mut functions = Vec::new();
     let lines: Vec<&str> = source.lines().collect();
 
-    let re_fn_decl =
-        Regex::new(r"^\s*(?:async\s+)?function\s+(\w+)\s*\(").unwrap();
-    let re_arrow =
-        Regex::new(r"^\s*(?:export\s+)?(?:const|let|var)\s+(\w+)\s*=\s*(?:async\s+)?(?:\([^)]*\)|[a-zA-Z_]\w*)\s*=>")
-            .unwrap();
-    let re_method =
-        Regex::new(r"^\s*(?:async\s+)?(\w+)\s*\([^)]*\)\s*\{").unwrap();
-    let re_export_fn =
-        Regex::new(r"^\s*export\s+(?:default\s+)?(?:async\s+)?function\s+(\w+)\s*\(")
-            .unwrap();
+    let re_fn_decl = &*RE_FN_DECL;
+    let re_arrow = &*RE_ARROW;
+    let re_method = &*RE_METHOD;
+    let re_export_fn = &*RE_EXPORT_FN;
     // Test framework patterns: describe('name', () => { ... })
-    let re_test_call =
-        Regex::new(r"^\s*(describe|it|test)\s*\(").unwrap();
+    let re_test_call = &*RE_TEST_CALL;
 
     // Track class context via brace depth.
     let mut in_class = false;
@@ -453,9 +456,9 @@ fn extract_calls_in_body(
     base_line: u32,
     self_name: &str,
 ) -> Vec<CallSite> {
-    let re_call = Regex::new(r"(\w+)\s*\(").unwrap();
-    let re_method_call = Regex::new(r"(\w+)\.(\w+)\s*\(").unwrap();
-    let re_require = Regex::new(r#"require\s*\(\s*['"]([^'"]+)['"]\s*\)"#).unwrap();
+    let re_call = &*RE_JS_CALL;
+    let re_method_call = &*RE_JS_METHOD_CALL;
+    let re_require = &*RE_REQUIRE;
 
     let block_keywords = ["if", "else", "for", "while", "switch"];
 

@@ -14,7 +14,15 @@ use crate::traits::Mutator;
 use apex_core::types::BranchId;
 use rand::RngCore;
 use std::collections::{HashMap, VecDeque};
-use std::sync::Arc;
+use std::sync::{Arc, LazyLock};
+
+static RE_EXPECTED: LazyLock<regex::Regex> = LazyLock::new(|| {
+    regex::Regex::new(r"expected\s+(\S+?)[\s,]+(?:but\s+)?got\s+(\S+)").unwrap()
+});
+
+static RE_LEFT_RIGHT: LazyLock<regex::Regex> = LazyLock::new(|| {
+    regex::Regex::new(r"left=`([^`]+)`.*right=`([^`]+)`").unwrap()
+});
 
 /// A single comparison observation: two byte sequences being compared.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -73,20 +81,13 @@ impl Default for CmpLog {
 pub fn parse_cmp_hints_from_output(output: &str) -> Vec<CmpEntry> {
     let mut hints = Vec::new();
 
-    // Pattern: "expected <X> but got <Y>" or "expected <X>, got <Y>"
-    let expected_re_str = r"expected\s+(\S+?)[\s,]+(?:but\s+)?got\s+(\S+)";
-    // Pattern: "left=`<X>`, right=`<Y>`" (Rust assert_eq)
-    let left_right_re_str = r"left=`([^`]+)`.*right=`([^`]+)`";
-
-    for pattern in [expected_re_str, left_right_re_str] {
-        if let Ok(re) = regex::Regex::new(pattern) {
-            for caps in re.captures_iter(output) {
-                if let (Some(a), Some(b)) = (caps.get(1), caps.get(2)) {
-                    hints.push(CmpEntry::new(
-                        a.as_str().as_bytes().to_vec(),
-                        b.as_str().as_bytes().to_vec(),
-                    ));
-                }
+    for re in [&*RE_EXPECTED, &*RE_LEFT_RIGHT] {
+        for caps in re.captures_iter(output) {
+            if let (Some(a), Some(b)) = (caps.get(1), caps.get(2)) {
+                hints.push(CmpEntry::new(
+                    a.as_str().as_bytes().to_vec(),
+                    b.as_str().as_bytes().to_vec(),
+                ));
             }
         }
     }

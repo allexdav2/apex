@@ -4,6 +4,14 @@ use crate::graph::{CallEdge, CallGraph, FnId, FnNode};
 use apex_core::types::Language;
 use regex::Regex;
 use std::collections::HashMap;
+use std::sync::LazyLock;
+
+static RE_DEF: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^(\s*)def\s+(\w+)\s*\(").unwrap());
+static RE_CLASS: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^(\s*)class\s+(\w+)").unwrap());
+static RE_CALL: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"(\w+)\s*\(").unwrap());
+static RE_SELF_CALL: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"self\.(\w+)\s*\(").unwrap());
+static RE_METHOD_CALL: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"(\w+)\.(\w+)\s*\(").unwrap());
+static RE_BLOCK: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^\s*(if|elif|else|for|while|try|except|finally|with)\b").unwrap());
 use std::path::{Path, PathBuf};
 
 pub struct PythonExtractor;
@@ -24,8 +32,8 @@ fn indent_of(line: &str) -> usize {
 
 /// Parse all function definitions from a single file's source.
 fn parse_functions(source: &str) -> Vec<FnDef> {
-    let def_re = Regex::new(r"^(\s*)def\s+(\w+)\s*\(").unwrap();
-    let class_re = Regex::new(r"^(\s*)class\s+(\w+)").unwrap();
+    let def_re = &*RE_DEF;
+    let class_re = &*RE_CLASS;
 
     let lines: Vec<&str> = source.lines().collect();
     let mut functions: Vec<FnDef> = Vec::new();
@@ -173,9 +181,9 @@ fn classify_entry(
 
 /// Extract calls from function body lines.
 fn extract_calls(body: &[(u32, String)]) -> Vec<(u32, String, Option<u32>)> {
-    let call_re = Regex::new(r"(\w+)\s*\(").unwrap();
-    let self_call_re = Regex::new(r"self\.(\w+)\s*\(").unwrap();
-    let method_call_re = Regex::new(r"(\w+)\.(\w+)\s*\(").unwrap();
+    let call_re = &*RE_CALL;
+    let self_call_re = &*RE_SELF_CALL;
+    let method_call_re = &*RE_METHOD_CALL;
 
     // Python keywords that look like function calls but are not.
     let keywords: &[&str] = &[
@@ -186,10 +194,7 @@ fn extract_calls(body: &[(u32, String)]) -> Vec<(u32, String, Option<u32>)> {
     ];
 
     // Block detection: simple counter for indentation-based blocks.
-    let block_re = Regex::new(
-        r"^\s*(if|elif|else|for|while|try|except|finally|with)\b",
-    )
-    .unwrap();
+    let block_re = &*RE_BLOCK;
 
     let mut calls = Vec::new();
     let mut block_id: u32 = 0;

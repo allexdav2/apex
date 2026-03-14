@@ -5,6 +5,23 @@
 
 use apex_coverage::mutation::{MutationKind, MutationOperator};
 use regex::Regex;
+use std::sync::LazyLock;
+
+static RE_ASSIGNMENT: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"[a-zA-Z_]\w*\s*=[^=]").unwrap());
+static RE_KEYWORD_LINE: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r"^\s*(def |class |fn |if |for |while |let |const |var |import |from )").unwrap()
+});
+static RE_CONDITIONAL: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"^\s*if\s+").unwrap());
+static RE_RETURN: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"\breturn\s+\S").unwrap());
+static RE_ARITH: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r" [+\-*/] ").unwrap());
+static RE_BOUNDARY: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"(<=|>=|<|>)").unwrap());
+static RE_INTEGER: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"\b(\d+)\b").unwrap());
 
 /// Injects mutations into source code text.
 pub struct MutantInjector;
@@ -29,15 +46,13 @@ impl MutantInjector {
     pub fn generate_mutants(source: &str, file: &str) -> Vec<MutationOperator> {
         let mut ops = Vec::new();
 
-        let re_assignment = Regex::new(r"[a-zA-Z_]\w*\s*=[^=]").unwrap();
-        let re_keyword_line =
-            Regex::new(r"^\s*(def |class |fn |if |for |while |let |const |var |import |from )")
-                .unwrap();
-        let re_conditional = Regex::new(r"^\s*if\s+").unwrap();
-        let re_return = Regex::new(r"\breturn\s+\S").unwrap();
-        let re_arith = Regex::new(r" [+\-*/] ").unwrap();
-        let re_boundary = Regex::new(r"(<=|>=|<|>)").unwrap();
-        let re_integer = Regex::new(r"\b(\d+)\b").unwrap();
+        let re_assignment = &*RE_ASSIGNMENT;
+        let re_keyword_line = &*RE_KEYWORD_LINE;
+        let re_conditional = &*RE_CONDITIONAL;
+        let re_return = &*RE_RETURN;
+        let re_arith = &*RE_ARITH;
+        let re_boundary = &*RE_BOUNDARY;
+        let re_integer = &*RE_INTEGER;
 
         for (line_num, line) in source.lines().enumerate() {
             let line_1based = (line_num + 1) as u32;

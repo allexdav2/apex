@@ -29,12 +29,43 @@ use serde::Deserialize;
 use std::{
     collections::HashMap,
     path::PathBuf,
-    sync::{Arc, Mutex},
+    sync::{Arc, LazyLock, Mutex},
 };
 use tracing::{debug, info, warn};
 
 /// Embedded tracer script — extracted to a temp file at runtime.
 const TRACER_PY: &str = include_str!("scripts/apex_tracer.py");
+
+static RE_CMP: LazyLock<regex_lite::Regex> = LazyLock::new(|| {
+    regex_lite::Regex::new(
+        r#"^(\w[\w.]*)\s*(>|>=|<|<=|==|!=)\s*(-?\d+(?:\.\d+)?|None|True|False|'[^']*'|"[^"]*")$"#,
+    )
+    .unwrap()
+});
+
+static RE_STR_METHOD: LazyLock<regex_lite::Regex> = LazyLock::new(|| {
+    regex_lite::Regex::new(r#"^(\w+)\.(startswith|endswith)\(['\"](.+?)['\"]\)$"#).unwrap()
+});
+
+static RE_IN_LIST: LazyLock<regex_lite::Regex> = LazyLock::new(|| {
+    regex_lite::Regex::new(r#"^(\w+)\s+in\s+\[(.+)\]$"#).unwrap()
+});
+
+static RE_ISINSTANCE: LazyLock<regex_lite::Regex> = LazyLock::new(|| {
+    regex_lite::Regex::new(r#"^isinstance\((\w+),\s*(\w+)\)$"#).unwrap()
+});
+
+static RE_SUBSTR: LazyLock<regex_lite::Regex> = LazyLock::new(|| {
+    regex_lite::Regex::new(r#"^['\"](.+?)['\"]\s+in\s+(\w+)$"#).unwrap()
+});
+
+static RE_LEN: LazyLock<regex_lite::Regex> = LazyLock::new(|| {
+    regex_lite::Regex::new(r#"^len\((\w+)\)\s*(>|>=|==|<|<=)\s*(\d+)$"#).unwrap()
+});
+
+static RE_IS: LazyLock<regex_lite::Regex> = LazyLock::new(|| {
+    regex_lite::Regex::new(r#"^(\w+)\s+is\s+(not None|None)$"#).unwrap()
+});
 
 // ---------------------------------------------------------------------------
 // Tracer output types
@@ -159,12 +190,10 @@ impl PythonConcolicStrategy {
         let mut assignments: Vec<Vec<(String, serde_json::Value)>> = Vec::new();
 
         // Look for patterns: <name> <op> <literal>
-        let re_cmp = regex_lite::Regex::new(
-            r#"^(\w[\w.]*)\s*(>|>=|<|<=|==|!=)\s*(-?\d+(?:\.\d+)?|None|True|False|'[^']*'|"[^"]*")$"#
-        ).ok();
+        let re_cmp = &*RE_CMP;
 
-        if let Some(re) = re_cmp {
-            if let Some(caps) = re.captures(condition.trim()) {
+        if let Some(caps) = re_cmp.captures(condition.trim()) {
+            {
                 let name = caps[1].to_string();
                 let op = &caps[2];
                 let lit = &caps[3];
@@ -192,11 +221,9 @@ impl PythonConcolicStrategy {
 
         // --- String method patterns (startswith/endswith) ---
         if assignments.is_empty() {
-            let re_str_method = regex_lite::Regex::new(
-                r#"^(\w+)\.(startswith|endswith)\(['\"](.+?)['\"]\)$"#
-            ).ok();
-            if let Some(re) = re_str_method {
-                if let Some(caps) = re.captures(condition.trim()) {
+            let re_str_method = &*RE_STR_METHOD;
+            if let Some(caps) = re_str_method.captures(condition.trim()) {
+                {
                     let name = caps[1].to_string();
                     let method = caps[2].to_string();
                     let affix = caps[3].to_string();
@@ -221,11 +248,9 @@ impl PythonConcolicStrategy {
 
         // --- Membership: x in [list] ---
         if assignments.is_empty() {
-            let re_in_list = regex_lite::Regex::new(
-                r#"^(\w+)\s+in\s+\[(.+)\]$"#
-            ).ok();
-            if let Some(re) = re_in_list {
-                if let Some(caps) = re.captures(condition.trim()) {
+            let re_in_list = &*RE_IN_LIST;
+            if let Some(caps) = re_in_list.captures(condition.trim()) {
+                {
                     let name = caps[1].to_string();
                     let items_str = caps[2].to_string();
                     let items: Vec<String> = items_str.split(',')
@@ -244,11 +269,9 @@ impl PythonConcolicStrategy {
 
         // --- isinstance check ---
         if assignments.is_empty() {
-            let re_isinstance = regex_lite::Regex::new(
-                r#"^isinstance\((\w+),\s*(\w+)\)$"#
-            ).ok();
-            if let Some(re) = re_isinstance {
-                if let Some(caps) = re.captures(condition.trim()) {
+            let re_isinstance = &*RE_ISINSTANCE;
+            if let Some(caps) = re_isinstance.captures(condition.trim()) {
+                {
                     let name = caps[1].to_string();
                     let type_name = caps[2].to_string();
                     if target_direction == 0 {
@@ -276,11 +299,9 @@ impl PythonConcolicStrategy {
 
         // --- Substring contains: "://" in x ---
         if assignments.is_empty() {
-            let re_substr = regex_lite::Regex::new(
-                r#"^['\"](.+?)['\"]\s+in\s+(\w+)$"#
-            ).ok();
-            if let Some(re) = re_substr {
-                if let Some(caps) = re.captures(condition.trim()) {
+            let re_substr = &*RE_SUBSTR;
+            if let Some(caps) = re_substr.captures(condition.trim()) {
+                {
                     let substring = caps[1].to_string();
                     let name = caps[2].to_string();
                     if target_direction == 0 {
@@ -294,11 +315,9 @@ impl PythonConcolicStrategy {
 
         // --- len check: len(x) > N ---
         if assignments.is_empty() {
-            let re_len = regex_lite::Regex::new(
-                r#"^len\((\w+)\)\s*(>|>=|==|<|<=)\s*(\d+)$"#
-            ).ok();
-            if let Some(re) = re_len {
-                if let Some(caps) = re.captures(condition.trim()) {
+            let re_len = &*RE_LEN;
+            if let Some(caps) = re_len.captures(condition.trim()) {
+                {
                     let name = caps[1].to_string();
                     let op = caps[2].to_string();
                     let n: usize = caps[3].parse().unwrap_or(0);
@@ -319,11 +338,9 @@ impl PythonConcolicStrategy {
 
         // --- None/is check ---
         if assignments.is_empty() {
-            let re_is = regex_lite::Regex::new(
-                r#"^(\w+)\s+is\s+(not None|None)$"#
-            ).ok();
-            if let Some(re) = re_is {
-                if let Some(caps) = re.captures(condition.trim()) {
+            let re_is = &*RE_IS;
+            if let Some(caps) = re_is.captures(condition.trim()) {
+                {
                     let name = caps[1].to_string();
                     let check = caps[2].to_string();
                     match (check.as_str(), target_direction) {

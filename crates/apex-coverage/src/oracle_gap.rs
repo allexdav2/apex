@@ -55,6 +55,7 @@ mod tests {
             operator: op(MutationKind::BoundaryShift, 1),
             killed: true,
             killing_tests: vec!["t1".into()],
+            detection_margin: 0.9,
         }];
         let score = OracleGapScore::from_results(&results);
         assert_eq!(score.gap_percent(), 0.0);
@@ -68,11 +69,13 @@ mod tests {
                 operator: op(MutationKind::BoundaryShift, 1),
                 killed: true,
                 killing_tests: vec![],
+                detection_margin: 0.8,
             },
             MutationResult {
                 operator: op(MutationKind::ConditionalNegation, 2),
                 killed: false,
                 killing_tests: vec![],
+                detection_margin: 0.0,
             },
         ];
         let score = OracleGapScore::from_results(&results);
@@ -87,11 +90,13 @@ mod tests {
                 operator: op(MutationKind::ArithmeticReplace, 10),
                 killed: false,
                 killing_tests: vec![],
+                detection_margin: 0.0,
             },
             MutationResult {
                 operator: op(MutationKind::ReturnValueChange, 3),
                 killed: false,
                 killing_tests: vec![],
+                detection_margin: 0.0,
             },
         ];
         let score = OracleGapScore::from_results(&results);

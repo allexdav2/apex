@@ -2,17 +2,20 @@
 //! corpus management, grammar-aware mutation, and optional LibAFL backend.
 
 pub mod cmplog;
+pub mod control;
 pub mod corpus;
 pub mod de_scheduler;
 pub mod directed;
 pub mod distill;
 pub mod grammar;
 pub mod grammar_mutator;
+pub mod hgfuzzer;
 pub mod libafl_backend;
 pub mod llm_mutator;
 pub mod mutators;
 pub mod plugin;
 pub mod scheduler;
+pub mod seedmind;
 pub mod semantic_feedback;
 pub mod thompson;
 pub mod traits;

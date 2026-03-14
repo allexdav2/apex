@@ -1,4 +1,6 @@
 pub mod bandit;
+pub mod cegar;
+pub mod spec_miner;
 pub mod command_injection;
 pub mod dep_audit;
 pub mod flag_hygiene;

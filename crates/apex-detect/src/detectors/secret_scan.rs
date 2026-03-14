@@ -458,17 +458,9 @@ mod tests {
 
     fn make_ctx(files: HashMap<PathBuf, String>, lang: Language) -> AnalysisContext {
         AnalysisContext {
-            target_root: PathBuf::from("/tmp/test"),
             language: lang,
-            oracle: Arc::new(CoverageOracle::new()),
-            file_paths: HashMap::new(),
-            known_bugs: vec![],
             source_cache: files,
-            fuzz_corpus: None,
-            config: DetectConfig::default(),
-            runner: Arc::new(apex_core::command::RealCommandRunner),
-            cpg: None,
-            threat_model: apex_core::config::ThreatModelConfig::default(),
+            ..AnalysisContext::test_default()
         }
     }
 

@@ -361,17 +361,9 @@ if feature_flag("beta"): pass
         );
 
         let ctx = crate::context::AnalysisContext {
-            target_root: PathBuf::from("/tmp/test"),
             language: apex_core::types::Language::Python,
-            oracle: Arc::new(CoverageOracle::new()),
-            file_paths: HashMap::new(),
-            known_bugs: vec![],
             source_cache,
-            fuzz_corpus: None,
-            config: DetectConfig::default(),
-            runner: Arc::new(RealCommandRunner),
-            cpg: None,
-            threat_model: apex_core::config::ThreatModelConfig::default(),
+            ..crate::context::AnalysisContext::test_default()
         };
 
         let detector = FlagHygieneDetector::default_max_age();

@@ -45,6 +45,64 @@ pub struct MutationResult {
     pub killed: bool,
     /// Which tests killed this mutant (empty if survived).
     pub killing_tests: Vec<String>,
+    /// How close was detection? 1.0 = strong kill, 0.01 = barely detected, 0.0 = not killed.
+    #[serde(default)]
+    pub detection_margin: f64,
+}
+
+/// Metamorphic adequacy score — goes beyond binary kill/survive.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MetamorphicScore {
+    /// Traditional mutation score: killed / total.
+    pub mutation_score: f64,
+    /// Ratio of killed mutants with detection_margin > 0.5.
+    pub detection_ratio: f64,
+    /// Mutants killed but with very low margin (detection_margin < 0.1).
+    pub weak_mutations: Vec<MutationOperator>,
+}
+
+/// Compute metamorphic adequacy from mutation testing results.
+///
+/// Goes beyond binary kill/survive:
+/// - `mutation_score`: fraction of killed mutants.
+/// - `detection_ratio`: fraction of killed mutants with detection_margin > 0.5.
+/// - `weak_mutations`: killed mutants with detection_margin < 0.1 (brittle detection).
+pub fn metamorphic_adequacy(results: &[MutationResult]) -> MetamorphicScore {
+    if results.is_empty() {
+        return MetamorphicScore {
+            mutation_score: 1.0,
+            detection_ratio: 1.0,
+            weak_mutations: vec![],
+        };
+    }
+
+    let total = results.len() as f64;
+    let killed: Vec<&MutationResult> = results.iter().filter(|r| r.killed).collect();
+    let killed_count = killed.len() as f64;
+
+    let mutation_score = killed_count / total;
+
+    let strong_kills = killed
+        .iter()
+        .filter(|r| r.detection_margin > 0.5)
+        .count() as f64;
+    let detection_ratio = if killed_count > 0.0 {
+        strong_kills / killed_count
+    } else {
+        0.0
+    };
+
+    let weak_mutations: Vec<MutationOperator> = killed
+        .iter()
+        .filter(|r| r.detection_margin < 0.1)
+        .map(|r| r.operator.clone())
+        .collect();
+
+    MetamorphicScore {
+        mutation_score,
+        detection_ratio,
+        weak_mutations,
+    }
 }
 
 #[cfg(test)]
@@ -113,6 +171,7 @@ mod tests {
             },
             killed: true,
             killing_tests: vec!["test_boundary".into()],
+            detection_margin: 0.9,
         };
         assert!(result.killed);
         assert_eq!(result.killing_tests.len(), 1);
@@ -130,8 +189,56 @@ mod tests {
             },
             killed: false,
             killing_tests: vec![],
+            detection_margin: 0.0,
         };
         assert!(!result.killed);
         assert!(result.killing_tests.is_empty());
+    }
+
+    fn make_result(kind: MutationKind, line: u32, killed: bool, detection_margin: f64) -> MutationResult {
+        MutationResult {
+            operator: MutationOperator {
+                kind,
+                file: "src/lib.py".into(),
+                line,
+                original: "x".into(),
+                replacement: "y".into(),
+            },
+            killed,
+            killing_tests: if killed { vec!["t1".into()] } else { vec![] },
+            detection_margin,
+        }
+    }
+
+    #[test]
+    fn metamorphic_adequacy_all_killed() {
+        let results = vec![
+            make_result(MutationKind::ArithmeticReplace, 1, true, 0.9),
+            make_result(MutationKind::ConditionalNegation, 2, true, 0.7),
+        ];
+        let score = metamorphic_adequacy(&results);
+        assert!((score.mutation_score - 1.0).abs() < f64::EPSILON);
+        assert!((score.detection_ratio - 1.0).abs() < f64::EPSILON);
+        assert!(score.weak_mutations.is_empty());
+    }
+
+    #[test]
+    fn metamorphic_adequacy_with_weak_and_survived() {
+        let results = vec![
+            make_result(MutationKind::ArithmeticReplace, 1, true, 0.05), // weak kill
+            make_result(MutationKind::BoundaryShift, 2, false, 0.0),     // survived
+        ];
+        let score = metamorphic_adequacy(&results);
+        assert!((score.mutation_score - 0.5).abs() < f64::EPSILON);
+        assert!((score.detection_ratio - 0.0).abs() < f64::EPSILON); // neither has margin > 0.5
+        assert_eq!(score.weak_mutations.len(), 1);
+    }
+
+    #[test]
+    fn metamorphic_adequacy_empty() {
+        let score = metamorphic_adequacy(&[]);
+        assert!((score.mutation_score - 1.0).abs() < f64::EPSILON);
+        assert!((score.detection_ratio - 1.0).abs() < f64::EPSILON);
+        assert!(score.weak_mutations.is_empty());
     }
 }

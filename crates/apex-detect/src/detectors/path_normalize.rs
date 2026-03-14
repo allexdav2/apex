@@ -411,17 +411,9 @@ mod tests {
         source_cache.insert(PathBuf::from(filename), source.to_string());
 
         AnalysisContext {
-            target_root: PathBuf::from("/tmp/test"),
             language: lang,
-            oracle: Arc::new(CoverageOracle::new()),
-            file_paths: HashMap::new(),
-            known_bugs: vec![],
             source_cache,
-            fuzz_corpus: None,
-            config: DetectConfig::default(),
-            runner: Arc::new(RealCommandRunner),
-            cpg: None,
-            threat_model: apex_core::config::ThreatModelConfig::default(),
+            ..AnalysisContext::test_default()
         }
     }
 

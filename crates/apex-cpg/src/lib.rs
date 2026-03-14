@@ -4,6 +4,7 @@
 //! dataflow and backward taint reachability are computed.
 
 pub mod builder;
+pub mod deepdfa;
 pub mod model_loader;
 pub mod reaching_def;
 pub mod taint;

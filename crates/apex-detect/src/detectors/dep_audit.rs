@@ -363,33 +363,16 @@ mod tests {
 
     fn make_ctx_with_runner(runner: FixtureRunner) -> AnalysisContext {
         AnalysisContext {
-            target_root: PathBuf::from("/tmp/test"),
-            language: apex_core::types::Language::Rust,
-            oracle: Arc::new(CoverageOracle::new()),
-            file_paths: HashMap::new(),
-            known_bugs: vec![],
-            source_cache: HashMap::new(),
-            fuzz_corpus: None,
-            config: DetectConfig::default(),
             runner: Arc::new(runner),
-            cpg: None,
-            threat_model: apex_core::config::ThreatModelConfig::default(),
+            ..AnalysisContext::test_default()
         }
     }
 
     fn make_ctx_with_lang(runner: FixtureRunner, lang: Language) -> AnalysisContext {
         AnalysisContext {
-            target_root: PathBuf::from("/tmp/test"),
             language: lang,
-            oracle: Arc::new(CoverageOracle::new()),
-            file_paths: HashMap::new(),
-            known_bugs: vec![],
-            source_cache: HashMap::new(),
-            fuzz_corpus: None,
-            config: DetectConfig::default(),
             runner: Arc::new(runner),
-            cpg: None,
-            threat_model: apex_core::config::ThreatModelConfig::default(),
+            ..AnalysisContext::test_default()
         }
     }
 

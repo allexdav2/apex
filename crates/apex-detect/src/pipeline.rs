@@ -245,20 +245,7 @@ mod tests {
     }
 
     fn test_context() -> AnalysisContext {
-        use std::sync::Arc;
-        AnalysisContext {
-            target_root: PathBuf::from("/tmp/test"),
-            language: apex_core::types::Language::Rust,
-            oracle: Arc::new(apex_coverage::CoverageOracle::new()),
-            file_paths: std::collections::HashMap::new(),
-            known_bugs: vec![],
-            source_cache: std::collections::HashMap::new(),
-            fuzz_corpus: None,
-            config: crate::config::DetectConfig::default(),
-            runner: Arc::new(apex_core::command::RealCommandRunner),
-            cpg: None,
-            threat_model: apex_core::config::ThreatModelConfig::default(),
-        }
+        AnalysisContext::test_default()
     }
 
     fn make_finding(

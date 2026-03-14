@@ -56,6 +56,7 @@ mod tests {
             },
             killed: false,
             killing_tests: vec![],
+            detection_margin: 0.0,
         }
     }
 

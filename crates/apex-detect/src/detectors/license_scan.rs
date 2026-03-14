@@ -486,16 +486,8 @@ mod tests {
         }
         AnalysisContext {
             target_root: PathBuf::from("/tmp/license-test"),
-            language: apex_core::types::Language::Rust,
-            oracle: Arc::new(apex_coverage::CoverageOracle::new()),
-            file_paths: HashMap::new(),
-            known_bugs: vec![],
             source_cache,
-            fuzz_corpus: None,
-            config: crate::config::DetectConfig::default(),
-            runner: Arc::new(apex_core::command::RealCommandRunner),
-            cpg: None,
-            threat_model: apex_core::config::ThreatModelConfig::default(),
+            ..AnalysisContext::test_default()
         }
     }
 

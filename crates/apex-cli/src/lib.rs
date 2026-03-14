@@ -9,17 +9,20 @@
 pub mod doctor;
 pub mod fuzz;
 
+use apex_agent::{AgentCluster, OrchestratorConfig};
 use apex_core::{
     config::ApexConfig,
     traits::{Instrumentor, LanguageRunner},
     types::{Language, SeedId, Target},
 };
 use apex_coverage::CoverageOracle;
+use apex_fuzz::FuzzStrategy;
 use apex_instrument::{
     JavaInstrumentor, JavaScriptInstrumentor, LlvmInstrumentor, PythonInstrumentor,
     RustCovInstrumentor, WasmInstrumentor,
 };
 use apex_lang::{CRunner, JavaRunner, JavaScriptRunner, PythonRunner, WasmRunner};
+use apex_sandbox::{ProcessSandbox, PythonTestSandbox};
 use clap::{Parser, Subcommand, ValueEnum};
 use color_eyre::Result;
 use std::{
@@ -94,18 +97,6 @@ pub enum Commands {
     DeployScore(DeployScoreArgs),
     /// Show per-language feature support matrix.
     Features(FeaturesArgs),
-    /// Scan source for leaked secrets via pattern matching + entropy.
-    SecretScan(SecretScanArgs),
-    /// Generate Software Bill of Materials from lock files.
-    Sbom(SbomArgs),
-    /// Scan dependencies for license policy violations.
-    LicenseScan(LicenseScanArgs),
-    /// Detect breaking vs non-breaking changes between OpenAPI specs.
-    ApiDiff(ApiDiffArgs),
-    /// Select tests affected by changed files.
-    TestImpact(TestImpactArgs),
-    /// Detect stale feature flags.
-    FlagHygiene(FlagHygieneArgs),
 }
 
 #[derive(Parser, Clone)]
@@ -463,124 +454,6 @@ pub struct FeaturesArgs {
     pub output_format: OutputFormat,
 }
 
-#[derive(Parser)]
-pub struct SecretScanArgs {
-    /// Path to the target repository.
-    #[arg(long, short)]
-    pub target: PathBuf,
-
-    /// Shannon entropy threshold for string literals.
-    #[arg(long, default_value = "4.5")]
-    pub entropy_threshold: f64,
-
-    /// Scan git history for secrets in past commits.
-    #[arg(long)]
-    pub history: bool,
-
-    /// Output format.
-    #[arg(long, default_value = "text")]
-    pub output_format: OutputFormat,
-}
-
-#[derive(Parser)]
-pub struct SbomArgs {
-    /// Path to the target repository.
-    #[arg(long, short)]
-    pub target: PathBuf,
-
-    /// SBOM format: spdx or cyclonedx.
-    #[arg(long, default_value = "spdx")]
-    pub format: String,
-
-    /// Write output to a file instead of stdout.
-    #[arg(long, short)]
-    pub output: Option<PathBuf>,
-}
-
-#[derive(Parser)]
-pub struct LicenseScanArgs {
-    /// Path to the target repository.
-    #[arg(long, short)]
-    pub target: PathBuf,
-
-    /// License policy: permissive or enterprise.
-    #[arg(long, default_value = "permissive")]
-    pub policy: String,
-
-    /// Comma-separated list of SPDX IDs to deny.
-    #[arg(long, value_delimiter = ',')]
-    pub deny: Vec<String>,
-
-    /// Comma-separated list of SPDX IDs to allow.
-    #[arg(long, value_delimiter = ',')]
-    pub allow: Vec<String>,
-
-    /// Output format.
-    #[arg(long, default_value = "text")]
-    pub output_format: OutputFormat,
-}
-
-#[derive(Parser)]
-pub struct ApiDiffArgs {
-    /// Old OpenAPI spec file (or git ref with --spec).
-    #[arg(long)]
-    pub old: String,
-
-    /// New OpenAPI spec file.
-    #[arg(long)]
-    pub new: String,
-
-    /// Exit with code 1 if any breaking change is found.
-    #[arg(long)]
-    pub fail_on_breaking: bool,
-
-    /// Output format.
-    #[arg(long, default_value = "text")]
-    pub output_format: OutputFormat,
-}
-
-#[derive(Parser)]
-pub struct TestImpactArgs {
-    /// Path to the target repository.
-    #[arg(long, short)]
-    pub target: PathBuf,
-
-    /// Comma-separated list of changed files (relative to target root).
-    #[arg(long, value_delimiter = ',')]
-    pub changed_files: Vec<String>,
-
-    /// Git ref to compute changed files from.
-    #[arg(long)]
-    pub since: Option<String>,
-
-    /// Output bare test names for piping to test runner.
-    #[arg(long)]
-    pub output_filter: bool,
-
-    /// Output format.
-    #[arg(long, default_value = "text")]
-    pub output_format: OutputFormat,
-}
-
-#[derive(Parser)]
-pub struct FlagHygieneArgs {
-    /// Path to the target repository.
-    #[arg(long, short)]
-    pub target: PathBuf,
-
-    /// Programming language of the target.
-    #[arg(long, short, value_enum)]
-    pub lang: LangArg,
-
-    /// Maximum age in days before a flag is stale.
-    #[arg(long, default_value = "90")]
-    pub max_age: u64,
-
-    /// Output format.
-    #[arg(long, default_value = "text")]
-    pub output_format: OutputFormat,
-}
-
 #[derive(Clone, Copy, ValueEnum)]
 pub enum OutputFormat {
     Text,
@@ -639,12 +512,6 @@ pub async fn run_cli(cli: Cli, cfg: &ApexConfig) -> Result<()> {
         Commands::Contracts(args) => run_contracts(args).await,
         Commands::DeployScore(args) => run_deploy_score(args).await,
         Commands::Features(args) => run_features(args),
-        Commands::SecretScan(args) => run_secret_scan(args).await,
-        Commands::Sbom(args) => run_sbom(args),
-        Commands::LicenseScan(args) => run_license_scan(args).await,
-        Commands::ApiDiff(args) => run_api_diff(args),
-        Commands::TestImpact(args) => run_test_impact(args).await,
-        Commands::FlagHygiene(args) => run_flag_hygiene(args).await,
     }
 }
 
@@ -678,9 +545,9 @@ async fn run(args: RunArgs, cfg: &ApexConfig) -> Result<()> {
     let oracle = Arc::new(CoverageOracle::new());
     let instrumented = instrument(lang, &target_path, &oracle).await?;
 
-    // 2b. For fuzz/driller/all strategies on Rust targets, compile binary
+    // 2b. For fuzz/driller/all/agent strategies on Rust targets, compile binary
     //     with SanitizerCoverage so the SHM feedback loop works.
-    let needs_sancov = matches!(args.strategy.as_str(), "fuzz" | "driller" | "all");
+    let needs_sancov = matches!(args.strategy.as_str(), "fuzz" | "driller" | "all" | "agent");
     if needs_sancov && lang == Language::Rust && args.fuzz_cmd.is_empty() {
         info!("compiling Rust binary with SanitizerCoverage for fuzz feedback");
         let shim = apex_sandbox::shim::ensure_compiled().ok();
@@ -716,25 +583,6 @@ async fn run(args: RunArgs, cfg: &ApexConfig) -> Result<()> {
                 .await?;
             }
         }
-        "all" => {
-            let cmd = fuzz_command(&args, &target_path);
-            fuzz::run_all_strategies(
-                Arc::clone(&oracle),
-                &instrumented,
-                coverage_target,
-                fuzz_iters,
-                rounds,
-                args.output,
-                cmd,
-                cfg,
-            )
-            .await?;
-        }
-        "agent" => {
-            // Agent strategy: baseline measurement already done by instrumentation.
-            // The rich JSON gap report is produced in the output section below.
-            info!("agent strategy: baseline measurement complete, producing gap report");
-        }
         "driller" => {
             // Driller runs through the combined strategy path (fuzz + concolic + driller).
             info!("driller strategy: running SMT-driven path exploration");
@@ -751,51 +599,175 @@ async fn run(args: RunArgs, cfg: &ApexConfig) -> Result<()> {
             )
             .await?;
         }
-        _ => {}
+        // "all", "agent", and any unknown strategy use the AgentCluster orchestrator.
+        _ => {
+            run_agent_cluster(
+                Arc::clone(&oracle),
+                &instrumented,
+                coverage_target,
+                fuzz_iters,
+                &args,
+                cfg,
+            )
+            .await?;
+        }
     }
 
-    // 4. Output gap report
-    let is_agent = args.strategy == "agent";
-    match (output_format, is_agent) {
-        (OutputFormat::Json, true) => {
+    // 4. Run detection pipeline for agent/all strategies (all output formats)
+    let uses_agent = matches!(args.strategy.as_str(), "agent" | "all")
+        || !matches!(args.strategy.as_str(), "fuzz" | "concolic" | "driller");
+    let analysis = if uses_agent {
+        let detect_cfg = apex_detect::DetectConfig::default();
+        let file_source_cache = build_source_cache(&target_path, lang);
+
+        let detect_ctx = apex_detect::AnalysisContext {
+            target_root: target_path.clone(),
+            language: lang,
+            oracle: Arc::new(CoverageOracle::new()),
+            file_paths: std::collections::HashMap::new(),
+            known_bugs: vec![],
+            source_cache: file_source_cache,
+            fuzz_corpus: None,
+            config: detect_cfg.clone(),
+            runner: Arc::new(apex_core::command::RealCommandRunner),
+            cpg: None,
+            threat_model: cfg.threat_model.clone(),
+        };
+
+        let pipeline = apex_detect::DetectorPipeline::from_config(&detect_cfg, lang);
+        Some(pipeline.run_all(&detect_ctx).await)
+    } else {
+        None
+    };
+
+    // 5. Output gap report
+    match output_format {
+        OutputFormat::Json if uses_agent => {
             let mut report = build_agent_report(&oracle, &instrumented.file_paths, &target_path);
 
-            // Run detectors and enrich report
-            let detect_cfg = apex_detect::DetectConfig::default();
-            let file_source_cache = build_source_cache(&target_path, lang);
-
-            let detect_ctx = apex_detect::AnalysisContext {
-                target_root: target_path.clone(),
-                language: lang,
-                oracle: Arc::new(CoverageOracle::new()),
-                file_paths: std::collections::HashMap::new(),
-                known_bugs: vec![],
-                source_cache: file_source_cache,
-                fuzz_corpus: None,
-                config: detect_cfg.clone(),
-                runner: Arc::new(apex_core::command::RealCommandRunner),
-                cpg: None,
-                threat_model: cfg.threat_model.clone(),
-            };
-
-            let pipeline = apex_detect::DetectorPipeline::from_config(&detect_cfg, lang);
-            let analysis = pipeline.run_all(&detect_ctx).await;
-
-            report.findings = Some(serde_json::to_value(&analysis.findings).unwrap_or_default());
-            report.security_summary =
-                Some(serde_json::to_value(analysis.security_summary()).unwrap_or_default());
+            if let Some(ref analysis) = analysis {
+                report.findings =
+                    Some(serde_json::to_value(&analysis.findings).unwrap_or_default());
+                report.security_summary =
+                    Some(serde_json::to_value(analysis.security_summary()).unwrap_or_default());
+            }
 
             match serde_json::to_string_pretty(&report) {
                 Ok(json) => println!("{json}"),
                 Err(e) => eprintln!("{{\"error\": \"failed to serialize report: {e}\"}}"),
             }
         }
-        (OutputFormat::Json, false) => {
+        OutputFormat::Json => {
             print_json_gap_report(&oracle, &instrumented.file_paths, &target_path);
         }
-        (OutputFormat::Text, _) => {
+        OutputFormat::Text => {
             print_gap_report(&oracle, &instrumented.file_paths, &target_path);
+            if let Some(ref analysis) = analysis {
+                if !analysis.findings.is_empty() {
+                    println!("\nFindings ({}):", analysis.findings.len());
+                    for finding in &analysis.findings {
+                        println!("  - [{:?}] {}", finding.severity, finding.title);
+                    }
+                }
+            }
         }
+    }
+
+    Ok(())
+}
+
+// ---------------------------------------------------------------------------
+// Agent cluster orchestration
+// ---------------------------------------------------------------------------
+
+async fn run_agent_cluster(
+    oracle: Arc<CoverageOracle>,
+    instrumented: &apex_core::types::InstrumentedTarget,
+    coverage_target: f64,
+    fuzz_iters: usize,
+    args: &RunArgs,
+    cfg: &ApexConfig,
+) -> Result<()> {
+    let lang = instrumented.target.language;
+    let target_root = &instrumented.target.root;
+
+    // Build sandbox appropriate for the language.
+    let sandbox: Arc<dyn apex_core::traits::Sandbox> = match lang {
+        Language::Python => {
+            let file_paths = Arc::new(instrumented.file_paths.clone());
+            Arc::new(
+                PythonTestSandbox::new(
+                    Arc::clone(&oracle),
+                    file_paths,
+                    target_root.clone(),
+                )
+                .with_timeout(cfg.sandbox.process_timeout_ms),
+            )
+        }
+        _ => {
+            let cmd = fuzz_command(args, target_root);
+            let branch_index: Vec<apex_core::types::BranchId> = oracle
+                .uncovered_branches()
+                .into_iter()
+                .chain(instrumented.executed_branch_ids.iter().cloned())
+                .collect();
+
+            let mut sandbox = ProcessSandbox::new(lang, target_root.clone(), cmd);
+            sandbox = sandbox.with_timeout(cfg.sandbox.process_timeout_ms);
+            sandbox = sandbox.with_coverage(Arc::clone(&oracle), branch_index);
+
+            if let Ok(shim_path) = apex_sandbox::shim::ensure_compiled() {
+                sandbox = sandbox.with_shim(shim_path);
+            }
+            Arc::new(sandbox)
+        }
+    };
+
+    // Create fuzz strategy and seed it.
+    let fuzz_strategy = FuzzStrategy::new(Arc::clone(&oracle));
+    let _ = fuzz_strategy.seed_corpus([vec![0u8]]);
+
+    // Build the cluster.
+    let mut cluster = AgentCluster::new(
+        Arc::clone(&oracle),
+        sandbox,
+        instrumented.target.clone(),
+    );
+    cluster = cluster.with_strategy(Box::new(fuzz_strategy));
+
+    // For Python, also add the concolic strategy.
+    if lang == Language::Python {
+        use apex_concolic::PythonConcolicStrategy;
+        let file_paths = Arc::new(instrumented.file_paths.clone());
+        let concolic = PythonConcolicStrategy::new(
+            Arc::clone(&oracle),
+            file_paths,
+            target_root.clone(),
+            instrumented.target.test_command.clone(),
+        );
+        cluster = cluster.with_strategy(Box::new(concolic));
+    }
+
+    cluster = cluster.with_file_paths(instrumented.file_paths.clone());
+
+    // Configure from ApexConfig.
+    let orch_config = OrchestratorConfig {
+        coverage_target,
+        deadline_secs: Some(cfg.sandbox.process_timeout_ms / 1000 * fuzz_iters as u64),
+        stall_threshold: cfg.fuzz.stall_iterations as u64,
+    };
+    cluster = cluster.with_config(orch_config);
+
+    info!(
+        strategies = cluster.strategy_count(),
+        lang = %lang,
+        "starting agent cluster"
+    );
+    cluster.run().await?;
+
+    let summary = cluster.bug_summary();
+    if summary.total > 0 {
+        info!(bugs = summary.total, "bugs found during exploration");
     }
 
     Ok(())
@@ -1297,23 +1269,6 @@ async fn run_audit(args: AuditArgs, cfg: &ApexConfig) -> Result<()> {
     // Build source cache
     let source_cache = build_source_cache(&target_path, lang);
 
-    // Build CPG for Python projects (other languages: TODO)
-    let cpg = if lang == Language::Python {
-        let mut combined_cpg = apex_cpg::Cpg::new();
-        for (path, source) in &source_cache {
-            let file_cpg =
-                apex_cpg::builder::build_python_cpg(source, &path.display().to_string());
-            combined_cpg.merge(file_cpg);
-        }
-        if combined_cpg.node_count() > 0 {
-            Some(Arc::new(combined_cpg))
-        } else {
-            None
-        }
-    } else {
-        None
-    };
-
     let ctx = AnalysisContext {
         target_root: target_path.clone(),
         language: lang,
@@ -1324,7 +1279,7 @@ async fn run_audit(args: AuditArgs, cfg: &ApexConfig) -> Result<()> {
         fuzz_corpus: None,
         config: detect_cfg.clone(),
         runner: Arc::new(apex_core::command::RealCommandRunner),
-        cpg,
+        cpg: None,
         threat_model: cfg.threat_model.clone(),
     };
 
@@ -1782,7 +1737,7 @@ async fn run_dead_code(args: DeadCodeArgs) -> Result<()> {
 // `apex lint`
 // ---------------------------------------------------------------------------
 
-async fn run_lint(args: LintArgs, cfg: &ApexConfig) -> Result<()> {
+async fn run_lint(args: LintArgs, _cfg: &ApexConfig) -> Result<()> {
     use apex_detect::{AnalysisContext, DetectConfig, DetectorPipeline, Severity};
 
     let lang: Language = args.lang.into();
@@ -1806,7 +1761,7 @@ async fn run_lint(args: LintArgs, cfg: &ApexConfig) -> Result<()> {
         config: detect_cfg.clone(),
         runner: Arc::new(apex_core::command::RealCommandRunner),
         cpg: None,
-        threat_model: cfg.threat_model.clone(),
+        threat_model: apex_core::config::ThreatModelConfig::default(),
     };
 
     let pipeline = DetectorPipeline::from_config(&detect_cfg, lang);
@@ -2760,327 +2715,6 @@ fn run_features(args: FeaturesArgs) -> Result<()> {
             }
         }
     }
-    Ok(())
-}
-
-// ---------------------------------------------------------------------------
-// `apex secret-scan`
-// ---------------------------------------------------------------------------
-
-async fn run_secret_scan(args: SecretScanArgs) -> Result<()> {
-    use apex_detect::detectors::SecretScanDetector;
-    use apex_detect::{AnalysisContext, DetectConfig, Detector};
-
-    let target_path = args.target.canonicalize()?;
-    let source_cache = build_source_cache(&target_path, Language::Python);
-
-    let ctx = AnalysisContext {
-        target_root: target_path,
-        language: Language::Python,
-        oracle: Arc::new(CoverageOracle::new()),
-        file_paths: HashMap::new(),
-        known_bugs: vec![],
-        source_cache,
-        fuzz_corpus: None,
-        config: DetectConfig::default(),
-        runner: Arc::new(apex_core::command::RealCommandRunner),
-        cpg: None,
-        threat_model: apex_core::config::ThreatModelConfig::default(),
-    };
-
-    let detector = SecretScanDetector::new();
-    let findings = detector
-        .analyze(&ctx)
-        .await
-        .map_err(|e| color_eyre::eyre::eyre!("{e}"))?;
-
-    match args.output_format {
-        OutputFormat::Json => {
-            println!("{}", serde_json::to_string_pretty(&findings)?);
-        }
-        OutputFormat::Text => {
-            if findings.is_empty() {
-                println!("No secrets found.");
-            } else {
-                println!("Found {} potential secret(s):\n", findings.len());
-                for f in &findings {
-                    println!(
-                        "  [{:?}] {}:{} — {}",
-                        f.severity,
-                        f.file.display(),
-                        f.line.unwrap_or(0),
-                        f.title
-                    );
-                    println!("    {}", f.suggestion);
-                }
-            }
-        }
-    }
-
-    Ok(())
-}
-
-// ---------------------------------------------------------------------------
-// `apex sbom`
-// ---------------------------------------------------------------------------
-
-fn run_sbom(args: SbomArgs) -> Result<()> {
-    use apex_detect::sbom::{SbomFormat, SbomGenerator};
-
-    let target_path = args.target.canonicalize()?;
-    let format = match args.format.to_lowercase().as_str() {
-        "cyclonedx" | "cdx" => SbomFormat::CycloneDx,
-        _ => SbomFormat::Spdx,
-    };
-
-    let sbom = SbomGenerator::generate(&target_path, format)
-        .map_err(|e| color_eyre::eyre::eyre!("{e}"))?;
-
-    let output = serde_json::to_string_pretty(&sbom)?;
-
-    if let Some(out_path) = args.output {
-        std::fs::write(&out_path, &output)?;
-        println!("SBOM written to {}", out_path.display());
-    } else {
-        println!("{output}");
-    }
-
-    Ok(())
-}
-
-// ---------------------------------------------------------------------------
-// `apex license-scan`
-// ---------------------------------------------------------------------------
-
-async fn run_license_scan(args: LicenseScanArgs) -> Result<()> {
-    use apex_detect::detectors::license_scan::LicensePolicy;
-    use apex_detect::detectors::LicenseScanDetector;
-    use apex_detect::{AnalysisContext, DetectConfig, Detector};
-
-    let target_path = args.target.canonicalize()?;
-    let source_cache = build_source_cache(&target_path, Language::Python);
-
-    let detector = if !args.deny.is_empty() || !args.allow.is_empty() {
-        LicenseScanDetector::new(LicensePolicy::Custom {
-            deny: args.deny,
-            allow: args.allow,
-        })
-    } else {
-        match args.policy.to_lowercase().as_str() {
-            "enterprise" => LicenseScanDetector::enterprise(),
-            _ => LicenseScanDetector::permissive(),
-        }
-    };
-
-    let ctx = AnalysisContext {
-        target_root: target_path,
-        language: Language::Python,
-        oracle: Arc::new(CoverageOracle::new()),
-        file_paths: HashMap::new(),
-        known_bugs: vec![],
-        source_cache,
-        fuzz_corpus: None,
-        config: DetectConfig::default(),
-        runner: Arc::new(apex_core::command::RealCommandRunner),
-        cpg: None,
-        threat_model: apex_core::config::ThreatModelConfig::default(),
-    };
-
-    let findings = detector
-        .analyze(&ctx)
-        .await
-        .map_err(|e| color_eyre::eyre::eyre!("{e}"))?;
-
-    match args.output_format {
-        OutputFormat::Json => {
-            println!("{}", serde_json::to_string_pretty(&findings)?);
-        }
-        OutputFormat::Text => {
-            if findings.is_empty() {
-                println!("No license violations found.");
-            } else {
-                println!("Found {} license issue(s):\n", findings.len());
-                for f in &findings {
-                    println!("  [{:?}] {} — {}", f.severity, f.title, f.description);
-                }
-            }
-        }
-    }
-
-    Ok(())
-}
-
-// ---------------------------------------------------------------------------
-// `apex api-diff`
-// ---------------------------------------------------------------------------
-
-fn run_api_diff(args: ApiDiffArgs) -> Result<()> {
-    use apex_detect::api_diff::ApiDiffer;
-
-    let old_content = std::fs::read_to_string(&args.old)?;
-    let new_content = std::fs::read_to_string(&args.new)?;
-
-    let report =
-        ApiDiffer::diff(&old_content, &new_content).map_err(|e| color_eyre::eyre::eyre!("{e}"))?;
-
-    match args.output_format {
-        OutputFormat::Json => {
-            println!("{}", serde_json::to_string_pretty(&report)?);
-        }
-        OutputFormat::Text => {
-            println!(
-                "API Diff: {} breaking, {} non-breaking, {} deprecation\n",
-                report.breaking_count, report.non_breaking_count, report.deprecation_count
-            );
-            for change in &report.changes {
-                let icon = match change.kind {
-                    apex_detect::api_diff::ChangeKind::Breaking => "BREAKING",
-                    apex_detect::api_diff::ChangeKind::NonBreaking => "non-breaking",
-                    apex_detect::api_diff::ChangeKind::Deprecation => "deprecated",
-                };
-                println!(
-                    "  [{}] {} {} — {}",
-                    icon, change.method, change.path, change.description
-                );
-            }
-        }
-    }
-
-    if args.fail_on_breaking && report.breaking_count > 0 {
-        std::process::exit(1);
-    }
-
-    Ok(())
-}
-
-// ---------------------------------------------------------------------------
-// `apex test-impact`
-// ---------------------------------------------------------------------------
-
-async fn run_test_impact(args: TestImpactArgs) -> Result<()> {
-    let target_path = args.target.canonicalize()?;
-    let index = load_index(&target_path)?;
-
-    let changed_files: Vec<PathBuf> = if let Some(ref since) = args.since {
-        let runner = apex_core::command::RealCommandRunner;
-        apex_core::git::changed_files_since(&runner, &target_path, since)
-            .await
-            .map_err(|e| color_eyre::eyre::eyre!("{e}"))?
-    } else {
-        args.changed_files.iter().map(PathBuf::from).collect()
-    };
-
-    let report = apex_index::impact::analyze(&index, &changed_files);
-
-    if args.output_filter {
-        for test in &report.affected_tests {
-            println!("{test}");
-        }
-        return Ok(());
-    }
-
-    match args.output_format {
-        OutputFormat::Json => {
-            let json = serde_json::json!({
-                "affected_tests": report.affected_tests,
-                "total_tests": report.total_tests,
-                "selected_tests": report.selected_tests,
-                "speedup": format!("{:.1}x", report.speedup()),
-                "untested_files": report.untested_files,
-                "file_impacts": report.file_impacts.iter().map(|fi| {
-                    serde_json::json!({
-                        "file": fi.file,
-                        "risk": format!("{:?}", fi.risk),
-                        "affected_tests": fi.affected_tests,
-                        "branch_count": fi.branch_count,
-                    })
-                }).collect::<Vec<_>>(),
-            });
-            println!("{}", serde_json::to_string_pretty(&json)?);
-        }
-        OutputFormat::Text => {
-            println!(
-                "{}/{} tests selected ({:.1}x speedup)\n",
-                report.selected_tests,
-                report.total_tests,
-                report.speedup()
-            );
-            for fi in &report.file_impacts {
-                println!(
-                    "  {} [{:?}] — {} test(s), {} branch(es)",
-                    fi.file.display(),
-                    fi.risk,
-                    fi.affected_tests.len(),
-                    fi.branch_count
-                );
-            }
-            if !report.untested_files.is_empty() {
-                println!("\nUntested files:");
-                for f in &report.untested_files {
-                    println!("  {}", f.display());
-                }
-            }
-        }
-    }
-
-    Ok(())
-}
-
-// ---------------------------------------------------------------------------
-// `apex flag-hygiene`
-// ---------------------------------------------------------------------------
-
-async fn run_flag_hygiene(args: FlagHygieneArgs) -> Result<()> {
-    use apex_detect::detectors::FlagHygieneDetector;
-    use apex_detect::{AnalysisContext, DetectConfig, Detector};
-
-    let target_path = args.target.canonicalize()?;
-    let lang: Language = args.lang.into();
-    let source_cache = build_source_cache(&target_path, lang);
-
-    let detector = FlagHygieneDetector::new(args.max_age);
-
-    let ctx = AnalysisContext {
-        target_root: target_path,
-        language: lang,
-        oracle: Arc::new(CoverageOracle::new()),
-        file_paths: HashMap::new(),
-        known_bugs: vec![],
-        source_cache,
-        fuzz_corpus: None,
-        config: DetectConfig::default(),
-        runner: Arc::new(apex_core::command::RealCommandRunner),
-        cpg: None,
-        threat_model: apex_core::config::ThreatModelConfig::default(),
-    };
-
-    let findings = detector
-        .analyze(&ctx)
-        .await
-        .map_err(|e| color_eyre::eyre::eyre!("{e}"))?;
-
-    match args.output_format {
-        OutputFormat::Json => {
-            println!("{}", serde_json::to_string_pretty(&findings)?);
-        }
-        OutputFormat::Text => {
-            if findings.is_empty() {
-                println!("No feature flags found.");
-            } else {
-                println!("Found {} feature flag(s):\n", findings.len());
-                for f in &findings {
-                    println!(
-                        "  {}:{} — {}",
-                        f.file.display(),
-                        f.line.unwrap_or(0),
-                        f.title
-                    );
-                    println!("    {}", f.description);
-                }
-            }
-        }
-    }
-
     Ok(())
 }
 

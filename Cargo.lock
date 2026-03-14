@@ -155,6 +155,7 @@ dependencies = [
  "apex-concolic",
  "apex-core",
  "apex-coverage",
+ "apex-cpg",
  "apex-detect",
  "apex-fuzz",
  "apex-index",

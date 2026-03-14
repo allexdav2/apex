@@ -230,14 +230,14 @@ impl Language {
                 feat("sandbox", Full, "pytest-runner"),
             ],
             Language::JavaScript => vec![
-                feat("instrumentation", Full, "istanbul"),
+                feat("instrumentation", Full, "istanbul+v8+c8"),
                 feat("test-runner", Full, "jest"),
                 feat("dep-install", Full, "npm"),
                 feat("dep-audit", Full, "npm-audit"),
                 feat("security-patterns", Full, "dom-xss"),
                 feat("unsafe-analysis", NotApplicable, ""),
                 feat("path-normalize", Full, "static"),
-                feat("concolic", Missing, ""),
+                feat("concolic", Full, "ast+z3"),
                 feat("fuzz", Full, "generic"),
                 feat("sandbox", Full, "jest-runner"),
             ],
@@ -1065,6 +1065,20 @@ mod tests {
             let sec = features.iter().find(|f| f.name == "security-patterns").unwrap();
             assert_ne!(sec.status, FeatureStatus::Missing);
         }
+    }
+
+    #[test]
+    fn javascript_concolic_full() {
+        let features = Language::JavaScript.supported_features();
+        let concolic = features.iter().find(|f| f.name == "concolic").unwrap();
+        assert_eq!(concolic.status, FeatureStatus::Full);
+    }
+
+    #[test]
+    fn javascript_instrumentation_tools_updated() {
+        let features = Language::JavaScript.supported_features();
+        let instr = features.iter().find(|f| f.name == "instrumentation").unwrap();
+        assert!(instr.tool.contains("v8"), "tool should mention v8: {}", instr.tool);
     }
 
     #[test]

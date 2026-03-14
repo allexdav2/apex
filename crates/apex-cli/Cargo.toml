@@ -26,6 +26,7 @@ apex-synth = { path = "../apex-synth" }
 apex-symbolic = { path = "../apex-symbolic" }
 apex-concolic = { path = "../apex-concolic" }
 apex-fuzz = { path = "../apex-fuzz" }
+apex-cpg = { path = "../apex-cpg" }
 apex-detect = { path = "../apex-detect" }
 apex-index = { path = "../apex-index" }
 tokio = { version = "1", features = ["full"] }

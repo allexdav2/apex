@@ -1,3 +1,4 @@
+<!-- status: DONE -->
 # Reuse Fundamental Mechanisms from Competing Tools in APEX
 
 > **For agentic workers:** REQUIRED: Use superpowers:subagent-driven-development to implement this plan. Steps use checkbox (`- [ ]`) syntax for tracking.

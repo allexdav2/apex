@@ -240,14 +240,17 @@ fn shannon_entropy(s: &str) -> f64 {
         .sum()
 }
 
+static ASSIGNMENT_RE: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r#"([a-zA-Z_][a-zA-Z0-9_]*)\s*=\s*["']([^"']+)["']"#).unwrap()
+});
+
 /// Scan source code for hardcoded secrets using variable name + entropy heuristics.
 ///
 /// This is a standalone scanner complementing `HardcodedSecretDetector`. It uses
 /// Shannon entropy to identify high-entropy string assignments to secret-named variables.
 pub fn scan_hardcoded_secrets(source: &str, file_path: &str) -> Vec<Finding> {
     let mut findings = Vec::new();
-    // Match: var_name = "string_value" or var_name = 'string_value'
-    let assignment = Regex::new(r#"([a-zA-Z_][a-zA-Z0-9_]*)\s*=\s*["']([^"']+)["']"#).unwrap();
+    let assignment = &*ASSIGNMENT_RE;
 
     for (line_num, line) in source.lines().enumerate() {
         let line_1based = (line_num + 1) as u32;

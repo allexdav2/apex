@@ -20,14 +20,16 @@ static CFAMILY_AND: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"&&").unwrap(
 static PY_OR: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\bor\b").unwrap());
 static PY_AND: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\band\b").unwrap());
 
+// Innermost parenthesized group (no nested parens) — shared by both strip functions
+static PAREN_GROUP: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\([^()]*\)").unwrap());
+
 /// Strip the innermost parenthesized groups (no nested parens) repeatedly
 /// until no more can be stripped. Only strip groups that contain exactly one
 /// type of boolean operator — those are the ones that clarify precedence.
 fn strip_clarifying_paren_groups_cfamily(line: &str) -> String {
-    let re = Regex::new(r"\([^()]*\)").unwrap();
     let mut s = line.to_string();
     loop {
-        let next = re.replace_all(&s, |cap: &regex::Captures| {
+        let next = PAREN_GROUP.replace_all(&s, |cap: &regex::Captures| {
             let inner = cap[0].to_string();
             let has_or = CFAMILY_OR.is_match(&inner);
             let has_and = CFAMILY_AND.is_match(&inner);
@@ -47,10 +49,9 @@ fn strip_clarifying_paren_groups_cfamily(line: &str) -> String {
 }
 
 fn strip_clarifying_paren_groups_python(line: &str) -> String {
-    let re = Regex::new(r"\([^()]*\)").unwrap();
     let mut s = line.to_string();
     loop {
-        let next = re.replace_all(&s, |cap: &regex::Captures| {
+        let next = PAREN_GROUP.replace_all(&s, |cap: &regex::Captures| {
             let inner = cap[0].to_string();
             let has_or = PY_OR.is_match(&inner);
             let has_and = PY_AND.is_match(&inner);

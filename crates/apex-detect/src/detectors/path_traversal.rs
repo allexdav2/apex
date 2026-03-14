@@ -3,20 +3,27 @@
 use crate::finding::{Finding, FindingCategory, Severity};
 use regex::Regex;
 use std::path::PathBuf;
+use std::sync::LazyLock;
 use uuid::Uuid;
+
+static OPEN_VAR: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r#"open\(\s*([a-zA-Z_][a-zA-Z0-9_.]*)\s*[,)]"#).unwrap());
+static PATH_VAR: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r#"Path\(\s*([a-zA-Z_][a-zA-Z0-9_.]*)\s*\)"#).unwrap());
+static PATH_JOIN: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r#"os\.path\.join\([^)]*[a-zA-Z_][a-zA-Z0-9_.]*[^)]*\)"#).unwrap()
+});
+static HAS_OPEN_LITERAL: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r#"open\(\s*(?:f["']|["'])"#).unwrap());
 
 /// Scan source code for path traversal vulnerabilities.
 pub fn scan_path_traversal(source: &str, file_path: &str) -> Vec<Finding> {
     let mut findings = Vec::new();
 
-    // Pattern: open() with a variable (not a string literal).
-    let open_var = Regex::new(r#"open\(\s*([a-zA-Z_][a-zA-Z0-9_.]*)\s*[,)]"#).unwrap();
-    // Pattern: Path() with a variable.
-    let path_var = Regex::new(r#"Path\(\s*([a-zA-Z_][a-zA-Z0-9_.]*)\s*\)"#).unwrap();
-    // Pattern: os.path.join with variable.
-    let path_join = Regex::new(r#"os\.path\.join\([^)]*[a-zA-Z_][a-zA-Z0-9_.]*[^)]*\)"#).unwrap();
-
-    let has_open_literal = Regex::new(r#"open\(\s*(?:f["']|["'])"#).unwrap();
+    let open_var = &*OPEN_VAR;
+    let path_var = &*PATH_VAR;
+    let path_join = &*PATH_JOIN;
+    let has_open_literal = &*HAS_OPEN_LITERAL;
 
     for (line_num, line) in source.lines().enumerate() {
         let line_1based = (line_num + 1) as u32;

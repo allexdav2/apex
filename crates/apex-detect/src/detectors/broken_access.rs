@@ -3,7 +3,14 @@
 use crate::finding::{Finding, FindingCategory, Severity};
 use regex::Regex;
 use std::path::PathBuf;
+use std::sync::LazyLock;
 use uuid::Uuid;
+
+static ROUTE_DECORATOR: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r#"@(app|router)\.(get|post|put|delete|route|patch)\("#).unwrap()
+});
+static DJANGO_URL: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r#"def\s+\w+\(request"#).unwrap());
 
 /// Auth decorators that indicate protected endpoints.
 const AUTH_DECORATORS: &[&str] = &[
@@ -21,8 +28,8 @@ const AUTH_DECORATORS: &[&str] = &[
 pub fn scan_broken_access(source: &str, file_path: &str) -> Vec<Finding> {
     let mut findings = Vec::new();
 
-    let route_decorator = Regex::new(r#"@(app|router)\.(get|post|put|delete|route|patch)\("#).unwrap();
-    let django_url = Regex::new(r#"def\s+\w+\(request"#).unwrap();
+    let route_decorator = &*ROUTE_DECORATOR;
+    let django_url = &*DJANGO_URL;
 
     let lines: Vec<&str> = source.lines().collect();
 

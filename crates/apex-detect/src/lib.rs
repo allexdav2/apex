@@ -5,10 +5,14 @@
 pub mod api_diff;
 pub mod config;
 pub mod context;
+pub mod cost_estimate;
 pub mod cvss;
 pub mod detectors;
 pub mod finding;
+pub mod i18n_check;
+pub mod incident_match;
 pub mod lockfile;
+pub mod migration_check;
 pub mod pipeline;
 pub mod ratchet;
 pub mod report;
@@ -16,6 +20,7 @@ pub mod sarif;
 pub mod sbom;
 pub mod sca;
 pub mod threat_model;
+pub mod trace_analysis;
 pub mod vuln_pipeline;
 
 pub use config::DetectConfig;

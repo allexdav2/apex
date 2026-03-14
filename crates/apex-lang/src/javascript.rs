@@ -53,6 +53,9 @@ impl<R: CommandRunner> JavaScriptRunner<R> {
             return js_env::install_command(&env);
         }
         // Fallback when there is no package.json: inspect lockfiles directly.
+        if target.join("bun.lockb").exists() || target.join("bunfig.toml").exists() {
+            return "bun";
+        }
         if target.join("yarn.lock").exists() {
             return "yarn";
         }
@@ -730,5 +733,15 @@ mod tests {
         let (bin, args) = JavaScriptRunner::<RealCommandRunner>::detect_test_runner(dir.path());
         assert_eq!(bin, "npx");
         assert_eq!(args[0], "jest");
+    }
+
+    #[test]
+    fn detect_package_manager_bun() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(dir.path().join("bun.lockb"), "").unwrap();
+        assert_eq!(
+            JavaScriptRunner::<RealCommandRunner>::detect_package_manager(dir.path()),
+            "bun"
+        );
     }
 }

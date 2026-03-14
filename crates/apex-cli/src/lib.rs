@@ -1297,6 +1297,23 @@ async fn run_audit(args: AuditArgs, cfg: &ApexConfig) -> Result<()> {
     // Build source cache
     let source_cache = build_source_cache(&target_path, lang);
 
+    // Build CPG for Python projects (other languages: TODO)
+    let cpg = if lang == Language::Python {
+        let mut combined_cpg = apex_cpg::Cpg::new();
+        for (path, source) in &source_cache {
+            let file_cpg =
+                apex_cpg::builder::build_python_cpg(source, &path.display().to_string());
+            combined_cpg.merge(file_cpg);
+        }
+        if combined_cpg.node_count() > 0 {
+            Some(Arc::new(combined_cpg))
+        } else {
+            None
+        }
+    } else {
+        None
+    };
+
     let ctx = AnalysisContext {
         target_root: target_path.clone(),
         language: lang,
@@ -1307,8 +1324,8 @@ async fn run_audit(args: AuditArgs, cfg: &ApexConfig) -> Result<()> {
         fuzz_corpus: None,
         config: detect_cfg.clone(),
         runner: Arc::new(apex_core::command::RealCommandRunner),
-        cpg: None,
-        threat_model: apex_core::config::ThreatModelConfig::default(),
+        cpg,
+        threat_model: cfg.threat_model.clone(),
     };
 
     let pipeline = DetectorPipeline::from_config(&detect_cfg, lang);
@@ -1765,7 +1782,7 @@ async fn run_dead_code(args: DeadCodeArgs) -> Result<()> {
 // `apex lint`
 // ---------------------------------------------------------------------------
 
-async fn run_lint(args: LintArgs, _cfg: &ApexConfig) -> Result<()> {
+async fn run_lint(args: LintArgs, cfg: &ApexConfig) -> Result<()> {
     use apex_detect::{AnalysisContext, DetectConfig, DetectorPipeline, Severity};
 
     let lang: Language = args.lang.into();
@@ -1789,7 +1806,7 @@ async fn run_lint(args: LintArgs, _cfg: &ApexConfig) -> Result<()> {
         config: detect_cfg.clone(),
         runner: Arc::new(apex_core::command::RealCommandRunner),
         cpg: None,
-        threat_model: apex_core::config::ThreatModelConfig::default(),
+        threat_model: cfg.threat_model.clone(),
     };
 
     let pipeline = DetectorPipeline::from_config(&detect_cfg, lang);

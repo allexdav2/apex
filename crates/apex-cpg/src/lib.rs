@@ -160,6 +160,18 @@ impl Cpg {
     pub fn edges(&self) -> impl Iterator<Item = &(NodeId, NodeId, EdgeKind)> {
         self.edges.iter()
     }
+
+    /// Merge another CPG into this one, remapping node IDs to avoid collisions.
+    pub fn merge(&mut self, other: Cpg) {
+        let offset = self.next_id;
+        for (id, kind) in other.nodes {
+            self.nodes.push((id + offset, kind));
+        }
+        for (from, to, kind) in other.edges {
+            self.edges.push((from + offset, to + offset, kind));
+        }
+        self.next_id = offset + other.next_id;
+    }
 }
 
 #[cfg(test)]
@@ -206,6 +218,40 @@ mod tests {
         assert_eq!(cpg.edges_from(b).len(), 0);
         assert_eq!(cpg.edges_to(a).len(), 0);
         assert_eq!(cpg.edge_count(), 1);
+    }
+
+    #[test]
+    fn cpg_merge_remaps_ids() {
+        let mut cpg1 = Cpg::new();
+        cpg1.add_node(NodeKind::Call {
+            name: "foo".into(),
+            line: 1,
+        });
+        cpg1.add_node(NodeKind::Call {
+            name: "bar".into(),
+            line: 2,
+        });
+        cpg1.add_edge(0, 1, EdgeKind::Cfg);
+
+        let mut cpg2 = Cpg::new();
+        cpg2.add_node(NodeKind::Call {
+            name: "baz".into(),
+            line: 10,
+        });
+        cpg2.add_node(NodeKind::Call {
+            name: "qux".into(),
+            line: 11,
+        });
+        cpg2.add_edge(0, 1, EdgeKind::Cfg);
+
+        cpg1.merge(cpg2);
+        assert_eq!(cpg1.node_count(), 4);
+        assert_eq!(cpg1.edge_count(), 2);
+        // Merged nodes should have remapped IDs (offset by 2)
+        assert!(cpg1.node(2).is_some()); // baz
+        assert!(cpg1.node(3).is_some()); // qux
+        // Merged edge should be 2→3, not 0→1
+        assert_eq!(cpg1.edges_from(2).len(), 1);
     }
 
     #[test]

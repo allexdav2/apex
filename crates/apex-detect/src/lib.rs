@@ -11,6 +11,7 @@ pub mod pipeline;
 pub mod ratchet;
 pub mod report;
 pub mod sarif;
+pub mod sca;
 
 pub use config::DetectConfig;
 pub use context::AnalysisContext;

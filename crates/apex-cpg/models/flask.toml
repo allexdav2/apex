@@ -1,0 +1,56 @@
+[metadata]
+framework = "flask"
+version = "3.x"
+
+[[sources]]
+function = "flask.request.args.get"
+kind = "UserInput"
+returns = true
+
+[[sources]]
+function = "flask.request.form"
+kind = "UserInput"
+attribute = true
+
+[[sources]]
+function = "flask.request.json"
+kind = "UserInput"
+attribute = true
+
+[[sources]]
+function = "flask.request.data"
+kind = "UserInput"
+attribute = true
+
+[[sources]]
+function = "flask.request.cookies.get"
+kind = "UserInput"
+returns = true
+
+[[sinks]]
+function = "subprocess.run"
+kind = "CommandInjection"
+parameters = [0]
+cwe = 78
+
+[[sinks]]
+function = "os.system"
+kind = "CommandInjection"
+parameters = [0]
+cwe = 78
+
+[[sinks]]
+function = "os.popen"
+kind = "CommandInjection"
+parameters = [0]
+cwe = 78
+
+[[sanitizers]]
+function = "shlex.quote"
+kind = "CommandInjection"
+returns = true
+
+[[sanitizers]]
+function = "markupsafe.escape"
+kind = "XSS"
+returns = true

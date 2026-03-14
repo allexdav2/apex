@@ -439,6 +439,7 @@ mod tests {
             fuzz_corpus: None,
             config: DetectConfig::default(),
             runner: Arc::new(RealCommandRunner),
+            cpg: None,
         }
     }
 

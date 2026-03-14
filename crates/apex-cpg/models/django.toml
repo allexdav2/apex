@@ -1,0 +1,46 @@
+[metadata]
+framework = "django"
+version = "4.x"
+
+[[sources]]
+function = "django.http.request.GET.get"
+kind = "UserInput"
+returns = true
+
+[[sources]]
+function = "django.http.request.POST.get"
+kind = "UserInput"
+returns = true
+
+[[sources]]
+function = "django.http.request.body"
+kind = "UserInput"
+attribute = true
+
+[[sinks]]
+function = "subprocess.run"
+kind = "CommandInjection"
+parameters = [0]
+cwe = 78
+
+[[sinks]]
+function = "os.system"
+kind = "CommandInjection"
+parameters = [0]
+cwe = 78
+
+[[sinks]]
+function = "cursor.execute"
+kind = "SQLInjection"
+parameters = [0]
+cwe = 89
+
+[[sanitizers]]
+function = "django.utils.html.escape"
+kind = "XSS"
+returns = true
+
+[[sanitizers]]
+function = "bleach.clean"
+kind = "XSS"
+returns = true

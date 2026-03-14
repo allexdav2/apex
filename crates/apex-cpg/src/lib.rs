@@ -8,8 +8,14 @@ pub mod model_loader;
 pub mod reaching_def;
 pub mod taint;
 pub mod taint_store;
+pub mod taint_flows_store;
+pub mod type_taint;
+pub mod taint_triage;
 
 pub use taint_store::TaintSpecStore;
+pub use taint_flows_store::find_taint_flows_with_store;
+pub use type_taint::{TypeTaintRule, TypeTaintAnalyzer};
+pub use taint_triage::{TaintTriageScorer, TriagedFlow};
 
 pub type NodeId = u32;
 

@@ -219,6 +219,7 @@ dependencies = [
  "apex-core",
  "dashmap",
  "proptest",
+ "regex",
  "serde",
  "serde_json",
  "thiserror 1.0.69",
@@ -266,6 +267,7 @@ dependencies = [
  "libafl_bolts",
  "proptest",
  "rand 0.8.5",
+ "rand_distr",
  "regex",
  "serde",
  "thiserror 1.0.69",
@@ -392,11 +394,13 @@ name = "apex-synth"
 version = "0.1.0"
 dependencies = [
  "apex-core",
+ "async-trait",
  "serde",
  "serde_json",
  "tempfile",
  "tera",
  "thiserror 1.0.69",
+ "tokio",
  "tracing",
 ]
 
@@ -2052,6 +2056,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "071dfc062690e90b734c0b2273ce72ad0ffa95f0c74596bc250dcfd960262841"
 dependencies = [
  "autocfg",
+ "libm",
 ]
 
 [[package]]
@@ -2581,6 +2586,16 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "76afc826de14238e6e8c374ddcc1fa19e374fd8dd986b0d2af0d02377261d83c"
 dependencies = [
  "getrandom 0.3.4",
+]
+
+[[package]]
+name = "rand_distr"
+version = "0.4.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "32cb0b9bc82b0a0876c2dd994a7e7a2683d3e7390ca40e6886785ef0c7e3ee31"
+dependencies = [
+ "num-traits",
+ "rand 0.8.5",
 ]
 
 [[package]]

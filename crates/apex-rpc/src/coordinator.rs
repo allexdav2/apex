@@ -899,4 +899,678 @@ mod tests {
         assert_eq!(resp.seeds[1].id, "a2");
         assert_eq!(resp.seeds[2].id, "b1");
     }
+
+    #[tokio::test]
+    async fn test_coordinator_service_new_starts_empty_queue() {
+        let oracle = make_oracle();
+        let service = CoordinatorService::new(oracle.clone());
+
+        // Queue should be empty initially
+        let resp = service
+            .get_seeds(Request::new(SeedRequest {
+                worker_id: "w1".into(),
+                max_seeds: 100,
+            }))
+            .await
+            .unwrap()
+            .into_inner();
+        assert!(resp.seeds.is_empty());
+
+        // Oracle should have 4 branches, 0 covered
+        let snap = service
+            .get_coverage(Request::new(Empty {}))
+            .await
+            .unwrap()
+            .into_inner();
+        assert_eq!(snap.total_branches, 4);
+        assert_eq!(snap.covered_branches, 0);
+    }
+
+    #[tokio::test]
+    async fn test_core_to_proto_branch_preserves_all_fields() {
+        let core = BranchId::new(123, 456, 789, 2);
+        let proto = core_to_proto_branch(&core);
+        assert_eq!(proto.file_id, 123);
+        assert_eq!(proto.line, 456);
+        assert_eq!(proto.col, 789);
+        assert_eq!(proto.direction, 2);
+    }
+
+    #[tokio::test]
+    async fn test_proto_to_core_branch_truncates_large_col() {
+        // col is u32 in proto, u16 in core — test with value that fits in u16
+        let proto = ProtoBranchId {
+            file_id: 1,
+            line: 1,
+            col: 300,
+            direction: 1,
+        };
+        let core = proto_to_core_branch(&proto);
+        assert_eq!(core.col, 300);
+    }
+
+    #[tokio::test]
+    async fn test_submit_results_covers_all_branches_then_check_coverage() {
+        let oracle = make_oracle();
+        let service = CoordinatorService::new(oracle.clone());
+
+        // Cover all 4 branches in a single batch with multiple results
+        let resp = service
+            .submit_results(Request::new(ResultBatch {
+                worker_id: "w1".into(),
+                results: vec![
+                    ProtoResult {
+                        seed_id: "s1".into(),
+                        status: "pass".into(),
+                        new_branches: vec![
+                            ProtoBranchId { file_id: 1, line: 1, col: 0, direction: 0 },
+                            ProtoBranchId { file_id: 1, line: 2, col: 0, direction: 0 },
+                        ],
+                        duration_ms: 5,
+                        stdout: "out1".into(),
+                        stderr: "err1".into(),
+                    },
+                    ProtoResult {
+                        seed_id: "s2".into(),
+                        status: "fail".into(),
+                        new_branches: vec![
+                            ProtoBranchId { file_id: 1, line: 3, col: 0, direction: 0 },
+                            ProtoBranchId { file_id: 1, line: 4, col: 0, direction: 0 },
+                        ],
+                        duration_ms: 15,
+                        stdout: String::new(),
+                        stderr: "error".into(),
+                    },
+                ],
+            }))
+            .await
+            .unwrap()
+            .into_inner();
+
+        assert_eq!(resp.new_coverage_count, 4);
+        assert!((resp.coverage_percent - 100.0).abs() < 0.01);
+
+        // Verify via get_coverage
+        let snap = service
+            .get_coverage(Request::new(Empty {}))
+            .await
+            .unwrap()
+            .into_inner();
+        assert_eq!(snap.covered_branches, 4);
+        assert!(snap.uncovered.is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_get_seeds_max_exceeds_queue_length() {
+        let oracle = make_oracle();
+        let service = CoordinatorService::new(oracle);
+
+        // Enqueue 2 seeds but request 100
+        service
+            .enqueue_seeds(vec![
+                InputSeed {
+                    id: "s1".into(),
+                    data: vec![1],
+                    origin: "test".into(),
+                },
+                InputSeed {
+                    id: "s2".into(),
+                    data: vec![2],
+                    origin: "test".into(),
+                },
+            ])
+            .await;
+
+        let resp = service
+            .get_seeds(Request::new(SeedRequest {
+                worker_id: "w1".into(),
+                max_seeds: 100,
+            }))
+            .await
+            .unwrap()
+            .into_inner();
+
+        assert_eq!(resp.seeds.len(), 2);
+    }
+
+    #[tokio::test]
+    async fn test_get_coverage_with_empty_oracle() {
+        // Oracle with no registered branches
+        let oracle = Arc::new(CoverageOracle::new());
+        let service = CoordinatorService::new(oracle);
+
+        let snap = service
+            .get_coverage(Request::new(Empty {}))
+            .await
+            .unwrap()
+            .into_inner();
+
+        assert_eq!(snap.total_branches, 0);
+        assert_eq!(snap.covered_branches, 0);
+        assert!(snap.uncovered.is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_submit_results_with_stdout_stderr() {
+        let oracle = make_oracle();
+        let service = CoordinatorService::new(oracle.clone());
+
+        // Verify results with non-empty stdout/stderr are accepted
+        let resp = service
+            .submit_results(Request::new(ResultBatch {
+                worker_id: "w1".into(),
+                results: vec![ProtoResult {
+                    seed_id: "s1".into(),
+                    status: "error".into(),
+                    new_branches: vec![ProtoBranchId {
+                        file_id: 1,
+                        line: 1,
+                        col: 0,
+                        direction: 0,
+                    }],
+                    duration_ms: 1000,
+                    stdout: "some output\nwith newlines".into(),
+                    stderr: "error: something went wrong".into(),
+                }],
+            }))
+            .await
+            .unwrap()
+            .into_inner();
+
+        assert_eq!(resp.new_coverage_count, 1);
+    }
+
+    #[tokio::test]
+    async fn test_register_with_zero_capacity() {
+        let oracle = make_oracle();
+        let service = CoordinatorService::new(oracle);
+
+        let resp = service
+            .register(Request::new(WorkerInfo {
+                worker_id: "w1".into(),
+                language: "python".into(),
+                capacity: 0,
+            }))
+            .await
+            .unwrap()
+            .into_inner();
+
+        assert!(resp.accepted);
+    }
+
+    #[tokio::test]
+    async fn test_register_with_empty_fields() {
+        let oracle = make_oracle();
+        let service = CoordinatorService::new(oracle);
+
+        let resp = service
+            .register(Request::new(WorkerInfo {
+                worker_id: String::new(),
+                language: String::new(),
+                capacity: 0,
+            }))
+            .await
+            .unwrap()
+            .into_inner();
+
+        assert!(resp.accepted);
+        assert!(Uuid::parse_str(&resp.session_id).is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_heartbeat_with_high_active_seeds() {
+        let oracle = make_oracle();
+        let service = CoordinatorService::new(oracle);
+
+        let resp = service
+            .send_heartbeat(Request::new(Heartbeat {
+                worker_id: "w1".into(),
+                active_seeds: u32::MAX,
+            }))
+            .await
+            .unwrap()
+            .into_inner();
+
+        assert!(resp.ok);
+    }
+
+    #[tokio::test]
+    async fn test_heartbeat_with_empty_worker_id() {
+        let oracle = make_oracle();
+        let service = CoordinatorService::new(oracle);
+
+        let resp = service
+            .send_heartbeat(Request::new(Heartbeat {
+                worker_id: String::new(),
+                active_seeds: 0,
+            }))
+            .await
+            .unwrap()
+            .into_inner();
+
+        assert!(resp.ok);
+    }
+
+    #[tokio::test]
+    async fn test_submit_results_multiple_branches_same_result() {
+        let oracle = make_oracle();
+        let service = CoordinatorService::new(oracle.clone());
+
+        // Single result with all 4 branches
+        let resp = service
+            .submit_results(Request::new(ResultBatch {
+                worker_id: "w1".into(),
+                results: vec![ProtoResult {
+                    seed_id: "s1".into(),
+                    status: "pass".into(),
+                    new_branches: (1..=4)
+                        .map(|line| ProtoBranchId {
+                            file_id: 1,
+                            line,
+                            col: 0,
+                            direction: 0,
+                        })
+                        .collect(),
+                    duration_ms: 42,
+                    stdout: String::new(),
+                    stderr: String::new(),
+                }],
+            }))
+            .await
+            .unwrap()
+            .into_inner();
+
+        assert_eq!(resp.new_coverage_count, 4);
+        assert!((resp.coverage_percent - 100.0).abs() < 0.01);
+    }
+
+    #[tokio::test]
+    async fn test_submit_results_duplicate_branch_in_single_result() {
+        let oracle = make_oracle();
+        let service = CoordinatorService::new(oracle.clone());
+
+        // Same branch listed twice in one result
+        let branch = ProtoBranchId {
+            file_id: 1,
+            line: 1,
+            col: 0,
+            direction: 0,
+        };
+        let resp = service
+            .submit_results(Request::new(ResultBatch {
+                worker_id: "w1".into(),
+                results: vec![ProtoResult {
+                    seed_id: "s1".into(),
+                    status: "pass".into(),
+                    new_branches: vec![branch.clone(), branch],
+                    duration_ms: 10,
+                    stdout: String::new(),
+                    stderr: String::new(),
+                }],
+            }))
+            .await
+            .unwrap()
+            .into_inner();
+
+        // First time counts as new, second time is already covered
+        assert_eq!(resp.new_coverage_count, 1);
+        assert_eq!(oracle.covered_count(), 1);
+    }
+
+    #[tokio::test]
+    async fn test_get_coverage_uncovered_branches_mapped_correctly() {
+        let oracle = make_oracle();
+        let service = CoordinatorService::new(oracle.clone());
+
+        // Cover branch at line 2 only
+        service
+            .submit_results(Request::new(ResultBatch {
+                worker_id: "w1".into(),
+                results: vec![ProtoResult {
+                    seed_id: "s1".into(),
+                    status: "pass".into(),
+                    new_branches: vec![ProtoBranchId {
+                        file_id: 1,
+                        line: 2,
+                        col: 0,
+                        direction: 0,
+                    }],
+                    duration_ms: 5,
+                    stdout: String::new(),
+                    stderr: String::new(),
+                }],
+            }))
+            .await
+            .unwrap();
+
+        let snap = service
+            .get_coverage(Request::new(Empty {}))
+            .await
+            .unwrap()
+            .into_inner();
+
+        assert_eq!(snap.uncovered.len(), 3);
+        // All uncovered should be proto BranchIds with file_id=1
+        for ub in &snap.uncovered {
+            assert_eq!(ub.file_id, 1);
+            assert_ne!(ub.line, 2); // line 2 is covered
+        }
+    }
+
+    #[tokio::test]
+    async fn test_seed_data_preserved() {
+        let oracle = make_oracle();
+        let service = CoordinatorService::new(oracle);
+
+        let large_data: Vec<u8> = (0..=255).collect();
+        service
+            .enqueue_seeds(vec![InputSeed {
+                id: "big".into(),
+                data: large_data.clone(),
+                origin: "test".into(),
+            }])
+            .await;
+
+        let resp = service
+            .get_seeds(Request::new(SeedRequest {
+                worker_id: "w1".into(),
+                max_seeds: 1,
+            }))
+            .await
+            .unwrap()
+            .into_inner();
+
+        assert_eq!(resp.seeds.len(), 1);
+        assert_eq!(resp.seeds[0].data, large_data);
+        assert_eq!(resp.seeds[0].id, "big");
+        assert_eq!(resp.seeds[0].origin, "test");
+    }
+
+    #[tokio::test]
+    async fn test_start_with_service_returns_service_and_handle() {
+        // Try to bind; skip if sandboxed
+        let listener = match tokio::net::TcpListener::bind("127.0.0.1:0").await {
+            Ok(l) => l,
+            Err(_) => return,
+        };
+        let addr = listener.local_addr().unwrap();
+        drop(listener);
+
+        let oracle = make_oracle();
+        let result = CoordinatorServer::start_with_service(addr, oracle.clone()).await;
+        assert!(result.is_ok());
+
+        let (service, handle) = result.unwrap();
+
+        // Service should work for direct calls
+        let snap = service
+            .get_coverage(Request::new(Empty {}))
+            .await
+            .unwrap()
+            .into_inner();
+        assert_eq!(snap.total_branches, 4);
+
+        // Enqueue and drain via service
+        service
+            .enqueue_seeds(vec![InputSeed {
+                id: "s1".into(),
+                data: vec![1],
+                origin: "test".into(),
+            }])
+            .await;
+
+        let seeds = service
+            .get_seeds(Request::new(SeedRequest {
+                worker_id: "w1".into(),
+                max_seeds: 10,
+            }))
+            .await
+            .unwrap()
+            .into_inner();
+        assert_eq!(seeds.seeds.len(), 1);
+
+        // Abort the server handle
+        handle.abort();
+    }
+
+    #[tokio::test]
+    async fn test_submit_results_incremental_coverage() {
+        let oracle = make_oracle();
+        let service = CoordinatorService::new(oracle.clone());
+
+        // First submission: cover branch 1
+        let r1 = service
+            .submit_results(Request::new(ResultBatch {
+                worker_id: "w1".into(),
+                results: vec![ProtoResult {
+                    seed_id: "s1".into(),
+                    status: "pass".into(),
+                    new_branches: vec![ProtoBranchId {
+                        file_id: 1,
+                        line: 1,
+                        col: 0,
+                        direction: 0,
+                    }],
+                    duration_ms: 10,
+                    stdout: String::new(),
+                    stderr: String::new(),
+                }],
+            }))
+            .await
+            .unwrap()
+            .into_inner();
+        assert_eq!(r1.new_coverage_count, 1);
+        assert!((r1.coverage_percent - 25.0).abs() < 0.01);
+
+        // Second submission: cover branches 2 and 3
+        let r2 = service
+            .submit_results(Request::new(ResultBatch {
+                worker_id: "w1".into(),
+                results: vec![ProtoResult {
+                    seed_id: "s2".into(),
+                    status: "pass".into(),
+                    new_branches: vec![
+                        ProtoBranchId { file_id: 1, line: 2, col: 0, direction: 0 },
+                        ProtoBranchId { file_id: 1, line: 3, col: 0, direction: 0 },
+                    ],
+                    duration_ms: 10,
+                    stdout: String::new(),
+                    stderr: String::new(),
+                }],
+            }))
+            .await
+            .unwrap()
+            .into_inner();
+        assert_eq!(r2.new_coverage_count, 2);
+        assert!((r2.coverage_percent - 75.0).abs() < 0.01);
+
+        // Third submission: cover branch 4 (reaching 100%)
+        let r3 = service
+            .submit_results(Request::new(ResultBatch {
+                worker_id: "w1".into(),
+                results: vec![ProtoResult {
+                    seed_id: "s3".into(),
+                    status: "pass".into(),
+                    new_branches: vec![ProtoBranchId {
+                        file_id: 1,
+                        line: 4,
+                        col: 0,
+                        direction: 0,
+                    }],
+                    duration_ms: 10,
+                    stdout: String::new(),
+                    stderr: String::new(),
+                }],
+            }))
+            .await
+            .unwrap()
+            .into_inner();
+        assert_eq!(r3.new_coverage_count, 1);
+        assert!((r3.coverage_percent - 100.0).abs() < 0.01);
+        assert_eq!(oracle.covered_count(), 4);
+    }
+
+    #[tokio::test]
+    async fn test_enqueue_large_batch() {
+        let oracle = make_oracle();
+        let service = CoordinatorService::new(oracle);
+
+        let seeds: Vec<InputSeed> = (0..100)
+            .map(|i| InputSeed {
+                id: format!("seed-{i}"),
+                data: vec![i as u8],
+                origin: "bulk".into(),
+            })
+            .collect();
+
+        service.enqueue_seeds(seeds).await;
+
+        // Drain in chunks
+        let r1 = service
+            .get_seeds(Request::new(SeedRequest {
+                worker_id: "w1".into(),
+                max_seeds: 50,
+            }))
+            .await
+            .unwrap()
+            .into_inner();
+        assert_eq!(r1.seeds.len(), 50);
+        assert_eq!(r1.seeds[0].id, "seed-0");
+        assert_eq!(r1.seeds[49].id, "seed-49");
+
+        let r2 = service
+            .get_seeds(Request::new(SeedRequest {
+                worker_id: "w1".into(),
+                max_seeds: 50,
+            }))
+            .await
+            .unwrap()
+            .into_inner();
+        assert_eq!(r2.seeds.len(), 50);
+        assert_eq!(r2.seeds[0].id, "seed-50");
+        assert_eq!(r2.seeds[49].id, "seed-99");
+
+        // Queue empty
+        let r3 = service
+            .get_seeds(Request::new(SeedRequest {
+                worker_id: "w1".into(),
+                max_seeds: 10,
+            }))
+            .await
+            .unwrap()
+            .into_inner();
+        assert!(r3.seeds.is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_proto_branch_conversion_mid_values() {
+        let core = BranchId::new(500, 250, 128, 3);
+        let proto = core_to_proto_branch(&core);
+        let back = proto_to_core_branch(&proto);
+
+        assert_eq!(back.file_id, 500);
+        assert_eq!(back.line, 250);
+        assert_eq!(back.col, 128);
+        assert_eq!(back.direction, 3);
+    }
+
+    #[tokio::test]
+    async fn test_get_seeds_one_at_a_time() {
+        let oracle = make_oracle();
+        let service = CoordinatorService::new(oracle);
+
+        service
+            .enqueue_seeds(vec![
+                InputSeed { id: "a".into(), data: vec![1], origin: "t".into() },
+                InputSeed { id: "b".into(), data: vec![2], origin: "t".into() },
+                InputSeed { id: "c".into(), data: vec![3], origin: "t".into() },
+            ])
+            .await;
+
+        for expected_id in ["a", "b", "c"] {
+            let resp = service
+                .get_seeds(Request::new(SeedRequest {
+                    worker_id: "w1".into(),
+                    max_seeds: 1,
+                }))
+                .await
+                .unwrap()
+                .into_inner();
+            assert_eq!(resp.seeds.len(), 1);
+            assert_eq!(resp.seeds[0].id, expected_id);
+        }
+
+        // Empty now
+        let resp = service
+            .get_seeds(Request::new(SeedRequest {
+                worker_id: "w1".into(),
+                max_seeds: 1,
+            }))
+            .await
+            .unwrap()
+            .into_inner();
+        assert!(resp.seeds.is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_submit_results_mixed_known_and_unknown_branches() {
+        let oracle = make_oracle();
+        let service = CoordinatorService::new(oracle.clone());
+
+        // Mix of known (file_id=1, line=1) and unknown (file_id=99, line=1)
+        let resp = service
+            .submit_results(Request::new(ResultBatch {
+                worker_id: "w1".into(),
+                results: vec![ProtoResult {
+                    seed_id: "s1".into(),
+                    status: "pass".into(),
+                    new_branches: vec![
+                        ProtoBranchId { file_id: 1, line: 1, col: 0, direction: 0 },
+                        ProtoBranchId { file_id: 99, line: 1, col: 0, direction: 0 },
+                    ],
+                    duration_ms: 10,
+                    stdout: String::new(),
+                    stderr: String::new(),
+                }],
+            }))
+            .await
+            .unwrap()
+            .into_inner();
+
+        assert_eq!(resp.new_coverage_count, 2);
+        assert_eq!(oracle.covered_count(), 2);
+        // 4 original + 1 auto-registered
+        assert_eq!(oracle.total_count(), 5);
+    }
+
+    #[tokio::test]
+    async fn test_register_returns_unique_session_ids() {
+        let oracle = make_oracle();
+        let service = CoordinatorService::new(oracle);
+
+        let mut session_ids = Vec::new();
+        for i in 0..5 {
+            let resp = service
+                .register(Request::new(WorkerInfo {
+                    worker_id: format!("w{i}"),
+                    language: "python".into(),
+                    capacity: 1,
+                }))
+                .await
+                .unwrap()
+                .into_inner();
+            assert!(resp.accepted);
+            assert!(Uuid::parse_str(&resp.session_id).is_ok());
+            session_ids.push(resp.session_id);
+        }
+
+        // All session IDs should be unique
+        let unique_count = {
+            let mut s = session_ids.clone();
+            s.sort();
+            s.dedup();
+            s.len()
+        };
+        assert_eq!(unique_count, 5);
+    }
 }

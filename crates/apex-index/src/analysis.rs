@@ -3446,4 +3446,828 @@ mod tests {
         );
         assert_eq!(score.recommendation, "ACCEPTABLE — deploy with monitoring");
     }
+
+    // -----------------------------------------------------------------------
+    // generate_docs: frequency_pct and multiple paths
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn generate_docs_frequency_pct_calculation() {
+        let tmp = tempfile::tempdir().unwrap();
+        let src = tmp.path().join("mod.py");
+        std::fs::write(
+            &src,
+            "def work(x):\n    if x:\n        return 1\n    return 0\n",
+        )
+        .unwrap();
+
+        let traces = vec![
+            TestTrace {
+                test_name: "t1".into(),
+                branches: vec![br(1, 2, 0)],
+                duration_ms: 10,
+                status: ExecutionStatus::Pass,
+            },
+            TestTrace {
+                test_name: "t2".into(),
+                branches: vec![br(1, 2, 0)],
+                duration_ms: 10,
+                status: ExecutionStatus::Pass,
+            },
+            TestTrace {
+                test_name: "t3".into(),
+                branches: vec![br(1, 2, 1)],
+                duration_ms: 10,
+                status: ExecutionStatus::Pass,
+            },
+        ];
+        let index = BranchIndex {
+            profiles: BranchIndex::build_profiles(&traces),
+            traces,
+            file_paths: HashMap::from([(1, PathBuf::from("mod.py"))]),
+            total_branches: 2,
+            covered_branches: 2,
+            created_at: String::new(),
+            language: apex_core::types::Language::Python,
+            target_root: tmp.path().to_path_buf(),
+            source_hash: String::new(),
+        };
+        let docs = generate_docs(&index, tmp.path());
+        assert_eq!(docs.len(), 1);
+        let first = &docs[0].paths[0];
+        assert!((first.frequency_pct - 66.67).abs() < 1.0);
+        let second = &docs[0].paths[1];
+        assert!((second.frequency_pct - 33.33).abs() < 1.0);
+    }
+
+    #[test]
+    fn generate_docs_sorted_by_file_path_then_line() {
+        let tmp = tempfile::tempdir().unwrap();
+        let src_a = tmp.path().join("bbb.py");
+        std::fs::write(&src_a, "def zz():\n    if True:\n        pass\n").unwrap();
+        let src_b = tmp.path().join("aaa.py");
+        std::fs::write(&src_b, "def aa():\n    if True:\n        pass\n").unwrap();
+
+        let traces = vec![TestTrace {
+            test_name: "t1".into(),
+            branches: vec![br(1, 2, 0), br(2, 2, 0)],
+            duration_ms: 10,
+            status: ExecutionStatus::Pass,
+        }];
+        let index = BranchIndex {
+            profiles: BranchIndex::build_profiles(&traces),
+            traces,
+            file_paths: HashMap::from([
+                (1, PathBuf::from("bbb.py")),
+                (2, PathBuf::from("aaa.py")),
+            ]),
+            total_branches: 2,
+            covered_branches: 2,
+            created_at: String::new(),
+            language: apex_core::types::Language::Python,
+            target_root: tmp.path().to_path_buf(),
+            source_hash: String::new(),
+        };
+        let docs = generate_docs(&index, tmp.path());
+        assert_eq!(docs.len(), 2);
+        assert!(docs[0].file_path < docs[1].file_path);
+    }
+
+    #[test]
+    fn generate_docs_empty_file_paths() {
+        let index = BranchIndex {
+            profiles: HashMap::new(),
+            traces: vec![],
+            file_paths: HashMap::new(),
+            total_branches: 0,
+            covered_branches: 0,
+            created_at: String::new(),
+            language: apex_core::types::Language::Python,
+            target_root: PathBuf::new(),
+            source_hash: String::new(),
+        };
+        let docs = generate_docs(&index, Path::new("/nonexistent"));
+        assert!(docs.is_empty());
+    }
+
+    #[test]
+    fn generate_docs_representative_test_is_first_in_group() {
+        let tmp = tempfile::tempdir().unwrap();
+        let src = tmp.path().join("mod.py");
+        std::fs::write(&src, "def calc(x):\n    if x > 0:\n        return x\n").unwrap();
+
+        let traces = vec![
+            TestTrace {
+                test_name: "alpha_test".into(),
+                branches: vec![br(1, 2, 0)],
+                duration_ms: 10,
+                status: ExecutionStatus::Pass,
+            },
+            TestTrace {
+                test_name: "beta_test".into(),
+                branches: vec![br(1, 2, 0)],
+                duration_ms: 10,
+                status: ExecutionStatus::Pass,
+            },
+        ];
+        let index = BranchIndex {
+            profiles: BranchIndex::build_profiles(&traces),
+            traces,
+            file_paths: HashMap::from([(1, PathBuf::from("mod.py"))]),
+            total_branches: 1,
+            covered_branches: 1,
+            created_at: String::new(),
+            language: apex_core::types::Language::Python,
+            target_root: tmp.path().to_path_buf(),
+            source_hash: String::new(),
+        };
+        let docs = generate_docs(&index, tmp.path());
+        assert_eq!(docs[0].paths[0].representative_test, "alpha_test");
+    }
+
+    // -----------------------------------------------------------------------
+    // analyze_complexity: multiple functions, sorting verification
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn analyze_complexity_multiple_functions_sorted() {
+        let tmp = tempfile::tempdir().unwrap();
+        let src = tmp.path().join("mod.py");
+        std::fs::write(
+            &src,
+            "def good():\n    if True:\n        pass\n\ndef bad():\n    if True:\n        pass\n",
+        )
+        .unwrap();
+
+        let traces = vec![TestTrace {
+            test_name: "t1".into(),
+            branches: vec![br(1, 2, 0)],
+            duration_ms: 10,
+            status: ExecutionStatus::Pass,
+        }];
+        let mut profiles = BranchIndex::build_profiles(&traces);
+        let dead = br(1, 6, 0);
+        profiles.insert(
+            branch_key(&dead),
+            crate::BranchProfile {
+                branch: dead,
+                hit_count: 0,
+                test_count: 0,
+                test_names: vec![],
+            },
+        );
+        let index = BranchIndex {
+            profiles,
+            traces,
+            file_paths: HashMap::from([(1, PathBuf::from("mod.py"))]),
+            total_branches: 2,
+            covered_branches: 1,
+            created_at: String::new(),
+            language: apex_core::types::Language::Python,
+            target_root: tmp.path().to_path_buf(),
+            source_hash: String::new(),
+        };
+        let results = analyze_complexity(&index, tmp.path());
+        assert_eq!(results.len(), 2);
+        assert_eq!(results[0].classification, "dead");
+        assert_eq!(results[1].classification, "fully-exercised");
+    }
+
+    // -----------------------------------------------------------------------
+    // discover_contracts: sorting and edge cases
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn discover_contracts_sorted_by_evidence_then_confidence() {
+        let tmp = tempfile::tempdir().unwrap();
+        let src = tmp.path().join("mod.py");
+        std::fs::write(
+            &src,
+            "def big_fn():\n    if a:\n        pass\n    if b:\n        pass\n",
+        )
+        .unwrap();
+
+        let mut traces = Vec::new();
+        for i in 0..5 {
+            traces.push(TestTrace {
+                test_name: format!("t{i}"),
+                branches: vec![br(1, 2, 0), br(1, 4, 0)],
+                duration_ms: 10,
+                status: ExecutionStatus::Pass,
+            });
+        }
+        let index = BranchIndex {
+            profiles: BranchIndex::build_profiles(&traces),
+            traces,
+            file_paths: HashMap::from([(1, PathBuf::from("mod.py"))]),
+            total_branches: 2,
+            covered_branches: 2,
+            created_at: String::new(),
+            language: apex_core::types::Language::Python,
+            target_root: tmp.path().to_path_buf(),
+            source_hash: String::new(),
+        };
+        let invariants = discover_contracts(&index, tmp.path());
+        assert!(invariants.len() >= 2);
+        for i in 1..invariants.len() {
+            assert!(invariants[i - 1].evidence_tests >= invariants[i].evidence_tests);
+        }
+    }
+
+    #[test]
+    fn discover_contracts_two_tests_no_invariants() {
+        let tmp = tempfile::tempdir().unwrap();
+        let src = tmp.path().join("mod.py");
+        std::fs::write(&src, "def f():\n    if x:\n        pass\n").unwrap();
+
+        let traces = vec![
+            TestTrace {
+                test_name: "t1".into(),
+                branches: vec![br(1, 2, 0)],
+                duration_ms: 10,
+                status: ExecutionStatus::Pass,
+            },
+            TestTrace {
+                test_name: "t2".into(),
+                branches: vec![br(1, 2, 0)],
+                duration_ms: 10,
+                status: ExecutionStatus::Pass,
+            },
+        ];
+        let index = BranchIndex {
+            profiles: BranchIndex::build_profiles(&traces),
+            traces,
+            file_paths: HashMap::from([(1, PathBuf::from("mod.py"))]),
+            total_branches: 1,
+            covered_branches: 1,
+            created_at: String::new(),
+            language: apex_core::types::Language::Python,
+            target_root: tmp.path().to_path_buf(),
+            source_hash: String::new(),
+        };
+        let invariants = discover_contracts(&index, tmp.path());
+        assert!(invariants.is_empty());
+    }
+
+    #[test]
+    fn discover_contracts_no_functions_in_source() {
+        let tmp = tempfile::tempdir().unwrap();
+        let src = tmp.path().join("mod.py");
+        std::fs::write(&src, "x = 1\ny = 2\n").unwrap();
+
+        let traces = vec![TestTrace {
+            test_name: "t1".into(),
+            branches: vec![br(1, 1, 0)],
+            duration_ms: 10,
+            status: ExecutionStatus::Pass,
+        }];
+        let index = BranchIndex {
+            profiles: BranchIndex::build_profiles(&traces),
+            traces,
+            file_paths: HashMap::from([(1, PathBuf::from("mod.py"))]),
+            total_branches: 1,
+            covered_branches: 1,
+            created_at: String::new(),
+            language: apex_core::types::Language::Python,
+            target_root: tmp.path().to_path_buf(),
+            source_hash: String::new(),
+        };
+        let invariants = discover_contracts(&index, tmp.path());
+        assert!(invariants.is_empty());
+    }
+
+    // -----------------------------------------------------------------------
+    // verify_boundaries: files_reached deduplication
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn verify_boundaries_files_reached_deduplicated() {
+        let tmp = tempfile::tempdir().unwrap();
+        let src = tmp.path().join("api.py");
+        std::fs::write(&src, "def ep():\n    return 200\n").unwrap();
+
+        let traces = vec![TestTrace {
+            test_name: "test_api_dup".into(),
+            branches: vec![br(1, 1, 0), br(1, 2, 0), br(1, 3, 0)],
+            duration_ms: 10,
+            status: ExecutionStatus::Pass,
+        }];
+        let index = BranchIndex {
+            profiles: BranchIndex::build_profiles(&traces),
+            traces,
+            file_paths: HashMap::from([(1, PathBuf::from("api.py"))]),
+            total_branches: 3,
+            covered_branches: 3,
+            created_at: String::new(),
+            language: apex_core::types::Language::Python,
+            target_root: tmp.path().to_path_buf(),
+            source_hash: String::new(),
+        };
+        let report = verify_boundaries(&index, tmp.path(), "test_api", "check_auth");
+        assert_eq!(report.failing_tests, 1);
+        assert_eq!(report.unprotected_paths[0].files_reached.len(), 1);
+    }
+
+    // -----------------------------------------------------------------------
+    // attack_surface: reachable_file_details sorted
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn attack_surface_file_details_sorted_descending() {
+        let traces = vec![TestTrace {
+            test_name: "test_api_all".into(),
+            branches: vec![br(1, 10, 0), br(2, 5, 0), br(2, 6, 0), br(2, 7, 0)],
+            duration_ms: 50,
+            status: ExecutionStatus::Pass,
+        }];
+        let index = BranchIndex {
+            profiles: BranchIndex::build_profiles(&traces),
+            traces,
+            file_paths: HashMap::from([
+                (1, PathBuf::from("src/a.py")),
+                (2, PathBuf::from("src/b.py")),
+            ]),
+            total_branches: 10,
+            covered_branches: 4,
+            created_at: String::new(),
+            language: apex_core::types::Language::Python,
+            target_root: PathBuf::new(),
+            source_hash: String::new(),
+        };
+        let report = analyze_attack_surface(&index, "test_api");
+        assert_eq!(report.reachable_file_details.len(), 2);
+        assert!(
+            report.reachable_file_details[0].reachable_branches
+                >= report.reachable_file_details[1].reachable_branches
+        );
+    }
+
+    // -----------------------------------------------------------------------
+    // deploy_score edge cases
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn deploy_score_single_finding_penalty() {
+        let traces = vec![TestTrace {
+            test_name: "t1".into(),
+            branches: vec![br(1, 10, 0)],
+            duration_ms: 50,
+            status: ExecutionStatus::Pass,
+        }];
+        let index = BranchIndex {
+            profiles: BranchIndex::build_profiles(&traces),
+            traces,
+            file_paths: HashMap::from([(1, PathBuf::from("src/a.py"))]),
+            total_branches: 1,
+            covered_branches: 1,
+            created_at: String::new(),
+            language: apex_core::types::Language::Python,
+            target_root: PathBuf::new(),
+            source_hash: String::new(),
+        };
+        let score = compute_deploy_score(&index, 1, 0);
+        assert_eq!(score.detector_score, 23);
+    }
+
+    #[test]
+    fn deploy_score_eleven_findings_flat_five() {
+        let index = BranchIndex {
+            profiles: HashMap::new(),
+            traces: vec![],
+            file_paths: HashMap::new(),
+            total_branches: 0,
+            covered_branches: 0,
+            created_at: String::new(),
+            language: apex_core::types::Language::Python,
+            target_root: PathBuf::new(),
+            source_hash: String::new(),
+        };
+        let score = compute_deploy_score(&index, 11, 0);
+        assert_eq!(score.detector_score, 5);
+    }
+
+    // -----------------------------------------------------------------------
+    // extract_func_name: JavaScript arrow function
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn extract_func_name_js_arrow_function() {
+        let name = extract_func_name(
+            "const handler = (req) => {",
+            apex_core::types::Language::JavaScript,
+        );
+        assert_eq!(name, "const");
+    }
+
+    #[test]
+    fn extract_func_name_js_regular_function() {
+        let name = extract_func_name(
+            "function doWork(a, b) {",
+            apex_core::types::Language::JavaScript,
+        );
+        assert_eq!(name, "doWork(a");
+    }
+
+    // -----------------------------------------------------------------------
+    // extract_functions: JavaScript with both function and arrow
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn extract_functions_js_mixed_styles() {
+        let source = vec![
+            "function regular() {",
+            "    return 1;",
+            "}",
+            "const arrow = (x) => {",
+            "    return x;",
+            "};",
+        ];
+        let funcs = extract_functions(&source, apex_core::types::Language::JavaScript);
+        assert_eq!(funcs.len(), 2);
+        assert!(funcs[0].2 < funcs[1].1);
+    }
+
+    // -----------------------------------------------------------------------
+    // hotpaths: direction label "true"
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn hotpaths_direction_true_branch() {
+        let traces = vec![TestTrace {
+            test_name: "t1".into(),
+            branches: vec![br(1, 10, 0)],
+            duration_ms: 50,
+            status: ExecutionStatus::Pass,
+        }];
+        let index = BranchIndex {
+            profiles: BranchIndex::build_profiles(&traces),
+            traces,
+            file_paths: HashMap::from([(1, PathBuf::from("src/a.py"))]),
+            total_branches: 1,
+            covered_branches: 1,
+            created_at: String::new(),
+            language: apex_core::types::Language::Python,
+            target_root: PathBuf::new(),
+            source_hash: String::new(),
+        };
+        let hot = analyze_hotpaths(&index, 10);
+        assert_eq!(hot.len(), 1);
+        assert_eq!(hot[0].direction, "true");
+        assert_eq!(hot[0].line, 10);
+        assert_eq!(hot[0].test_count, 1);
+    }
+
+    // -----------------------------------------------------------------------
+    // assess_risk: empty index
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn risk_empty_index_no_files() {
+        let index = BranchIndex {
+            profiles: HashMap::new(),
+            traces: vec![],
+            file_paths: HashMap::new(),
+            total_branches: 0,
+            covered_branches: 0,
+            created_at: String::new(),
+            language: apex_core::types::Language::Python,
+            target_root: PathBuf::new(),
+            source_hash: String::new(),
+        };
+        let risk = assess_risk(&index, &["anything.py".to_string()]);
+        assert_eq!(risk.level, "LOW");
+        assert_eq!(risk.changed_branches, 0);
+        assert_eq!(risk.affected_tests, 0);
+    }
+
+    // -----------------------------------------------------------------------
+    // analyze_complexity: empty file_paths
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn analyze_complexity_empty_file_paths() {
+        let index = BranchIndex {
+            profiles: HashMap::new(),
+            traces: vec![],
+            file_paths: HashMap::new(),
+            total_branches: 0,
+            covered_branches: 0,
+            created_at: String::new(),
+            language: apex_core::types::Language::Python,
+            target_root: PathBuf::new(),
+            source_hash: String::new(),
+        };
+        let results = analyze_complexity(&index, Path::new("/nonexistent"));
+        assert!(results.is_empty());
+    }
+
+    // -----------------------------------------------------------------------
+    // generate_docs: test that skips trace with no matching branches
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn generate_docs_trace_skipped_when_no_branches_match_function() {
+        let tmp = tempfile::tempdir().unwrap();
+        let src = tmp.path().join("mod.py");
+        std::fs::write(&src, "def myfunc():\n    if cond:\n        pass\n").unwrap();
+
+        let traces = vec![
+            TestTrace {
+                test_name: "matching".into(),
+                branches: vec![br(1, 2, 0)],
+                duration_ms: 10,
+                status: ExecutionStatus::Pass,
+            },
+            TestTrace {
+                test_name: "not_matching".into(),
+                branches: vec![br(1, 999, 0)],
+                duration_ms: 10,
+                status: ExecutionStatus::Pass,
+            },
+        ];
+        let index = BranchIndex {
+            profiles: BranchIndex::build_profiles(&traces),
+            traces,
+            file_paths: HashMap::from([(1, PathBuf::from("mod.py"))]),
+            total_branches: 2,
+            covered_branches: 2,
+            created_at: String::new(),
+            language: apex_core::types::Language::Python,
+            target_root: tmp.path().to_path_buf(),
+            source_hash: String::new(),
+        };
+        let docs = generate_docs(&index, tmp.path());
+        assert_eq!(docs.len(), 1);
+        assert_eq!(docs[0].total_tests, 1);
+        assert_eq!(docs[0].paths[0].representative_test, "matching");
+    }
+
+    // -----------------------------------------------------------------------
+    // verify_boundaries: auth on exact line
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn verify_boundaries_auth_on_exact_line() {
+        let tmp = tempfile::tempdir().unwrap();
+        let src = tmp.path().join("api.py");
+        std::fs::write(
+            &src,
+            "def ep():\n    if check_auth(r):\n        return 200\n",
+        )
+        .unwrap();
+
+        let traces = vec![TestTrace {
+            test_name: "test_api_ok".into(),
+            branches: vec![br(1, 2, 0)],
+            duration_ms: 10,
+            status: ExecutionStatus::Pass,
+        }];
+        let index = BranchIndex {
+            profiles: BranchIndex::build_profiles(&traces),
+            traces,
+            file_paths: HashMap::from([(1, PathBuf::from("api.py"))]),
+            total_branches: 1,
+            covered_branches: 1,
+            created_at: String::new(),
+            language: apex_core::types::Language::Python,
+            target_root: tmp.path().to_path_buf(),
+            source_hash: String::new(),
+        };
+        let report = verify_boundaries(&index, tmp.path(), "test_api", "check_auth");
+        assert_eq!(report.total_entry_tests, 1);
+        assert_eq!(report.failing_tests, 0);
+        assert_eq!(report.passing_tests, 1);
+    }
+
+    // -----------------------------------------------------------------------
+    // flaky_detect: divergent_runs field
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn flaky_detect_divergent_runs_equals_total_runs() {
+        let run1 = vec![TestTrace {
+            test_name: "test_f".into(),
+            branches: vec![br(1, 10, 0)],
+            duration_ms: 50,
+            status: ExecutionStatus::Pass,
+        }];
+        let run2 = vec![TestTrace {
+            test_name: "test_f".into(),
+            branches: vec![br(1, 10, 1)],
+            duration_ms: 50,
+            status: ExecutionStatus::Pass,
+        }];
+        let run3 = vec![TestTrace {
+            test_name: "test_f".into(),
+            branches: vec![br(1, 10, 0)],
+            duration_ms: 50,
+            status: ExecutionStatus::Pass,
+        }];
+
+        let flaky = detect_flaky_tests(&[run1, run2, run3], &HashMap::new());
+        assert_eq!(flaky.len(), 1);
+        assert_eq!(flaky[0].total_runs, 3);
+        assert_eq!(flaky[0].divergent_runs, 3);
+    }
+
+    // -----------------------------------------------------------------------
+    // discover_contracts: partial ratio -> no invariant
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn discover_contracts_partial_ratio_no_invariant() {
+        let tmp = tempfile::tempdir().unwrap();
+        let src = tmp.path().join("mod.py");
+        std::fs::write(&src, "def f():\n    if x:\n        pass\n").unwrap();
+
+        let mut traces = Vec::new();
+        for i in 0..4 {
+            traces.push(TestTrace {
+                test_name: format!("t{i}"),
+                branches: if i < 2 {
+                    vec![br(1, 2, 0)]
+                } else {
+                    vec![br(1, 2, 1)]
+                },
+                duration_ms: 10,
+                status: ExecutionStatus::Pass,
+            });
+        }
+        let index = BranchIndex {
+            profiles: BranchIndex::build_profiles(&traces),
+            traces,
+            file_paths: HashMap::from([(1, PathBuf::from("mod.py"))]),
+            total_branches: 2,
+            covered_branches: 2,
+            created_at: String::new(),
+            language: apex_core::types::Language::Python,
+            target_root: tmp.path().to_path_buf(),
+            source_hash: String::new(),
+        };
+        let invariants = discover_contracts(&index, tmp.path());
+        assert!(
+            invariants.is_empty(),
+            "expected no invariants for ratio=0.5, got {}",
+            invariants.len()
+        );
+    }
+
+    // -----------------------------------------------------------------------
+    // analyze_complexity: function_name and line fields
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn analyze_complexity_reports_function_name_and_line() {
+        let tmp = tempfile::tempdir().unwrap();
+        let src = tmp.path().join("mod.py");
+        std::fs::write(&src, "def my_function():\n    if True:\n        pass\n").unwrap();
+
+        let traces = vec![TestTrace {
+            test_name: "t1".into(),
+            branches: vec![br(1, 2, 0)],
+            duration_ms: 10,
+            status: ExecutionStatus::Pass,
+        }];
+        let index = BranchIndex {
+            profiles: BranchIndex::build_profiles(&traces),
+            traces,
+            file_paths: HashMap::from([(1, PathBuf::from("mod.py"))]),
+            total_branches: 1,
+            covered_branches: 1,
+            created_at: String::new(),
+            language: apex_core::types::Language::Python,
+            target_root: tmp.path().to_path_buf(),
+            source_hash: String::new(),
+        };
+        let results = analyze_complexity(&index, tmp.path());
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].function_name, "my_function");
+        assert_eq!(results[0].line, 1);
+        assert_eq!(results[0].file_path, PathBuf::from("mod.py"));
+        assert_eq!(results[0].static_complexity, 1);
+        assert_eq!(results[0].exercised_complexity, 1);
+    }
+
+    // -----------------------------------------------------------------------
+    // attack_surface: coverage_pct with nonzero total
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn attack_surface_file_coverage_pct_nonzero_total() {
+        let traces = vec![TestTrace {
+            test_name: "test_api_v".into(),
+            branches: vec![br(1, 10, 0)],
+            duration_ms: 50,
+            status: ExecutionStatus::Pass,
+        }];
+        let mut profiles = BranchIndex::build_profiles(&traces);
+        let uncov = br(1, 20, 0);
+        profiles.insert(
+            branch_key(&uncov),
+            crate::BranchProfile {
+                branch: uncov,
+                hit_count: 0,
+                test_count: 0,
+                test_names: vec![],
+            },
+        );
+        let index = BranchIndex {
+            profiles,
+            traces,
+            file_paths: HashMap::from([(1, PathBuf::from("src/api.py"))]),
+            total_branches: 2,
+            covered_branches: 1,
+            created_at: String::new(),
+            language: apex_core::types::Language::Python,
+            target_root: PathBuf::new(),
+            source_hash: String::new(),
+        };
+        let report = analyze_attack_surface(&index, "test_api");
+        assert_eq!(report.reachable_file_details.len(), 1);
+        assert!((report.reachable_file_details[0].coverage_pct - 50.0).abs() < 0.1);
+    }
+
+    // -----------------------------------------------------------------------
+    // deploy_score: quality ratio capped at 1.0
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn deploy_score_quality_ratio_capped() {
+        let traces = vec![
+            TestTrace {
+                test_name: "t1".into(),
+                branches: vec![br(1, 10, 0)],
+                duration_ms: 50,
+                status: ExecutionStatus::Pass,
+            },
+            TestTrace {
+                test_name: "t2".into(),
+                branches: vec![br(1, 20, 0)],
+                duration_ms: 50,
+                status: ExecutionStatus::Pass,
+            },
+        ];
+        let index = BranchIndex {
+            profiles: BranchIndex::build_profiles(&traces),
+            traces,
+            file_paths: HashMap::from([(1, PathBuf::from("src/a.py"))]),
+            total_branches: 2,
+            covered_branches: 2,
+            created_at: String::new(),
+            language: apex_core::types::Language::Python,
+            target_root: PathBuf::new(),
+            source_hash: String::new(),
+        };
+        let score = compute_deploy_score(&index, 0, 0);
+        assert_eq!(score.test_quality_score, score.test_quality_max);
+    }
+
+    // -----------------------------------------------------------------------
+    // extract_func_name: Rust simple and async
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn extract_func_name_rust_simple() {
+        let name = extract_func_name("fn simple() {", apex_core::types::Language::Rust);
+        assert_eq!(name, "simple");
+    }
+
+    #[test]
+    fn extract_func_name_rust_visibility_and_async() {
+        let name = extract_func_name(
+            "pub async fn fetch_data(url: &str) -> Result<Data> {",
+            apex_core::types::Language::Rust,
+        );
+        assert_eq!(name, "fetch_data");
+    }
+
+    // -----------------------------------------------------------------------
+    // hotpaths: sorted by hit_count descending
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn hotpaths_sorted_by_hit_count_descending() {
+        let traces = vec![TestTrace {
+            test_name: "t1".into(),
+            branches: vec![br(1, 10, 0), br(1, 10, 0), br(1, 10, 0), br(1, 20, 0)],
+            duration_ms: 50,
+            status: ExecutionStatus::Pass,
+        }];
+        let index = BranchIndex {
+            profiles: BranchIndex::build_profiles(&traces),
+            traces,
+            file_paths: HashMap::from([(1, PathBuf::from("src/a.py"))]),
+            total_branches: 2,
+            covered_branches: 2,
+            created_at: String::new(),
+            language: apex_core::types::Language::Python,
+            target_root: PathBuf::new(),
+            source_hash: String::new(),
+        };
+        let hot = analyze_hotpaths(&index, 10);
+        assert_eq!(hot.len(), 2);
+        assert!(hot[0].hit_count >= hot[1].hit_count);
+        assert_eq!(hot[0].hit_count, 3);
+        assert_eq!(hot[1].hit_count, 1);
+    }
 }

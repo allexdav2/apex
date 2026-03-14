@@ -8,6 +8,8 @@ use async_trait::async_trait;
 use std::{path::Path, time::Instant};
 use tracing::info;
 
+use crate::js_env::{self, JsEnvironment};
+
 pub struct JavaScriptRunner<R: CommandRunner = RealCommandRunner> {
     runner: R,
 }
@@ -28,40 +30,29 @@ impl<R: CommandRunner> JavaScriptRunner<R> {
     /// Detect the test runner from package.json contents.
     /// Returns (binary, args).
     fn detect_test_runner(target: &Path) -> (String, Vec<String>) {
-        let pkg_content = if target.join("package.json").exists() {
-            std::fs::read_to_string(target.join("package.json")).unwrap_or_default()
-        } else {
-            String::new()
+        let runner = js_env::detect_test_runner(target);
+        let env = JsEnvironment {
+            runtime: if target.join("bun.lockb").exists() || target.join("bunfig.toml").exists() {
+                js_env::JsRuntime::Bun
+            } else {
+                js_env::JsRuntime::Node
+            },
+            pkg_manager: js_env::PkgManager::Npm,
+            test_runner: runner,
+            module_system: js_env::ModuleSystem::CommonJS,
+            is_typescript: false,
+            source_maps: false,
+            monorepo: None,
         };
-
-        if pkg_content.contains("\"jest\"") {
-            return (
-                "npx".to_string(),
-                vec!["jest".to_string(), "--passWithNoTests".to_string()],
-            );
-        }
-        if pkg_content.contains("\"mocha\"") {
-            return ("npx".to_string(), vec!["mocha".to_string()]);
-        }
-        if pkg_content.contains("\"vitest\"") {
-            return (
-                "npx".to_string(),
-                vec!["vitest".to_string(), "run".to_string()],
-            );
-        }
-        // Has a "test" script defined under "scripts"
-        if pkg_content.contains("\"scripts\"") && pkg_content.contains("\"test\"") {
-            return ("npm".to_string(), vec!["test".to_string()]);
-        }
-        // Default
-        (
-            "npx".to_string(),
-            vec!["jest".to_string(), "--passWithNoTests".to_string()],
-        )
+        js_env::test_command(&env)
     }
 
     /// Detect which package manager is in use.
     fn detect_package_manager(target: &Path) -> &'static str {
+        if let Some(env) = JsEnvironment::detect(target) {
+            return js_env::install_command(&env);
+        }
+        // Fallback when there is no package.json: inspect lockfiles directly.
         if target.join("yarn.lock").exists() {
             return "yarn";
         }

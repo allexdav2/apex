@@ -1,5 +1,6 @@
 use apex_core::{
     error::{ApexError, Result},
+    hash::fnv1a_hash,
     traits::Sandbox,
     types::{
         BranchId, BranchState, ExecutionResult, ExecutionStatus, InputSeed, Language, SnapshotId,
@@ -9,16 +10,6 @@ use apex_coverage::CoverageOracle;
 use async_trait::async_trait;
 use std::{collections::HashMap, path::PathBuf, sync::Arc, time::Instant};
 use uuid::Uuid;
-
-/// FNV-1a hash for file path → file_id mapping.
-fn fnv1a_hash(s: &str) -> u64 {
-    let mut hash: u64 = 0xcbf2_9ce4_8422_2325;
-    for byte in s.bytes() {
-        hash ^= byte as u64;
-        hash = hash.wrapping_mul(0x0000_0100_0000_01b3);
-    }
-    hash
-}
 
 /// (file_path, branch_key, arm_index, hit_count)
 type BranchHit = (String, String, usize, u64);

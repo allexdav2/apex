@@ -48,7 +48,7 @@ pub struct BranchId {
     pub file_id: u64,
     pub line: u32,
     pub col: u16,
-    /// 0 = taken / true branch, 1 = not-taken / false branch.
+    /// Arm index within a branch point (0, 1, 2, ...).
     pub direction: u8,
     /// Disambiguates macro-expanded duplicates on the same line.
     pub discriminator: u16,
@@ -162,7 +162,7 @@ impl std::str::FromStr for Language {
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s.to_lowercase().as_str() {
             "python" | "py" => Ok(Language::Python),
-            "javascript" | "js" | "node" => Ok(Language::JavaScript),
+            "javascript" | "js" | "node" | "ts" | "typescript" => Ok(Language::JavaScript),
             "java" => Ok(Language::Java),
             "c" => Ok(Language::C),
             "rust" | "rs" => Ok(Language::Rust),
@@ -230,14 +230,14 @@ impl Language {
                 feat("sandbox", Full, "pytest-runner"),
             ],
             Language::JavaScript => vec![
-                feat("instrumentation", Full, "istanbul"),
+                feat("instrumentation", Full, "istanbul+v8+c8"),
                 feat("test-runner", Full, "jest"),
                 feat("dep-install", Full, "npm"),
                 feat("dep-audit", Full, "npm-audit"),
                 feat("security-patterns", Full, "dom-xss"),
                 feat("unsafe-analysis", NotApplicable, ""),
                 feat("path-normalize", Full, "static"),
-                feat("concolic", Missing, ""),
+                feat("concolic", Full, "ast+z3"),
                 feat("fuzz", Full, "generic"),
                 feat("sandbox", Full, "jest-runner"),
             ],
@@ -623,6 +623,8 @@ mod tests {
         assert_eq!("rs".parse::<Language>().unwrap(), Language::Rust);
         assert_eq!("rb".parse::<Language>().unwrap(), Language::Ruby);
         assert_eq!("ruby".parse::<Language>().unwrap(), Language::Ruby);
+        assert_eq!("ts".parse::<Language>().unwrap(), Language::JavaScript);
+        assert_eq!("typescript".parse::<Language>().unwrap(), Language::JavaScript);
         assert!("unknown".parse::<Language>().is_err());
     }
 
@@ -1081,6 +1083,20 @@ mod tests {
                 .unwrap();
             assert_ne!(sec.status, FeatureStatus::Missing);
         }
+    }
+
+    #[test]
+    fn javascript_concolic_full() {
+        let features = Language::JavaScript.supported_features();
+        let concolic = features.iter().find(|f| f.name == "concolic").unwrap();
+        assert_eq!(concolic.status, FeatureStatus::Full);
+    }
+
+    #[test]
+    fn javascript_instrumentation_tools_updated() {
+        let features = Language::JavaScript.supported_features();
+        let instr = features.iter().find(|f| f.name == "instrumentation").unwrap();
+        assert!(instr.tool.contains("v8"), "tool should mention v8: {}", instr.tool);
     }
 
     #[test]

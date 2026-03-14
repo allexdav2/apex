@@ -7,6 +7,7 @@ pub mod command;
 pub mod config;
 pub mod error;
 pub mod fixture_runner;
+pub mod hash;
 pub mod traits;
 pub mod types;
 

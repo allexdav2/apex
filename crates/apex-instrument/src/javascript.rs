@@ -1,6 +1,7 @@
 use apex_core::{
     command::{CommandRunner, CommandSpec, RealCommandRunner},
     error::{ApexError, Result},
+    hash::fnv1a_hash,
     traits::Instrumentor,
     types::{BranchId, InstrumentedTarget, Target},
 };
@@ -12,19 +13,6 @@ use std::{
     sync::Arc,
 };
 use tracing::{info, warn};
-
-// ---------------------------------------------------------------------------
-// FNV-1a hash (same algorithm as Python instrumentor)
-// ---------------------------------------------------------------------------
-
-fn fnv1a_hash(s: &str) -> u64 {
-    let mut hash: u64 = 0xcbf2_9ce4_8422_2325;
-    for byte in s.bytes() {
-        hash ^= byte as u64;
-        hash = hash.wrapping_mul(0x0000_0100_0000_01b3);
-    }
-    hash
-}
 
 // ---------------------------------------------------------------------------
 // Istanbul / nyc coverage-final.json schema

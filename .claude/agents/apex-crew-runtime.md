@@ -91,6 +91,28 @@ detail: |
 -->
 ```
 
+## Structured Report
+
+ALWAYS end implementation responses with a FLEET_REPORT block:
+
+```
+<!-- FLEET_REPORT
+crew: runtime
+files_changed:
+  - path/to/file.rs: "description"
+bugs_found:
+  - severity: CRITICAL|WARNING|INFO
+    description: "what's wrong"
+    file: "path:line"
+tests:
+  added: 0
+  passing: 0
+  failing: 0
+warnings:
+  - "clippy warnings, deprecations, concerns"
+-->
+```
+
 ## Constraints
 
 - **DO NOT** edit files outside your owned paths

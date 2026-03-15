@@ -276,8 +276,9 @@ fn normalize_spdx(expr: &str) -> String {
     s = s.replace(['(', ')'], "");
     // Normalize whitespace (tabs, multiple spaces → single space)
     s = s.split_whitespace().collect::<Vec<_>>().join(" ");
-    // Normalize operator case
-    s = s.replace(" or ", " OR ").replace(" and ", " AND ");
+    // Normalize operator case (handle lowercase, title-case, and uppercase variants)
+    s = s.replace(" or ", " OR ").replace(" Or ", " OR ")
+         .replace(" and ", " AND ").replace(" And ", " AND ");
     s
 }
 
@@ -363,6 +364,8 @@ fn find_denied_in_expr(expr: &str, deny: &[&str]) -> Option<String> {
 
 fn parse_cargo_toml_licenses(content: &str, path: &Path) -> Vec<LicenseEntry> {
     let mut entries = Vec::new();
+    // Strip UTF-8 BOM if present — toml does not handle BOM.
+    let content = content.strip_prefix('\u{FEFF}').unwrap_or(content);
     let parsed: toml::Value = match toml::from_str(content) {
         Ok(v) => v,
         Err(_) => return entries,
@@ -392,6 +395,8 @@ fn parse_cargo_toml_licenses(content: &str, path: &Path) -> Vec<LicenseEntry> {
 
 fn parse_package_json_licenses(content: &str, path: &Path) -> Vec<LicenseEntry> {
     let mut entries = Vec::new();
+    // Strip UTF-8 BOM if present — serde_json does not handle BOM.
+    let content = content.strip_prefix('\u{FEFF}').unwrap_or(content);
     let parsed: serde_json::Value = match serde_json::from_str(content) {
         Ok(v) => v,
         Err(_) => return entries,
@@ -779,5 +784,313 @@ license = "MIT"
         // Tab characters in SPDX expressions should not cause false positives
         let result = check_policy(&LicensePolicy::Permissive, "MIT\tOR\tApache-2.0");
         assert!(matches!(result, PolicyVerdict::Allowed));
+    }
+
+    // -- Bug-hunting edge case tests ----------------------------------------
+
+    #[test]
+    fn bug_mixed_case_or_not_normalized() {
+        // BUG: normalize_spdx only handles lowercase " or " → " OR ".
+        // Title-case " Or " is NOT normalized, so "MIT Or Apache-2.0"
+        // is treated as a single unknown identifier instead of an OR expression.
+        let result = check_policy(&LicensePolicy::Permissive, "MIT Or Apache-2.0");
+        // Expected: Allowed (both sides are permissive)
+        // Actual: Unknown (treated as single identifier "MIT Or Apache-2.0")
+        assert!(
+            matches!(result, PolicyVerdict::Allowed),
+            "Title-case 'Or' should be treated as SPDX OR operator"
+        );
+    }
+
+    #[test]
+    fn bug_mixed_case_and_not_normalized() {
+        // BUG: Same issue for "And" — normalize_spdx only handles lowercase " and ".
+        let result = check_policy(&LicensePolicy::Enterprise, "GPL-3.0-only And MIT");
+        // Expected: Denied (GPL-3.0-only is denied under enterprise)
+        // Actual: Allowed (treated as single unrecognized identifier, not in deny list)
+        assert!(
+            matches!(result, PolicyVerdict::Denied { .. }),
+            "Title-case 'And' should be treated as SPDX AND operator"
+        );
+    }
+
+    #[test]
+    fn empty_license_string_is_unknown() {
+        // Empty license should be flagged as unknown, not silently allowed
+        let result = check_policy(&LicensePolicy::Permissive, "");
+        assert!(
+            matches!(result, PolicyVerdict::Unknown),
+            "Empty license string should be Unknown under permissive policy"
+        );
+    }
+
+    #[test]
+    fn whitespace_only_license_is_unknown() {
+        // Whitespace-only license should be flagged as unknown
+        let result = check_policy(&LicensePolicy::Permissive, "   ");
+        assert!(
+            matches!(result, PolicyVerdict::Unknown),
+            "Whitespace-only license should be Unknown"
+        );
+    }
+
+    #[test]
+    fn empty_license_not_denied_enterprise() {
+        // Empty string should not be denied (it's not in the deny list)
+        // but it shouldn't be silently allowed either — it should pass enterprise
+        // (since enterprise only denies specific licenses)
+        let result = check_policy(&LicensePolicy::Enterprise, "");
+        assert!(
+            matches!(result, PolicyVerdict::Allowed),
+            "Empty license should be Allowed under enterprise (not in deny list)"
+        );
+    }
+
+    #[test]
+    fn nested_parentheses_stripped() {
+        // Nested parentheses: ((MIT OR Apache-2.0))
+        let result = check_policy(&LicensePolicy::Permissive, "((MIT OR Apache-2.0))");
+        assert!(matches!(result, PolicyVerdict::Allowed));
+    }
+
+    #[test]
+    fn unmatched_open_paren_stripped() {
+        // Unmatched open paren — strip_parens just removes all parens
+        let result = check_policy(&LicensePolicy::Permissive, "(MIT");
+        assert!(
+            matches!(result, PolicyVerdict::Allowed),
+            "Unmatched open paren should still match after stripping"
+        );
+    }
+
+    #[test]
+    fn unmatched_close_paren_stripped() {
+        // Unmatched close paren
+        let result = check_policy(&LicensePolicy::Permissive, "MIT)");
+        assert!(
+            matches!(result, PolicyVerdict::Allowed),
+            "Unmatched close paren should still match after stripping"
+        );
+    }
+
+    #[test]
+    fn bug_nested_parentheses_not_stripped() {
+        // Nested parentheses: ((MIT OR Apache-2.0)) should parse correctly after stripping
+        let result = check_policy(&LicensePolicy::Permissive, "((MIT OR Apache-2.0))");
+        assert!(
+            matches!(result, PolicyVerdict::Allowed),
+            "Nested parentheses should be stripped and expression parsed correctly"
+        );
+    }
+
+    #[test]
+    fn bug_unmatched_open_paren_not_stripped() {
+        // Unmatched open paren "(MIT" should match "MIT" after stripping parens
+        let result = check_policy(&LicensePolicy::Permissive, "(MIT");
+        assert!(
+            matches!(result, PolicyVerdict::Allowed),
+            "Unmatched open paren should still match after stripping"
+        );
+    }
+
+    #[test]
+    fn bug_unmatched_close_paren_not_stripped() {
+        // Unmatched close paren "MIT)" should match "MIT" after stripping parens
+        let result = check_policy(&LicensePolicy::Permissive, "MIT)");
+        assert!(
+            matches!(result, PolicyVerdict::Allowed),
+            "Unmatched close paren should still match after stripping"
+        );
+    }
+
+    #[test]
+    fn bug_with_clause_lowercase_not_stripped() {
+        // BUG: normalize_spdx_id uses to_uppercase().find(" WITH ") to find position,
+        // then slices original string at that position. This works for ASCII.
+        // But "with" in lowercase should also be handled.
+        let result = check_policy(
+            &LicensePolicy::Permissive,
+            "Apache-2.0 with LLVM-exception",
+        );
+        assert!(
+            matches!(result, PolicyVerdict::Allowed),
+            "Lowercase 'with' should be handled same as 'WITH'"
+        );
+    }
+
+    #[test]
+    fn spdx_or_all_denied_enterprise() {
+        // "GPL-3.0-only OR AGPL-3.0-only" — both branches denied
+        let result = check_policy(
+            &LicensePolicy::Enterprise,
+            "GPL-3.0-only OR AGPL-3.0-only",
+        );
+        assert!(
+            matches!(result, PolicyVerdict::Denied { .. }),
+            "All-denied OR branches should be Denied"
+        );
+    }
+
+    #[test]
+    fn spdx_case_insensitive_license_id() {
+        // SPDX IDs should match case-insensitively: "mit" == "MIT"
+        let result = check_policy(&LicensePolicy::Permissive, "mit");
+        assert!(
+            matches!(result, PolicyVerdict::Allowed),
+            "License ID matching should be case-insensitive"
+        );
+    }
+
+    #[test]
+    fn spdx_leading_trailing_whitespace() {
+        let result = check_policy(&LicensePolicy::Permissive, "  MIT  ");
+        assert!(matches!(result, PolicyVerdict::Allowed));
+    }
+
+    #[test]
+    fn bug_normalize_spdx_id_with_plus_and_with_clause() {
+        // "GPL-2.0+ WITH Classpath-exception-2.0"
+        // Should normalize to "GPL-2.0-or-later" (strip WITH, then expand +)
+        // But the code strips WITH first, leaving "GPL-2.0+", then strips +.
+        // Wait — normalize_spdx_id checks WITH on the full id. The split happens
+        // on " OR "/" AND " first, so the full id here would be passed in.
+        // Let's verify the order is correct.
+        let normalized = normalize_spdx_id("GPL-2.0+ WITH Classpath-exception-2.0");
+        assert_eq!(
+            normalized, "GPL-2.0-or-later",
+            "Should strip WITH clause first, then expand + suffix"
+        );
+    }
+
+    #[test]
+    fn bug_classifier_non_license_prefix_returns_none() {
+        // Non-license classifiers should return None
+        let result = extract_license_from_classifier("Programming Language :: Python :: 3");
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn classifier_unknown_license_returns_last_segment() {
+        // Unknown license classifiers fall back to last segment
+        let result =
+            extract_license_from_classifier("License :: OSI Approved :: Mozilla Public License 2.0");
+        assert_eq!(result, Some("Mozilla Public License 2.0".to_string()));
+    }
+
+    #[test]
+    fn bug_windows_line_endings_in_cargo_toml() {
+        // Windows-style \r\n line endings in Cargo.toml
+        let content = "[package]\r\nname = \"win-crate\"\r\nversion = \"0.1.0\"\r\nlicense = \"MIT\"\r\n";
+        let entries = parse_cargo_toml_licenses(content, &PathBuf::from("Cargo.toml"));
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0].license, "MIT");
+    }
+
+    #[test]
+    fn bug_bom_in_package_json() {
+        // UTF-8 BOM prefix in package.json
+        let content = "\u{FEFF}{\"name\": \"bom-pkg\", \"license\": \"MIT\"}";
+        let entries = parse_package_json_licenses(content, &PathBuf::from("package.json"));
+        // serde_json does NOT handle BOM — this should fail to parse
+        // If it returns 0 entries, the BOM silently causes license to be missed
+        assert_eq!(
+            entries.len(),
+            1,
+            "BOM-prefixed JSON should still parse (or be explicitly handled)"
+        );
+    }
+
+    #[test]
+    fn bug_bom_in_cargo_toml() {
+        // UTF-8 BOM prefix in Cargo.toml
+        let content = "\u{FEFF}[package]\nname = \"bom-crate\"\nversion = \"0.1.0\"\nlicense = \"MIT\"\n";
+        let entries = parse_cargo_toml_licenses(content, &PathBuf::from("Cargo.toml"));
+        assert_eq!(
+            entries.len(),
+            1,
+            "BOM-prefixed TOML should still parse (or be explicitly handled)"
+        );
+    }
+
+    #[test]
+    fn pyproject_direct_license_string() {
+        // PEP 639 style: license = "MIT" (direct string, not table)
+        let content = r#"
+[project]
+name = "modern-pkg"
+license = "MIT"
+"#;
+        let entries = parse_pyproject_licenses(content, &PathBuf::from("pyproject.toml"));
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0].license, "MIT");
+    }
+
+    #[test]
+    fn cargo_toml_no_package_section() {
+        // Workspace Cargo.toml with no [package]
+        let content = r#"
+[workspace]
+members = ["crate-a", "crate-b"]
+"#;
+        let entries = parse_cargo_toml_licenses(content, &PathBuf::from("Cargo.toml"));
+        assert!(entries.is_empty());
+    }
+
+    #[test]
+    fn cargo_toml_no_license_field() {
+        // Package without license field
+        let content = r#"
+[package]
+name = "no-license"
+version = "0.1.0"
+"#;
+        let entries = parse_cargo_toml_licenses(content, &PathBuf::from("Cargo.toml"));
+        assert!(entries.is_empty());
+    }
+
+    #[test]
+    fn package_json_no_license() {
+        let content = r#"{"name": "no-lic", "version": "1.0.0"}"#;
+        let entries = parse_package_json_licenses(content, &PathBuf::from("package.json"));
+        assert!(entries.is_empty());
+    }
+
+    #[test]
+    fn package_json_invalid_json() {
+        let content = "not valid json {{{";
+        let entries = parse_package_json_licenses(content, &PathBuf::from("package.json"));
+        assert!(entries.is_empty());
+    }
+
+    #[test]
+    fn cargo_toml_invalid_toml() {
+        let content = "[invalid\nnot toml";
+        let entries = parse_cargo_toml_licenses(content, &PathBuf::from("Cargo.toml"));
+        assert!(entries.is_empty());
+    }
+
+    #[test]
+    fn custom_policy_unknown_license() {
+        // License not in allow or deny list → Unknown
+        let policy = LicensePolicy::Custom {
+            deny: vec!["GPL-3.0-only".into()],
+            allow: vec!["MIT".into()],
+        };
+        let result = check_policy(&policy, "Apache-2.0");
+        assert!(
+            matches!(result, PolicyVerdict::Unknown),
+            "License not in allow or deny should be Unknown"
+        );
+    }
+
+    #[test]
+    fn bug_spdx_or_with_spaces_around_identifiers() {
+        // Extra spaces around identifiers in OR expression
+        let result = check_policy(&LicensePolicy::Permissive, "MIT  OR  Apache-2.0");
+        // normalize_spdx splits on whitespace and rejoins, so double spaces become single
+        assert!(
+            matches!(result, PolicyVerdict::Allowed),
+            "Extra spaces in SPDX expression should be normalized"
+        );
     }
 }

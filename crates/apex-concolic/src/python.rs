@@ -379,7 +379,7 @@ impl PythonConcolicStrategy {
             let mut row = Vec::new();
             for (k, v) in &trace_entry.locals {
                 if let Some(n) = v.as_i64() {
-                    let flip = if target_direction == 0 { n + 1 } else { n - 1 };
+                    let flip = if target_direction == 0 { n.saturating_add(1) } else { n.saturating_sub(1) };
                     row.push((k.clone(), serde_json::json!(flip)));
                 } else if v.is_null() {
                     row.push((k.clone(), serde_json::json!(0)));

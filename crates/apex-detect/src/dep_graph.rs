@@ -97,6 +97,13 @@ pub fn analyze_cargo(target: &Path) -> DepGraphReport {
     let mut seen = HashSet::new();
     nodes.retain(|n| seen.insert(n.name.clone()));
 
+    // Ensure every package has an entry in both fan_in and fan_out (zero-degree nodes
+    // would otherwise be missing, making callers unable to distinguish "absent" from "0").
+    for node in &nodes {
+        fan_in.entry(node.name.clone()).or_insert(0);
+        fan_out.entry(node.name.clone()).or_insert(0);
+    }
+
     // Simple cycle detection via DFS
     let cycles = detect_cycles(&edges);
 
@@ -160,6 +167,10 @@ fn detect_cycles(edges: &[(String, String)]) -> Vec<Vec<String>> {
     cycles
 }
 
+// TODO(Bug 14): The current `visited` set causes DFS to skip nodes already seen
+// from a different path, which may miss cycles reachable only via those nodes.
+// A proper fix requires Tarjan's SCC algorithm or resetting `visited` per
+// root — both require more invasive restructuring.
 fn dfs_cycles<'a>(
     node: &'a str,
     adj: &HashMap<&'a str, Vec<&'a str>>,
@@ -181,7 +192,7 @@ fn dfs_cycles<'a>(
                 let start = path.iter().position(|&n| n == next).unwrap_or(0);
                 let cycle: Vec<String> =
                     path[start..].iter().map(|s| s.to_string()).collect();
-                if cycle.len() > 1 {
+                if !cycle.is_empty() {
                     cycles.push(cycle);
                 }
             }

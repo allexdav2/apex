@@ -455,15 +455,22 @@ fn extract_covered_branches(json: &LlvmCovJson, target_str: &str) -> Vec<BranchI
                 if seg.len() < 6 {
                     continue;
                 }
-                let has_count = seg[3].as_bool().unwrap_or(false);
-                let is_entry = seg[4].as_bool().unwrap_or(false);
-                let is_gap = seg[5].as_bool().unwrap_or(false);
-                let count = seg[2].as_u64().unwrap_or(0);
+                let has_count = seg.get(3)
+                    .and_then(|v| v.as_bool().or_else(|| v.as_u64().map(|n| n != 0)))
+                    .unwrap_or(false);
+                let is_entry = seg.get(4)
+                    .and_then(|v| v.as_bool().or_else(|| v.as_u64().map(|n| n != 0)))
+                    .unwrap_or(false);
+                let is_gap = seg.get(5)
+                    .and_then(|v| v.as_bool().or_else(|| v.as_u64().map(|n| n != 0)))
+                    .unwrap_or(false);
+                let count = seg[2].as_f64().map(|f| f as u64).unwrap_or(0);
 
                 if has_count && is_entry && !is_gap && count > 0 {
                     let line = seg[0].as_u64().unwrap_or(0).min(u32::MAX as u64) as u32;
+                    // Skip degenerate segments with line=0 (invalid source location)
                     if line == 0 {
-                        continue; // invalid 1-indexed line (e.g. null JSON value)
+                        continue;
                     }
                     let col = seg[1].as_u64().unwrap_or(0).min(u16::MAX as u64) as u16;
                     branches.push(BranchId::new(file_id, line, col, 0));
@@ -492,13 +499,19 @@ fn parse_coverage_stats(
                 if seg.len() < 6 {
                     continue;
                 }
-                let has_count = seg[3].as_bool().unwrap_or(false);
-                let is_entry = seg[4].as_bool().unwrap_or(false);
-                let is_gap = seg[5].as_bool().unwrap_or(false);
+                let has_count = seg.get(3)
+                    .and_then(|v| v.as_bool().or_else(|| v.as_u64().map(|n| n != 0)))
+                    .unwrap_or(false);
+                let is_entry = seg.get(4)
+                    .and_then(|v| v.as_bool().or_else(|| v.as_u64().map(|n| n != 0)))
+                    .unwrap_or(false);
+                let is_gap = seg.get(5)
+                    .and_then(|v| v.as_bool().or_else(|| v.as_u64().map(|n| n != 0)))
+                    .unwrap_or(false);
 
                 if has_count && is_entry && !is_gap {
                     total += 1;
-                    if seg[2].as_u64().unwrap_or(0) > 0 {
+                    if seg[2].as_f64().map(|f| f as u64).unwrap_or(0) > 0 {
                         covered += 1;
                     }
                 }
@@ -810,5 +823,156 @@ mod tests {
         assert_eq!(branches.len(), 1);
         // Column saturates at u16::MAX
         assert_eq!(branches[0].col, u16::MAX);
+    }
+
+    #[test]
+    fn bug_null_segment_values_create_degenerate_branch() {
+        // After fix: segments with null line (→ as_u64()=None → 0) are rejected by
+        // the line==0 guard, so no phantom branch is created.
+        let json = LlvmCovJson {
+            data: vec![LlvmCovData {
+                files: vec![LlvmCovFile {
+                    filename: "/proj/src/lib.rs".to_string(),
+                    segments: vec![vec![
+                        serde_json::json!(null), // line = null → 0 → rejected
+                        serde_json::json!(null), // col = null
+                        serde_json::json!(5),    // count = 5
+                        serde_json::json!(true), // has_count
+                        serde_json::json!(true), // is_entry
+                        serde_json::json!(false), // is_gap
+                    ]],
+                }],
+            }],
+        };
+        let branches = extract_covered_branches(&json, "/proj");
+        assert_eq!(branches.len(), 0, "null line (→0) must be rejected by line==0 guard");
+    }
+
+    #[test]
+    fn bug_string_segment_values_create_degenerate_branch() {
+        // After fix: string values in line/col → as_u64()=None → 0 → rejected.
+        let json = LlvmCovJson {
+            data: vec![LlvmCovData {
+                files: vec![LlvmCovFile {
+                    filename: "/proj/src/lib.rs".to_string(),
+                    segments: vec![vec![
+                        serde_json::json!("not_a_number"),
+                        serde_json::json!("also_not"),
+                        serde_json::json!(1),
+                        serde_json::json!(true),
+                        serde_json::json!(true),
+                        serde_json::json!(false),
+                    ]],
+                }],
+            }],
+        };
+        let branches = extract_covered_branches(&json, "/proj");
+        assert_eq!(branches.len(), 0, "string line (→0) must be rejected by line==0 guard");
+    }
+
+    #[test]
+    fn bug_float_count_treated_as_zero() {
+        // After fix: as_f64().map(|f| f as u64) correctly converts 1.0 → 1,
+        // so a covered region with a float count is no longer dropped.
+        let json = LlvmCovJson {
+            data: vec![LlvmCovData {
+                files: vec![LlvmCovFile {
+                    filename: "/proj/src/lib.rs".to_string(),
+                    segments: vec![vec![
+                        serde_json::json!(10),
+                        serde_json::json!(5),
+                        serde_json::json!(1.0), // float count — now correctly read as 1
+                        serde_json::json!(true),
+                        serde_json::json!(true),
+                        serde_json::json!(false),
+                    ]],
+                }],
+            }],
+        };
+        let branches = extract_covered_branches(&json, "/proj");
+        assert_eq!(branches.len(), 1, "float count 1.0 must be treated as covered");
+        assert_eq!(branches[0].line, 10);
+    }
+
+    #[test]
+    fn bug_float_count_undercounts_coverage_stats() {
+        // After fix: parse_coverage_stats also uses as_f64(), so 1.0 is counted as covered.
+        let json = LlvmCovJson {
+            data: vec![LlvmCovData {
+                files: vec![LlvmCovFile {
+                    filename: "/proj/src/lib.rs".to_string(),
+                    segments: vec![vec![
+                        serde_json::json!(10),
+                        serde_json::json!(5),
+                        serde_json::json!(1.0), // float count
+                        serde_json::json!(true),
+                        serde_json::json!(true),
+                        serde_json::json!(false),
+                    ]],
+                }],
+            }],
+        };
+        let (_, total, covered) = parse_coverage_stats(&json, "/proj");
+        assert_eq!(total, 1, "segment must be counted in total");
+        assert_eq!(covered, 1, "float count 1.0 must be treated as covered");
+    }
+
+    #[test]
+    fn bug_negative_line_number_defaults_to_zero() {
+        // After fix: negative line → as_u64()=None → 0 → rejected by line==0 guard.
+        let json = LlvmCovJson {
+            data: vec![LlvmCovData {
+                files: vec![LlvmCovFile {
+                    filename: "/proj/src/lib.rs".to_string(),
+                    segments: vec![vec![
+                        serde_json::json!(-1),  // negative line → as_u64()=None → 0
+                        serde_json::json!(5),
+                        serde_json::json!(1),
+                        serde_json::json!(true),
+                        serde_json::json!(true),
+                        serde_json::json!(false),
+                    ]],
+                }],
+            }],
+        };
+        let branches = extract_covered_branches(&json, "/proj");
+        assert_eq!(branches.len(), 0, "negative line (→0) must be rejected by line==0 guard");
+    }
+
+    #[test]
+    fn bug_make_relative_empty_path_produces_constant_file_id() {
+        // When path == target, make_relative returns ".". Two different projects
+        // whose paths equal their own targets both produce fnv1a(b"."), causing a
+        // file_id collision in the index. This is a known limitation documented here.
+        let id1 = fnv1a(make_relative("/proj", "/proj").as_bytes());
+        let id2 = fnv1a(make_relative("/other", "/other").as_bytes());
+        // Both return "." → same hash
+        assert_eq!(
+            id1, id2,
+            "paths equal to their own targets both map to '.' → same file_id collision"
+        );
+    }
+
+    #[test]
+    fn bug_has_count_non_bool_defaults_false() {
+        // After fix: integer 1 for has_count is accepted (as_bool() OR as_u64()!=0).
+        let json = LlvmCovJson {
+            data: vec![LlvmCovData {
+                files: vec![LlvmCovFile {
+                    filename: "/proj/src/lib.rs".to_string(),
+                    segments: vec![vec![
+                        serde_json::json!(10),
+                        serde_json::json!(1),
+                        serde_json::json!(5),
+                        serde_json::json!(1),     // has_count as integer 1
+                        serde_json::json!(true),
+                        serde_json::json!(false),
+                    ]],
+                }],
+            }],
+        };
+        let branches = extract_covered_branches(&json, "/proj");
+        assert_eq!(branches.len(), 1, "integer 1 for has_count must be treated as true");
+        assert_eq!(branches[0].line, 10);
     }
 }

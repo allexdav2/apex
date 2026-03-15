@@ -421,11 +421,16 @@ fn find_comparison_op_outside_parens(text: &str) -> Option<(&'static str, usize)
         }
     }
 
-    // Validate: make sure the chosen op is not a prefix of a longer op already handled
+    // Validate: make sure the chosen op is not part of an arrow `=>`.
+    // e.g. if we found `>` at position 1 in `=>`, discard it.
     if let Some((op, pos)) = best {
-        // e.g. if we found `=` inside `===`, discard
-        // (safe because `===` is tried first and would have been `best` already)
-        let _ = (op, pos);
+        if (op == ">" || op == ">=") && pos > 0 {
+            let bytes = text.as_bytes();
+            if bytes[pos - 1] == b'=' {
+                // This `>` is the second character of `=>` — skip it
+                return None;
+            }
+        }
         best
     } else {
         None

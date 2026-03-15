@@ -831,7 +831,8 @@ const GO_SECURITY_PATTERNS: &[SecurityPattern] = &[
     },
     SecurityPattern {
         sink: "json.Unmarshal(",
-        description: "JSON unmarshal into interface{} — accepts arbitrary types, may enable injection",
+        description:
+            "JSON unmarshal into interface{} — accepts arbitrary types, may enable injection",
         category: FindingCategory::SecuritySmell,
         base_severity: Severity::Medium,
         user_input_indicators: &["request", "body", "param", "input", "recv", "Read"],
@@ -1824,7 +1825,10 @@ mod tests {
         );
         let ctx = make_ctx(files, Language::Go);
         let findings = SecurityPatternDetector.analyze(&ctx).await.unwrap();
-        assert!(!findings.is_empty(), "should detect db.Query(fmt.Sprintf SQL injection");
+        assert!(
+            !findings.is_empty(),
+            "should detect db.Query(fmt.Sprintf SQL injection"
+        );
         assert_eq!(findings[0].cwe_ids, vec![89]);
     }
 
@@ -1878,7 +1882,10 @@ mod tests {
         );
         let ctx = make_ctx(files, Language::Go);
         let findings = SecurityPatternDetector.analyze(&ctx).await.unwrap();
-        assert!(!findings.is_empty(), "should detect json.Unmarshal deserialization");
+        assert!(
+            !findings.is_empty(),
+            "should detect json.Unmarshal deserialization"
+        );
         assert_eq!(findings[0].cwe_ids, vec![502]);
     }
 
@@ -1946,7 +1953,10 @@ mod tests {
         );
         let ctx = make_ctx(files, Language::CSharp);
         let findings = SecurityPatternDetector.analyze(&ctx).await.unwrap();
-        assert!(!findings.is_empty(), "should detect Process.Start injection");
+        assert!(
+            !findings.is_empty(),
+            "should detect Process.Start injection"
+        );
         assert_eq!(findings[0].cwe_ids, vec![78]);
     }
 
@@ -1985,7 +1995,10 @@ mod tests {
         );
         let ctx = make_ctx(files, Language::CSharp);
         let findings = SecurityPatternDetector.analyze(&ctx).await.unwrap();
-        assert!(!findings.is_empty(), "should detect BinaryFormatter deserialization");
+        assert!(
+            !findings.is_empty(),
+            "should detect BinaryFormatter deserialization"
+        );
         assert_eq!(findings[0].cwe_ids, vec![502]);
     }
 
@@ -2011,7 +2024,10 @@ mod tests {
         );
         let ctx = make_ctx(files, Language::CSharp);
         let findings = SecurityPatternDetector.analyze(&ctx).await.unwrap();
-        assert!(!findings.is_empty(), "should detect SHA1.Create weak crypto");
+        assert!(
+            !findings.is_empty(),
+            "should detect SHA1.Create weak crypto"
+        );
         assert_eq!(findings[0].cwe_ids, vec![327]);
     }
 
@@ -2037,7 +2053,10 @@ mod tests {
         );
         let ctx = make_ctx(files, Language::CSharp);
         let findings = SecurityPatternDetector.analyze(&ctx).await.unwrap();
-        assert!(!findings.is_empty(), "should detect File.ReadAllText path traversal");
+        assert!(
+            !findings.is_empty(),
+            "should detect File.ReadAllText path traversal"
+        );
         assert_eq!(findings[0].cwe_ids, vec![22]);
     }
 
@@ -2051,7 +2070,10 @@ mod tests {
         );
         let ctx = make_ctx(files, Language::CSharp);
         let findings = SecurityPatternDetector.analyze(&ctx).await.unwrap();
-        assert!(!findings.is_empty(), "should detect Environment.Exit in library");
+        assert!(
+            !findings.is_empty(),
+            "should detect Environment.Exit in library"
+        );
         assert_eq!(findings[0].cwe_ids, vec![705]);
     }
 
@@ -2066,7 +2088,10 @@ mod tests {
         );
         let ctx = make_ctx(files, Language::Swift);
         let findings = SecurityPatternDetector.analyze(&ctx).await.unwrap();
-        assert!(!findings.is_empty(), "should detect Process() command injection");
+        assert!(
+            !findings.is_empty(),
+            "should detect Process() command injection"
+        );
         assert_eq!(findings[0].cwe_ids, vec![78]);
     }
 
@@ -2079,7 +2104,10 @@ mod tests {
         );
         let ctx = make_ctx(files, Language::Swift);
         let findings = SecurityPatternDetector.analyze(&ctx).await.unwrap();
-        assert!(!findings.is_empty(), "should detect URLSession.shared.dataTask SSRF");
+        assert!(
+            !findings.is_empty(),
+            "should detect URLSession.shared.dataTask SSRF"
+        );
         assert_eq!(findings[0].cwe_ids, vec![918]);
     }
 
@@ -2092,7 +2120,10 @@ mod tests {
         );
         let ctx = make_ctx(files, Language::Swift);
         let findings = SecurityPatternDetector.analyze(&ctx).await.unwrap();
-        assert!(!findings.is_empty(), "should detect NSAppleScript code injection");
+        assert!(
+            !findings.is_empty(),
+            "should detect NSAppleScript code injection"
+        );
         assert_eq!(findings[0].cwe_ids, vec![94]);
     }
 
@@ -2105,7 +2136,10 @@ mod tests {
         );
         let ctx = make_ctx(files, Language::Swift);
         let findings = SecurityPatternDetector.analyze(&ctx).await.unwrap();
-        assert!(!findings.is_empty(), "should detect UserDefaults for sensitive data");
+        assert!(
+            !findings.is_empty(),
+            "should detect UserDefaults for sensitive data"
+        );
         assert_eq!(findings[0].cwe_ids, vec![312]);
     }
 
@@ -2118,7 +2152,10 @@ mod tests {
         );
         let ctx = make_ctx(files, Language::Swift);
         let findings = SecurityPatternDetector.analyze(&ctx).await.unwrap();
-        assert!(!findings.is_empty(), "should detect NSKeyedUnarchiver deserialization");
+        assert!(
+            !findings.is_empty(),
+            "should detect NSKeyedUnarchiver deserialization"
+        );
         assert_eq!(findings[0].cwe_ids, vec![502]);
     }
 
@@ -2185,7 +2222,10 @@ mod tests {
         );
         let ctx = make_ctx(files, Language::Cpp);
         let findings = SecurityPatternDetector.analyze(&ctx).await.unwrap();
-        assert!(!findings.is_empty(), "should detect vsprintf buffer overflow");
+        assert!(
+            !findings.is_empty(),
+            "should detect vsprintf buffer overflow"
+        );
         assert_eq!(findings[0].cwe_ids, vec![120]);
     }
 
@@ -2211,7 +2251,10 @@ mod tests {
         );
         let ctx = make_ctx(files, Language::Cpp);
         let findings = SecurityPatternDetector.analyze(&ctx).await.unwrap();
-        assert!(!findings.is_empty(), "should detect free() use-after-free heuristic");
+        assert!(
+            !findings.is_empty(),
+            "should detect free() use-after-free heuristic"
+        );
         assert_eq!(findings[0].cwe_ids, vec![416]);
     }
 
@@ -2237,7 +2280,10 @@ mod tests {
         );
         let ctx = make_ctx(files, Language::Cpp);
         let findings = SecurityPatternDetector.analyze(&ctx).await.unwrap();
-        assert!(!findings.is_empty(), "should detect std::system command injection");
+        assert!(
+            !findings.is_empty(),
+            "should detect std::system command injection"
+        );
         assert_eq!(findings[0].cwe_ids, vec![78]);
     }
 
@@ -2250,7 +2296,10 @@ mod tests {
         );
         let ctx = make_ctx(files, Language::C);
         let findings = SecurityPatternDetector.analyze(&ctx).await.unwrap();
-        assert!(!findings.is_empty(), "should detect printf format string vulnerability");
+        assert!(
+            !findings.is_empty(),
+            "should detect printf format string vulnerability"
+        );
         assert_eq!(findings[0].cwe_ids, vec![134]);
     }
 
@@ -2263,7 +2312,10 @@ mod tests {
         );
         let ctx = make_ctx(files, Language::C);
         let findings = SecurityPatternDetector.analyze(&ctx).await.unwrap();
-        assert!(!findings.is_empty(), "should detect system() command injection");
+        assert!(
+            !findings.is_empty(),
+            "should detect system() command injection"
+        );
         assert_eq!(findings[0].cwe_ids, vec![78]);
     }
 }

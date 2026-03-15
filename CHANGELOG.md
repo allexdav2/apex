@@ -4,6 +4,9 @@ All notable changes to APEX will be documented in this file.
 
 ## [Unreleased]
 
+### Changed
+- Upgraded rand 0.8 → 0.9 and rand_distr 0.4 → 0.5 (eliminates 3 duplicate crate versions)
+
 ## [0.2.0] — 2026-03-16
 
 ### Added

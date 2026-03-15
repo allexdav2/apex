@@ -525,8 +525,7 @@ mod tests {
         assert_eq!(m.name(), "duplicate_block");
     }
 
-    // Exercise RngCoreWrapper::fill_bytes and try_fill_bytes directly.
-    // These are the two branches reported uncovered (lines 147-152).
+    // Exercise RngCoreWrapper::fill_bytes directly.
     #[test]
     fn rng_core_wrapper_fill_bytes() {
         use rand::RngCore;
@@ -540,8 +539,6 @@ mod tests {
             "fill_bytes should have written random data"
         );
     }
-
-    // try_fill_bytes was removed from RngCore in rand 0.9 (moved to TryRngCore)
 
     #[test]
     fn all_builtin_mutators_implement_trait() {

@@ -11,7 +11,7 @@ const { pipeline } = require("stream/promises");
 const { createGunzip } = require("zlib");
 const tar = require("tar"); // peer/optional — fallback below
 
-const REPO = "allexdav2/apex";
+const REPO = "sahajamoth/apex";
 const BINARY = "apex";
 const VERSION = require("./package.json").version;
 

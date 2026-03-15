@@ -165,7 +165,7 @@ git push
 
 1. Go to https://smithery.ai/new
 2. Sign in with GitHub
-3. Select `allexdav2/apex` repository
+3. Select `sahajamoth/apex` repository
 4. Smithery auto-reads `smithery.yaml`
 5. Review and submit
 
@@ -212,7 +212,7 @@ Simple logo for APEX — coverage bar graph or shield icon.
 Go to https://github.com/cline/mcp-marketplace and open an issue with:
 - Title: "Add APEX — Code Coverage & Security Analysis MCP Server"
 - Body:
-  - GitHub URL: https://github.com/allexdav2/apex
+  - GitHub URL: https://github.com/sahajamoth/apex
   - Logo: attach 400x400 PNG
   - Description: "Coverage analysis and security detection for 11 languages. 6 MCP tools: coverage gaps, CWE-mapped findings, reverse path reachability, CI gate, prerequisites check, deployment scoring."
   - Install: `npm install -g @apex-coverage/cli`
@@ -230,8 +230,8 @@ Go to https://cursor.directory/plugins and submit:
 - Name: APEX
 - Description: Code coverage & security analysis for 11 languages
 - MCP config: `{ "command": "apex", "args": ["mcp"] }`
-- GitHub: https://github.com/allexdav2/apex
-- Install: `brew install allexdav2/tap/apex` or `npm i -g @apex-coverage/cli`
+- GitHub: https://github.com/sahajamoth/apex
+- Install: `brew install sahajamoth/tap/apex` or `npm i -g @apex-coverage/cli`
 
 ---
 

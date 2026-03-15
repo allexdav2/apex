@@ -1,10 +1,10 @@
 {
   "name": "APEX",
   "description": "Autonomous code coverage analysis and security detection. Analyzes 11 languages for coverage gaps, security vulnerabilities (CWE-mapped), reverse path reachability, and deployment readiness.",
-  "url": "https://github.com/allexdav2/apex",
+  "url": "https://github.com/sahajamoth/apex",
   "version": "0.1.0",
   "provider": {
-    "organization": "allexdav2"
+    "organization": "sahajamoth"
   },
   "capabilities": {
     "tools": true,

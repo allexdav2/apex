@@ -6,7 +6,7 @@ name = "apex-security-analyst"
 version = "0.1.0"
 description = "Security analysis agent — runs detectors, triages findings by severity, suggests fixes with reachability context"
 license = "MIT"
-authors = ["allexdav2"]
+authors = ["sahajamoth"]
 namespace = "@apex"
 keywords = ["security", "sast", "cwe", "vulnerability", "code-review"]
 

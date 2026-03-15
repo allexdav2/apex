@@ -1,7 +1,7 @@
 # APEX — Autonomous Path EXploration
 
-[![CI](https://github.com/allexdav2/apex/actions/workflows/ci.yml/badge.svg)](https://github.com/allexdav2/apex/actions/workflows/ci.yml)
-[![Release](https://img.shields.io/github/v/release/allexdav2/apex?label=release)](https://github.com/allexdav2/apex/releases/latest)
+[![CI](https://github.com/sahajamoth/apex/actions/workflows/ci.yml/badge.svg)](https://github.com/sahajamoth/apex/actions/workflows/ci.yml)
+[![Release](https://img.shields.io/github/v/release/sahajamoth/apex?label=release)](https://github.com/sahajamoth/apex/releases/latest)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
 **Stop guessing what your tests miss.** APEX finds dead code, flaky tests,
@@ -83,13 +83,13 @@ $ /apex-intel
 **Standalone installer** (recommended — macOS and Linux):
 
 ```bash
-curl -sSL https://raw.githubusercontent.com/allexdav2/apex/main/install.sh | sh
+curl -sSL https://raw.githubusercontent.com/sahajamoth/apex/main/install.sh | sh
 ```
 
 **Homebrew:**
 
 ```bash
-brew install allexdav2/tap/apex
+brew install sahajamoth/tap/apex
 ```
 
 **npm:**
@@ -107,13 +107,13 @@ pipx install apex-coverage
 **Nix:**
 
 ```bash
-nix run github:allexdav2/apex
+nix run github:sahajamoth/apex
 ```
 
 **Cargo** (from source):
 
 ```bash
-cargo install --git https://github.com/allexdav2/apex
+cargo install --git https://github.com/sahajamoth/apex
 ```
 
 <details>
@@ -125,7 +125,7 @@ rustup component add llvm-tools-preview
 cargo install cargo-llvm-cov
 
 # Clone and build
-git clone https://github.com/allexdav2/apex.git && cd apex
+git clone https://github.com/sahajamoth/apex.git && cd apex
 cargo build --release
 
 # With optional heavy features (Z3, LibAFL, PyO3)

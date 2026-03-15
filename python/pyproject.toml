@@ -22,5 +22,5 @@ classifiers = [
 apex = "apex_cli:main"
 
 [project.urls]
-Homepage = "https://github.com/allexdav2/apex"
-Repository = "https://github.com/allexdav2/apex"
+Homepage = "https://github.com/sahajamoth/apex"
+Repository = "https://github.com/sahajamoth/apex"

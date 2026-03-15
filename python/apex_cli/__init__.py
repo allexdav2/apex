@@ -11,7 +11,7 @@ from pathlib import Path
 
 __version__ = "0.1.0"
 
-REPO = "allexdav2/apex"
+REPO = "sahajamoth/apex"
 BINARY = "apex"
 
 # Binary is cached next to this package

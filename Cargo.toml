@@ -26,7 +26,7 @@ version = "0.1.0"
 edition = "2021"
 authors = ["AD <allexdav@gmail.com>"]
 license = "MIT"
-repository = "https://github.com/allexdav2/apex"
+repository = "https://github.com/sahajamoth/apex"
 
 [workspace.dependencies]
 tokio = { version = "1", features = ["full"] }

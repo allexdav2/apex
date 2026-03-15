@@ -70,21 +70,21 @@
 **Publishing workflow:**
 1. Build the `mcp-publisher` CLI from the registry repo
 2. Authenticate via GitHub OAuth, GitHub OIDC (for CI), DNS verification, or HTTP verification
-3. Namespace is validated (e.g., `io.github.allexdav2/apex` requires GitHub auth as that user)
+3. Namespace is validated (e.g., `io.github.sahajamoth/apex` requires GitHub auth as that user)
 4. Server metadata validated against `server.schema.json`
 5. Published to PostgreSQL-backed registry
 
 **ServerJSON format (what APEX needs):**
 ```json
 {
-  "name": "io.github.allexdav2/apex",
+  "name": "io.github.sahajamoth/apex",
   "title": "APEX Coverage Analyzer",
   "description": "Autonomous path exploration and code coverage gap analysis",
   "version": "0.1.0",
   "repository": {
-    "url": "https://github.com/allexdav2/apex"
+    "url": "https://github.com/sahajamoth/apex"
   },
-  "websiteUrl": "https://github.com/allexdav2/apex",
+  "websiteUrl": "https://github.com/sahajamoth/apex",
   "packages": [
     {
       "registryType": "npm",
@@ -184,7 +184,7 @@ apex-cursor-plugin/
   "name": "apex-coverage",
   "description": "Code coverage gap analysis and test generation guidance",
   "version": "0.1.0",
-  "author": { "name": "allexdav2" }
+  "author": { "name": "sahajamoth" }
 }
 ```
 

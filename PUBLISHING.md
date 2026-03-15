@@ -31,7 +31,7 @@ mcp-publisher publish --server integrations/mcp-registries/server.json
 
 1. Go to https://smithery.ai/new
 2. Sign in with GitHub
-3. Select `allexdav2/apex` repo
+3. Select `sahajamoth/apex` repo
 4. Smithery reads `smithery.yaml` from repo root (copy `integrations/smithery.yaml` to repo root first)
 5. Submit
 
@@ -50,7 +50,7 @@ Automatic — indexes from GitHub. Ensure:
 
 1. Open issue at https://github.com/cline/mcp-marketplace
 2. Provide:
-   - GitHub repo URL: https://github.com/allexdav2/apex
+   - GitHub repo URL: https://github.com/sahajamoth/apex
    - Logo: 400x400 PNG
    - Description: "Code coverage & security analysis for 11 languages"
 3. Wait ~2 days for review

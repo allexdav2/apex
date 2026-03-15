@@ -1,13 +1,13 @@
 {
   "$schema": "https://registry.modelcontextprotocol.io/server.schema.json",
-  "id": "io.github.allexdav2/apex",
+  "id": "io.github.sahajamoth/apex",
   "name": "APEX",
   "description": "Autonomous code coverage analysis and security detection for 11 languages. Coverage gaps, CWE-mapped findings, reverse path reachability, and deployment confidence scoring.",
   "version": "0.1.0",
-  "homepage": "https://github.com/allexdav2/apex",
-  "repository": "https://github.com/allexdav2/apex",
+  "homepage": "https://github.com/sahajamoth/apex",
+  "repository": "https://github.com/sahajamoth/apex",
   "license": "MIT",
-  "authors": ["allexdav2"],
+  "authors": ["sahajamoth"],
   "keywords": ["coverage", "security", "testing", "sast", "cwe", "sarif", "code-analysis"],
   "transport": {
     "type": "stdio",
@@ -68,7 +68,7 @@
   "install": {
     "npm": "@apex-coverage/cli",
     "pip": "apex-coverage",
-    "homebrew": "allexdav2/tap/apex",
+    "homebrew": "sahajamoth/tap/apex",
     "cargo": "apex-coverage"
   }
 }

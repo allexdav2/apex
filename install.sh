@@ -1,10 +1,10 @@
 #!/bin/sh
 # APEX installer — downloads the latest release binary for your platform.
-# Usage: curl -sSL https://raw.githubusercontent.com/allexdav2/apex/main/install.sh | sh
+# Usage: curl -sSL https://raw.githubusercontent.com/sahajamoth/apex/main/install.sh | sh
 
 set -eu
 
-REPO="allexdav2/apex"
+REPO="sahajamoth/apex"
 BINARY="apex"
 INSTALL_DIR="${APEX_INSTALL_DIR:-/usr/local/bin}"
 

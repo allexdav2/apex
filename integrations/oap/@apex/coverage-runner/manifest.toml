@@ -6,7 +6,7 @@ name = "apex-coverage-runner"
 version = "0.1.0"
 description = "Multi-round coverage improvement agent — analyzes gaps, writes tests, re-measures, iterates until target reached"
 license = "MIT"
-authors = ["allexdav2"]
+authors = ["sahajamoth"]
 namespace = "@apex"
 keywords = ["coverage", "testing", "test-generation", "multi-round"]
 

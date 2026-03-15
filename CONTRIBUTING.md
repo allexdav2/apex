@@ -3,7 +3,7 @@
 ## Development Setup
 
 ```bash
-git clone https://github.com/allexdav2/apex.git
+git clone https://github.com/sahajamoth/apex.git
 cd apex
 cargo build
 cargo test --workspace

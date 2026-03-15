@@ -6,7 +6,7 @@ name = "apex-mcp"
 version = "0.1.0"
 description = "APEX MCP server — exposes coverage analysis, security detection, and reachability as MCP tools for any AI coding assistant"
 license = "MIT"
-authors = ["allexdav2"]
+authors = ["sahajamoth"]
 namespace = "@apex"
 keywords = ["mcp", "coverage", "security", "code-analysis", "multi-language"]
 
@@ -41,4 +41,4 @@ tools = [
 ]
 
 [distribution]
-install = { cargo = "apex-coverage", npm = "@apex-coverage/cli", pip = "apex-coverage", brew = "allexdav2/tap/apex" }
+install = { cargo = "apex-coverage", npm = "@apex-coverage/cli", pip = "apex-coverage", brew = "sahajamoth/tap/apex" }

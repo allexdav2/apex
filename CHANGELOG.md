@@ -89,10 +89,10 @@ All notable changes to APEX will be documented in this file.
 
 #### Distribution
 - GitHub Releases with cross-compilation for 4 targets (linux/mac x amd64/arm64)
-- Homebrew formula: `brew install allexdav2/tap/apex`
+- Homebrew formula: `brew install sahajamoth/tap/apex`
 - npm wrapper: `npx @apex-coverage/cli run`
 - pip wrapper: `pipx install apex-coverage`
-- Nix flake: `nix run github:allexdav2/apex`
+- Nix flake: `nix run github:sahajamoth/apex`
 - curl installer: `curl -sSL .../install.sh | sh`
 
 #### Infrastructure

@@ -2,8 +2,8 @@
   "name": "apex",
   "description": "Code coverage & security analysis for 11 languages. Coverage gaps, CWE-mapped security findings, reverse path reachability, deployment confidence scores.",
   "version": "0.1.0",
-  "author": "allexdav2",
-  "homepage": "https://github.com/allexdav2/apex",
+  "author": "sahajamoth",
+  "homepage": "https://github.com/sahajamoth/apex",
   "license": "MIT",
   "transport": "stdio",
   "command": "apex",
@@ -36,8 +36,8 @@
   ],
   "categories": ["code-analysis", "security", "testing"],
   "install": {
-    "homebrew": "brew install allexdav2/tap/apex",
+    "homebrew": "brew install sahajamoth/tap/apex",
     "npm": "npm install -g @apex-coverage/cli",
-    "curl": "curl -sSL https://raw.githubusercontent.com/allexdav2/apex/main/install.sh | sh"
+    "curl": "curl -sSL https://raw.githubusercontent.com/sahajamoth/apex/main/install.sh | sh"
   }
 }

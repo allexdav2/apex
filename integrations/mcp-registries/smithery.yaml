@@ -9,8 +9,8 @@ description: |
   CWE mappings, trace code paths from any location to entry points, and get
   deployment confidence scores.
 version: "0.1.0"
-author: "allexdav2"
-repository: "https://github.com/allexdav2/apex"
+author: "sahajamoth"
+repository: "https://github.com/sahajamoth/apex"
 license: "MIT"
 
 transport: stdio
@@ -52,8 +52,8 @@ categories:
   - developer-tools
 
 install:
-  homebrew: "brew install allexdav2/tap/apex"
+  homebrew: "brew install sahajamoth/tap/apex"
   npm: "npm install -g @apex-coverage/cli"
   pip: "pip install apex-coverage"
-  cargo: "cargo install --git https://github.com/allexdav2/apex"
-  curl: "curl -sSL https://raw.githubusercontent.com/allexdav2/apex/main/install.sh | sh"
+  cargo: "cargo install --git https://github.com/sahajamoth/apex"
+  curl: "curl -sSL https://raw.githubusercontent.com/sahajamoth/apex/main/install.sh | sh"

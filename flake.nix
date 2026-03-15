@@ -38,7 +38,7 @@
 
           meta = with pkgs.lib; {
             description = "Autonomous path exploration — coverage-guided security analysis";
-            homepage = "https://github.com/allexdav2/apex";
+            homepage = "https://github.com/sahajamoth/apex";
             license = licenses.mit;
             mainProgram = "apex";
           };

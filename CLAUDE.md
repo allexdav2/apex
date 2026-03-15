@@ -79,11 +79,11 @@ Binary: 5MB static release (`lto = true`, `codegen-units = 1`). No runtime deps 
 |---------|----------|---------|
 | GitHub Releases | `.github/workflows/release.yml` | Tag `v*` triggers cross-build for 4 targets |
 | curl installer | `install.sh` | `curl -sSL .../install.sh \| sh` |
-| Homebrew | `HomebrewFormula/apex.rb` | `brew install allexdav2/tap/apex` |
+| Homebrew | `HomebrewFormula/apex.rb` | `brew install sahajamoth/tap/apex` |
 | npm | `npm/` | `npx @apex-coverage/cli run` |
 | pip | `python/` | `pipx install apex-coverage` |
-| Nix | `flake.nix` | `nix run github:allexdav2/apex` |
-| cargo | source | `cargo install --git https://github.com/allexdav2/apex` |
+| Nix | `flake.nix` | `nix run github:sahajamoth/apex` |
+| cargo | source | `cargo install --git https://github.com/sahajamoth/apex` |
 
 **Version bumping:** `./scripts/bump-version.sh 0.2.0` — updates all 5 locations atomically and stamps CHANGELOG.md.
 

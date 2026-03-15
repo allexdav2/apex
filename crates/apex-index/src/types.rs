@@ -165,6 +165,8 @@ pub fn hash_source_files_with_omit(
         Language::C => &["c", "h"],
         Language::Wasm => &["wat", "wasm"],
         Language::Ruby => &["rb"],
+        Language::Kotlin => &["kt", "kts"],
+        Language::Go => &["go"],
     };
 
     let mut paths: Vec<PathBuf> = Vec::new();
@@ -269,7 +271,10 @@ mod tests {
         let profile = &profiles[&key_10];
         assert_eq!(profile.hit_count, 2);
         assert_eq!(profile.test_count, 2);
-        assert_eq!(profile.test_names, HashSet::from(["test_a".into(), "test_b".into()]));
+        assert_eq!(
+            profile.test_names,
+            HashSet::from(["test_a".into(), "test_b".into()])
+        );
 
         let key_20 = branch_key(&make_branch(1, 20, 0));
         assert_eq!(profiles[&key_20].test_count, 1);
@@ -815,7 +820,10 @@ mod tests {
         let p = &profiles[&key];
         assert_eq!(p.hit_count, 3);
         assert_eq!(p.test_count, 3);
-        assert_eq!(p.test_names, HashSet::from(["a".into(), "b".into(), "c".into()]));
+        assert_eq!(
+            p.test_names,
+            HashSet::from(["a".into(), "b".into(), "c".into()])
+        );
     }
 
     #[test]

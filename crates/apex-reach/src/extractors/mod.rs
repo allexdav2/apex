@@ -1,3 +1,5 @@
+pub mod go;
+pub mod java;
 pub mod javascript;
 pub mod python;
 pub mod rust;
@@ -19,6 +21,8 @@ pub fn build_call_graph(sources: &HashMap<PathBuf, String>, lang: Language) -> C
         Language::Rust => rust::RustExtractor.extract(sources),
         Language::Python => python::PythonExtractor.extract(sources),
         Language::JavaScript => javascript::JsExtractor.extract(sources),
+        Language::Java | Language::Kotlin => java::JavaExtractor.extract(sources),
+        Language::Go => go::GoExtractor.extract(sources),
         _ => CallGraph::default(),
     }
 }

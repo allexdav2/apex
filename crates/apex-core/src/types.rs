@@ -140,6 +140,8 @@ pub enum Language {
     Rust,
     Wasm,
     Ruby,
+    Kotlin,
+    Go,
 }
 
 impl std::fmt::Display for Language {
@@ -152,6 +154,8 @@ impl std::fmt::Display for Language {
             Language::Rust => "rust",
             Language::Wasm => "wasm",
             Language::Ruby => "ruby",
+            Language::Kotlin => "kt",
+            Language::Go => "go",
         };
         write!(f, "{s}")
     }
@@ -168,6 +172,8 @@ impl std::str::FromStr for Language {
             "rust" | "rs" => Ok(Language::Rust),
             "wasm" => Ok(Language::Wasm),
             "ruby" | "rb" => Ok(Language::Ruby),
+            "kotlin" | "kt" => Ok(Language::Kotlin),
+            "go" | "golang" => Ok(Language::Go),
             other => Err(format!("unknown language: {other}")),
         }
     }
@@ -300,6 +306,30 @@ impl Language {
                 feat("concolic", Missing, ""),
                 feat("fuzz", Full, "generic"),
                 feat("sandbox", Missing, ""),
+            ],
+            Language::Kotlin => vec![
+                feat("instrumentation", Full, "jacoco"),
+                feat("test-runner", Full, "junit"),
+                feat("dep-install", Partial, "gradle"),
+                feat("dep-audit", Missing, ""),
+                feat("security-patterns", Partial, "java-patterns"),
+                feat("unsafe-analysis", NotApplicable, ""),
+                feat("path-normalize", NotApplicable, ""),
+                feat("concolic", Missing, ""),
+                feat("fuzz", Full, "generic"),
+                feat("sandbox", Full, "junit"),
+            ],
+            Language::Go => vec![
+                feat("instrumentation", Full, "go-cover"),
+                feat("test-runner", Full, "go-test"),
+                feat("dep-install", Full, "go-mod"),
+                feat("dep-audit", Missing, ""),
+                feat("security-patterns", Full, "9-patterns"),
+                feat("unsafe-analysis", NotApplicable, ""),
+                feat("path-normalize", Missing, ""),
+                feat("concolic", Missing, ""),
+                feat("fuzz", Full, "go-fuzz"),
+                feat("sandbox", Full, "process"),
             ],
         }
     }
@@ -608,7 +638,9 @@ mod tests {
 
     #[test]
     fn language_parse_roundtrip() {
-        for lang in ["python", "js", "java", "c", "rust", "wasm", "ruby"] {
+        for lang in [
+            "python", "js", "java", "c", "rust", "wasm", "ruby", "kotlin",
+        ] {
             let parsed: Language = lang.parse().unwrap();
             let display = parsed.to_string();
             let reparsed: Language = display.parse().unwrap();
@@ -628,6 +660,8 @@ mod tests {
             "typescript".parse::<Language>().unwrap(),
             Language::JavaScript
         );
+        assert_eq!("kt".parse::<Language>().unwrap(), Language::Kotlin);
+        assert_eq!("kotlin".parse::<Language>().unwrap(), Language::Kotlin);
         assert!("unknown".parse::<Language>().is_err());
     }
 
@@ -909,6 +943,7 @@ mod tests {
             Language::Rust,
             Language::Wasm,
             Language::Ruby,
+            Language::Kotlin,
         ];
         for lang in languages {
             let tc = TestCandidate::new("code".into(), lang);
@@ -939,6 +974,7 @@ mod tests {
         assert_eq!(Language::Rust.to_string(), "rust");
         assert_eq!(Language::Wasm.to_string(), "wasm");
         assert_eq!(Language::Ruby.to_string(), "ruby");
+        assert_eq!(Language::Kotlin.to_string(), "kt");
     }
 
     #[test]
@@ -1119,6 +1155,7 @@ mod tests {
             Language::C,
             Language::Wasm,
             Language::Ruby,
+            Language::Kotlin,
         ] {
             assert_eq!(
                 lang.supported_features().len(),

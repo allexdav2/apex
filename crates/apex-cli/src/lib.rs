@@ -641,6 +641,7 @@ pub enum LangArg {
     Wasm,
     Ruby,
     Kotlin,
+    Go,
 }
 
 impl From<LangArg> for Language {
@@ -654,6 +655,7 @@ impl From<LangArg> for Language {
             LangArg::Wasm => Language::Wasm,
             LangArg::Ruby => Language::Ruby,
             LangArg::Kotlin => Language::Kotlin,
+            LangArg::Go => Language::Go,
         }
     }
 }
@@ -895,16 +897,13 @@ async fn run(args: RunArgs, cfg: &ApexConfig) -> Result<()> {
             let mut report = build_agent_report(&oracle, &instrumented.file_paths, &target_path);
 
             if let Some(ref compound) = analysis {
-                report.findings = Some(
-                    serde_json::to_value(&compound.detection.findings).unwrap_or_default(),
-                );
+                report.findings =
+                    Some(serde_json::to_value(&compound.detection.findings).unwrap_or_default());
                 report.security_summary = Some(
-                    serde_json::to_value(compound.detection.security_summary())
-                        .unwrap_or_default(),
+                    serde_json::to_value(compound.detection.security_summary()).unwrap_or_default(),
                 );
                 // Include compound analysis data
-                report.compound_analysis =
-                    Some(serde_json::to_value(compound).unwrap_or_default());
+                report.compound_analysis = Some(serde_json::to_value(compound).unwrap_or_default());
             }
 
             match serde_json::to_string_pretty(&report) {
@@ -1105,6 +1104,10 @@ async fn install_deps(lang: Language, target: &std::path::Path) -> Result<()> {
             }
             runner.install_deps(target).await?;
         }
+        Language::Go => {
+            let runner = apex_lang::go::GoRunner::new();
+            runner.install_deps(target).await?;
+        }
     }
     Ok(())
 }
@@ -1155,6 +1158,7 @@ async fn instrument(
             // Kotlin reuses Java instrumentor (JaCoCo)
             JavaInstrumentor::new().instrument(&target).await?
         }
+        Language::Go => apex_instrument::go::GoInstrumentor::new().instrument(&target).await?,
     };
 
     oracle.register_branches(instrumented.branch_ids.iter().cloned());
@@ -1661,6 +1665,7 @@ fn build_source_cache(
         Language::Wasm => &["rs", "wat"],
         Language::Ruby => &["rb"],
         Language::Kotlin => &["kt", "kts"],
+        Language::Go => &["go"],
     };
 
     let mut cache = std::collections::HashMap::new();
@@ -3125,7 +3130,10 @@ fn print_detector_findings(
     }
     match format {
         OutputFormat::Json => {
-            println!("{}", serde_json::to_string_pretty(findings).unwrap_or_default());
+            println!(
+                "{}",
+                serde_json::to_string_pretty(findings).unwrap_or_default()
+            );
         }
         OutputFormat::Text => {
             println!("\n{} finding(s) in {}\n", findings.len(), target.display());
@@ -3268,7 +3276,11 @@ async fn run_api_diff(args: ApiDiffArgs) -> Result<()> {
             println!("{}", serde_json::to_string_pretty(&report)?);
         }
         OutputFormat::Text => {
-            println!("API Diff: {} \u{2192} {}\n", args.old.display(), args.new.display());
+            println!(
+                "API Diff: {} \u{2192} {}\n",
+                args.old.display(),
+                args.new.display()
+            );
             println!("Breaking changes:     {}", report.breaking_count);
             println!("Non-breaking changes: {}", report.non_breaking_count);
             println!("Deprecations:         {}", report.deprecation_count);
@@ -3276,7 +3288,10 @@ async fn run_api_diff(args: ApiDiffArgs) -> Result<()> {
                 println!("\n--- Breaking Changes ---");
                 for change in &report.changes {
                     if matches!(change.kind, ChangeKind::Breaking) {
-                        println!("  \u{2717} {} {} \u{2014} {}", change.method, change.path, change.description);
+                        println!(
+                            "  \u{2717} {} {} \u{2014} {}",
+                            change.method, change.path, change.description
+                        );
                     }
                 }
             }
@@ -3342,7 +3357,12 @@ async fn run_data_flow(args: DataFlowArgs) -> Result<()> {
                     target_path.display()
                 );
                 for (i, flow) in flows.iter().enumerate() {
-                    println!("  Flow {}: node {} \u{2192} node {}", i + 1, flow.source, flow.sink);
+                    println!(
+                        "  Flow {}: node {} \u{2192} node {}",
+                        i + 1,
+                        flow.source,
+                        flow.sink
+                    );
                     if !flow.variable_chain.is_empty() {
                         println!("    Variables: {}", flow.variable_chain.join(" \u{2192} "));
                     }
@@ -3413,8 +3433,7 @@ async fn run_compliance_export(args: ComplianceExportArgs, cfg: &ApexConfig) -> 
     let cpg = if lang == Language::Python {
         let mut combined_cpg = apex_cpg::Cpg::new();
         for (path, source) in &source_cache {
-            let file_cpg =
-                apex_cpg::builder::build_python_cpg(source, &path.display().to_string());
+            let file_cpg = apex_cpg::builder::build_python_cpg(source, &path.display().to_string());
             combined_cpg.merge(file_cpg);
         }
         if combined_cpg.node_count() > 0 {
@@ -3470,8 +3489,7 @@ async fn run_compliance_export(args: ComplianceExportArgs, cfg: &ApexConfig) -> 
     let show_stride = framework == "all" || framework == "stride";
 
     if show_asvs {
-        let asvs =
-            apex_detect::compliance::asvs::generate_asvs_report(&detector_ids, asvs_level);
+        let asvs = apex_detect::compliance::asvs::generate_asvs_report(&detector_ids, asvs_level);
         match args.output_format {
             OutputFormat::Json => {
                 let val = serde_json::json!({
@@ -3491,8 +3509,12 @@ async fn run_compliance_export(args: ComplianceExportArgs, cfg: &ApexConfig) -> 
                 writeln!(output, "  Automated:          {}", asvs.coverage.automated).ok();
                 writeln!(output, "  Verified:           {}", asvs.coverage.verified).ok();
                 writeln!(output, "  Failed:             {}", asvs.coverage.failed).ok();
-                writeln!(output, "  Manual required:    {}", asvs.coverage.manual_required)
-                    .ok();
+                writeln!(
+                    output,
+                    "  Manual required:    {}",
+                    asvs.coverage.manual_required
+                )
+                .ok();
             }
         }
     }
@@ -3529,7 +3551,11 @@ async fn run_compliance_export(args: ComplianceExportArgs, cfg: &ApexConfig) -> 
                 )
                 .ok();
                 for task in &ssdf.tasks {
-                    let icon = if task.apex_satisfies { "\u{2713}" } else { "\u{2717}" };
+                    let icon = if task.apex_satisfies {
+                        "\u{2713}"
+                    } else {
+                        "\u{2717}"
+                    };
                     writeln!(output, "  {} {} — {}", icon, task.id, task.practice).ok();
                 }
             }
@@ -3538,7 +3564,11 @@ async fn run_compliance_export(args: ComplianceExportArgs, cfg: &ApexConfig) -> 
 
     if show_stride {
         // Concatenate all sources for STRIDE analysis
-        let all_source: String = source_cache.values().cloned().collect::<Vec<_>>().join("\n");
+        let all_source: String = source_cache
+            .values()
+            .cloned()
+            .collect::<Vec<_>>()
+            .join("\n");
         let stride = apex_detect::threat::stride::analyze_stride(&all_source);
         match args.output_format {
             OutputFormat::Json => {
@@ -3626,7 +3656,10 @@ async fn run_api_coverage(args: ApiCoverageArgs) -> Result<()> {
             if report.spec_only_count > 0 {
                 println!("\n--- Spec-only (not implemented) ---");
                 for ep in &report.endpoints {
-                    if matches!(ep.status, apex_detect::api_coverage::EndpointStatus::SpecOnly) {
+                    if matches!(
+                        ep.status,
+                        apex_detect::api_coverage::EndpointStatus::SpecOnly
+                    ) {
                         println!("  {} {}", ep.method, ep.path);
                     }
                 }
@@ -3634,7 +3667,10 @@ async fn run_api_coverage(args: ApiCoverageArgs) -> Result<()> {
             if report.code_only_count > 0 {
                 println!("\n--- Code-only (not in spec) ---");
                 for ep in &report.endpoints {
-                    if matches!(ep.status, apex_detect::api_coverage::EndpointStatus::CodeOnly) {
+                    if matches!(
+                        ep.status,
+                        apex_detect::api_coverage::EndpointStatus::CodeOnly
+                    ) {
                         println!("  {} {}", ep.method, ep.path);
                     }
                 }
@@ -3753,7 +3789,10 @@ async fn run_test_data(args: TestDataArgs) -> Result<()> {
                     args.rows,
                     tables.len()
                 );
-                print!("{}", apex_detect::test_data::generate_inserts(&tables, args.rows));
+                print!(
+                    "{}",
+                    apex_detect::test_data::generate_inserts(&tables, args.rows)
+                );
             }
         }
     }

@@ -67,7 +67,9 @@ const RUST_SECURITY_PATTERNS: &[SecurityPattern] = &[
         description: "HTTP GET with potentially user-controlled URL — SSRF risk",
         category: FindingCategory::Injection,
         base_severity: Severity::High,
-        user_input_indicators: &["user", "input", "request", "query", "param", "format!", "&str"],
+        user_input_indicators: &[
+            "user", "input", "request", "query", "param", "format!", "&str",
+        ],
         sanitization_indicators: &["allowlist", "whitelist", "ALLOWED", "starts_with"],
         cwe: &[918],
     },
@@ -85,7 +87,9 @@ const RUST_SECURITY_PATTERNS: &[SecurityPattern] = &[
         description: "URI from string — SSRF if string is user-controlled",
         category: FindingCategory::Injection,
         base_severity: Severity::Medium,
-        user_input_indicators: &["user", "input", "request", "query", "param", "format!", "&str"],
+        user_input_indicators: &[
+            "user", "input", "request", "query", "param", "format!", "&str",
+        ],
         sanitization_indicators: &["allowlist", "whitelist", "ALLOWED", "starts_with", "parse"],
         cwe: &[918],
     },
@@ -577,6 +581,54 @@ const JAVA_SECURITY_PATTERNS: &[SecurityPattern] = &[
     },
 ];
 
+const KOTLIN_SECURITY_PATTERNS: &[SecurityPattern] = &[
+    SecurityPattern {
+        sink: "Runtime.getRuntime().exec(",
+        description: "Runtime.exec — command injection",
+        category: FindingCategory::Injection,
+        base_severity: Severity::Critical,
+        user_input_indicators: &["request", "getParameter", "input", "args"],
+        sanitization_indicators: &[],
+        cwe: &[78],
+    },
+    SecurityPattern {
+        sink: "ProcessBuilder(",
+        description: "ProcessBuilder — potential command injection",
+        category: FindingCategory::Injection,
+        base_severity: Severity::High,
+        user_input_indicators: &["request", "getParameter", "input", "args"],
+        sanitization_indicators: &[],
+        cwe: &[78],
+    },
+    SecurityPattern {
+        sink: "executeQuery(",
+        description: "executeQuery — potential SQL injection",
+        category: FindingCategory::Injection,
+        base_severity: Severity::High,
+        user_input_indicators: &["$", "+", "format", "request", "getParameter", "concat"],
+        sanitization_indicators: &["PreparedStatement", "parameterized", "?"],
+        cwe: &[89],
+    },
+    SecurityPattern {
+        sink: "readObject(",
+        description: "readObject — unsafe deserialization",
+        category: FindingCategory::Injection,
+        base_severity: Severity::Critical,
+        user_input_indicators: &["socket", "request", "upload", "input", "InputStream"],
+        sanitization_indicators: &["ObjectInputFilter", "ValidatingObjectInputStream"],
+        cwe: &[502],
+    },
+    SecurityPattern {
+        sink: "URL(",
+        description: "URL() — potential SSRF",
+        category: FindingCategory::Injection,
+        base_severity: Severity::Medium,
+        user_input_indicators: &["request", "getParameter", "input", "param"],
+        sanitization_indicators: &["allowlist", "whitelist", "ALLOWED"],
+        cwe: &[918],
+    },
+];
+
 const CONTEXT_WINDOW: usize = 3;
 
 /// Indicators that are code patterns (not input sources). These should be
@@ -664,6 +716,7 @@ fn patterns_for_language(lang: Language) -> &'static [SecurityPattern] {
         Language::Ruby => RUBY_SECURITY_PATTERNS,
         Language::C => C_SECURITY_PATTERNS,
         Language::Java => JAVA_SECURITY_PATTERNS,
+        Language::Kotlin => KOTLIN_SECURITY_PATTERNS,
         _ => &[],
     }
 }

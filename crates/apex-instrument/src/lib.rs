@@ -3,6 +3,7 @@
 //! Provides `Instrumentor` implementations for Python, JavaScript, Java, Rust,
 //! LLVM IR (feature-gated), and WebAssembly (feature-gated).
 
+pub mod go;
 pub mod java;
 pub mod javascript;
 pub mod llvm;
@@ -11,9 +12,9 @@ pub mod rust_cov;
 pub mod rustc_wrapper;
 pub mod source_map;
 pub mod v8_coverage;
-pub mod mutant;
 pub mod wasm;
 
+pub use go::GoInstrumentor;
 pub use java::JavaInstrumentor;
 pub use javascript::JavaScriptInstrumentor;
 pub use llvm::LlvmInstrumentor;

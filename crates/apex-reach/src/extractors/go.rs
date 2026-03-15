@@ -9,14 +9,12 @@ use std::sync::LazyLock;
 
 pub struct GoExtractor;
 
-static RE_FUNC: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"^func\s+(\w+)\s*\(").unwrap());
+static RE_FUNC: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^func\s+(\w+)\s*\(").unwrap());
 
 static RE_METHOD: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"^func\s+\(\w+\s+\*?(\w+)\)\s+(\w+)\s*\(").unwrap());
 
-static RE_CALL: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"(\w+)\s*\(").unwrap());
+static RE_CALL: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"(\w+)\s*\(").unwrap());
 
 static RE_METHOD_CALL: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"(\w+)\.(\w+)\s*\(").unwrap());
@@ -25,11 +23,42 @@ static RE_TEST_FUNC: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"^func\s+(Test\w+|Benchmark\w+)\s*\(").unwrap());
 
 const GO_KEYWORDS: &[&str] = &[
-    "if", "else", "for", "switch", "select", "case", "default", "go", "defer",
-    "return", "break", "continue", "fallthrough", "range", "func", "type",
-    "struct", "interface", "map", "chan", "var", "const", "package", "import",
-    "make", "new", "append", "len", "cap", "close", "delete", "copy", "panic",
-    "recover", "print", "println",
+    "if",
+    "else",
+    "for",
+    "switch",
+    "select",
+    "case",
+    "default",
+    "go",
+    "defer",
+    "return",
+    "break",
+    "continue",
+    "fallthrough",
+    "range",
+    "func",
+    "type",
+    "struct",
+    "interface",
+    "map",
+    "chan",
+    "var",
+    "const",
+    "package",
+    "import",
+    "make",
+    "new",
+    "append",
+    "len",
+    "cap",
+    "close",
+    "delete",
+    "copy",
+    "panic",
+    "recover",
+    "print",
+    "println",
 ];
 
 impl CallGraphExtractor for GoExtractor {
@@ -82,7 +111,11 @@ impl CallGraphExtractor for GoExtractor {
                     }
 
                     let short_name = name.rsplit('.').next().unwrap_or(&name);
-                    let is_exported = short_name.chars().next().map(|c| c.is_uppercase()).unwrap_or(false);
+                    let is_exported = short_name
+                        .chars()
+                        .next()
+                        .map(|c| c.is_uppercase())
+                        .unwrap_or(false);
 
                     let entry_kind = if RE_TEST_FUNC.is_match(trimmed) {
                         Some(EntryPointKind::Test)
@@ -95,7 +128,9 @@ impl CallGraphExtractor for GoExtractor {
                     } else if has_http_handler && is_exported {
                         // Check if this function name appears in a HandleFunc/router registration
                         let name_in_handler = lines.iter().any(|l| {
-                            (l.contains("HandleFunc") || l.contains(".GET(") || l.contains(".POST("))
+                            (l.contains("HandleFunc")
+                                || l.contains(".GET(")
+                                || l.contains(".POST("))
                                 && l.contains(short_name)
                         });
                         if name_in_handler {
@@ -142,7 +177,9 @@ impl CallGraphExtractor for GoExtractor {
                             brace_depth -= 1;
                             if let Some((fn_id, open_depth)) = &current_fn {
                                 if brace_depth <= *open_depth {
-                                    if let Some(node) = graph.nodes.iter_mut().find(|n| n.id == *fn_id) {
+                                    if let Some(node) =
+                                        graph.nodes.iter_mut().find(|n| n.id == *fn_id)
+                                    {
                                         node.end_line = line_num;
                                     }
                                     current_fn = None;
@@ -155,7 +192,11 @@ impl CallGraphExtractor for GoExtractor {
 
                 // Extract calls inside current function
                 if let Some((fn_id, _)) = &current_fn {
-                    if trimmed.starts_with("if ") || trimmed.starts_with("for ") || trimmed.starts_with("switch ") || trimmed.starts_with("select ") {
+                    if trimmed.starts_with("if ")
+                        || trimmed.starts_with("for ")
+                        || trimmed.starts_with("switch ")
+                        || trimmed.starts_with("select ")
+                    {
                         block_id += 1;
                     }
                     let block = if block_id > 0 { Some(block_id) } else { None };
@@ -171,7 +212,8 @@ impl CallGraphExtractor for GoExtractor {
                         let name = caps[1].to_string();
                         if !GO_KEYWORDS.contains(&name.as_str()) {
                             let m = caps.get(1).unwrap();
-                            let is_method = m.start() > 0 && trimmed.as_bytes().get(m.start() - 1) == Some(&b'.');
+                            let is_method = m.start() > 0
+                                && trimmed.as_bytes().get(m.start() - 1) == Some(&b'.');
                             if !is_method {
                                 pending_edges.push((*fn_id, name, line_num, block));
                             }
@@ -267,8 +309,14 @@ mod tests {
     #[test]
     fn cross_file_resolution() {
         let mut sources = HashMap::new();
-        sources.insert(PathBuf::from("a.go"), "package main\n\nfunc caller() {\n\thelper()\n}\n".to_string());
-        sources.insert(PathBuf::from("b.go"), "package main\n\nfunc helper() {\n}\n".to_string());
+        sources.insert(
+            PathBuf::from("a.go"),
+            "package main\n\nfunc caller() {\n\thelper()\n}\n".to_string(),
+        );
+        sources.insert(
+            PathBuf::from("b.go"),
+            "package main\n\nfunc helper() {\n}\n".to_string(),
+        );
         let g = GoExtractor.extract(&sources);
         assert!(g.edge_count() >= 1);
     }

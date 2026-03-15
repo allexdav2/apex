@@ -1,9 +1,9 @@
 pub mod bandit;
 pub mod broken_access;
 pub mod cegar;
-pub mod data_transform_spec;
 pub mod command_injection;
 pub mod crypto_failure;
+pub mod data_transform_spec;
 pub mod dep_audit;
 pub mod dual_encoder;
 pub mod flag_hygiene;

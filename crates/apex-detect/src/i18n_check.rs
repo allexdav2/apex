@@ -126,10 +126,7 @@ mod tests {
     fn no_missing_when_complete() {
         let mut locales = HashMap::new();
         locales.insert("en".into(), HashMap::from([("hi".into(), "Hi".into())]));
-        locales.insert(
-            "fr".into(),
-            HashMap::from([("hi".into(), "Salut".into())]),
-        );
+        locales.insert("fr".into(), HashMap::from([("hi".into(), "Salut".into())]));
         let missing = compare_locales(&locales);
         assert!(missing.is_empty());
     }

@@ -38,10 +38,7 @@ pub fn parse_env_file(content: &str) -> HashMap<String, String> {
         if let Some((key, val)) = trimmed.split_once('=') {
             map.insert(
                 key.trim().to_string(),
-                val.trim()
-                    .trim_matches('"')
-                    .trim_matches('\'')
-                    .to_string(),
+                val.trim().trim_matches('"').trim_matches('\'').to_string(),
             );
         }
     }

@@ -1678,8 +1678,14 @@ mod tests {
             direction: 0,
         };
         let core = proto_to_core_branch(&proto);
-        assert_eq!(core.col, 4464, "BUG: col 70000 silently truncated via `as u16`");
-        assert_ne!(core.col as u32, 70000, "col=70000 NOT preserved — data loss");
+        assert_eq!(
+            core.col, 4464,
+            "BUG: col 70000 silently truncated via `as u16`"
+        );
+        assert_ne!(
+            core.col as u32, 70000,
+            "col=70000 NOT preserved — data loss"
+        );
     }
 
     /// BUG: proto_to_core_branch silently truncates direction > u8::MAX.
@@ -1692,14 +1698,27 @@ mod tests {
             direction: 256,
         };
         let core = proto_to_core_branch(&proto);
-        assert_eq!(core.direction, 0, "BUG: direction 256 truncated via `as u8`");
+        assert_eq!(
+            core.direction, 0,
+            "BUG: direction 256 truncated via `as u8`"
+        );
     }
 
     /// BUG: Two proto branches with same low bits of col collide after conversion.
     #[tokio::test]
     async fn bug_col_truncation_causes_branch_collision() {
-        let proto_a = ProtoBranchId { file_id: 1, line: 1, col: 100, direction: 0 };
-        let proto_b = ProtoBranchId { file_id: 1, line: 1, col: 65636, direction: 0 };
+        let proto_a = ProtoBranchId {
+            file_id: 1,
+            line: 1,
+            col: 100,
+            direction: 0,
+        };
+        let proto_b = ProtoBranchId {
+            file_id: 1,
+            line: 1,
+            col: 65636,
+            direction: 0,
+        };
         let core_a = proto_to_core_branch(&proto_a);
         let core_b = proto_to_core_branch(&proto_b);
         assert_eq!(core_a.col, core_b.col, "BUG: col=100 and col=65636 collide");
@@ -1707,7 +1726,7 @@ mod tests {
 
     /// BUG: Empty oracle reports 100% coverage instead of 0%.
     #[tokio::test]
-    async fn bug_empty_oracle_reports_100_percent_coverage() {
+    async fn empty_oracle_reports_zero_percent_coverage() {
         let oracle = Arc::new(CoverageOracle::new());
         let service = CoordinatorService::new(oracle);
         let snap = service
@@ -1718,8 +1737,8 @@ mod tests {
         assert_eq!(snap.total_branches, 0);
         assert_eq!(snap.covered_branches, 0);
         assert!(
-            (snap.coverage_percent - 100.0).abs() < 0.01,
-            "BUG: empty oracle reports {}% (semantically wrong)",
+            snap.coverage_percent.abs() < 0.01,
+            "empty oracle should report 0%, got {}%",
             snap.coverage_percent
         );
     }
@@ -1735,7 +1754,12 @@ mod tests {
                 results: vec![ProtoResult {
                     seed_id: "my-specific-seed-42".into(),
                     status: "pass".into(),
-                    new_branches: vec![ProtoBranchId { file_id: 1, line: 1, col: 0, direction: 0 }],
+                    new_branches: vec![ProtoBranchId {
+                        file_id: 1,
+                        line: 1,
+                        col: 0,
+                        direction: 0,
+                    }],
                     duration_ms: 10,
                     stdout: String::new(),
                     stderr: String::new(),
@@ -1754,11 +1778,23 @@ mod tests {
         let oracle = make_oracle();
         let service = CoordinatorService::new(oracle);
         let r1 = service
-            .register(Request::new(WorkerInfo { worker_id: "w1".into(), language: "python".into(), capacity: 4 }))
-            .await.unwrap().into_inner();
+            .register(Request::new(WorkerInfo {
+                worker_id: "w1".into(),
+                language: "python".into(),
+                capacity: 4,
+            }))
+            .await
+            .unwrap()
+            .into_inner();
         let r2 = service
-            .register(Request::new(WorkerInfo { worker_id: "w1".into(), language: "python".into(), capacity: 4 }))
-            .await.unwrap().into_inner();
+            .register(Request::new(WorkerInfo {
+                worker_id: "w1".into(),
+                language: "python".into(),
+                capacity: 4,
+            }))
+            .await
+            .unwrap()
+            .into_inner();
         assert!(r1.accepted);
         assert!(r2.accepted);
         assert_ne!(r1.session_id, r2.session_id);
@@ -1770,8 +1806,13 @@ mod tests {
         let oracle = make_oracle();
         let service = CoordinatorService::new(oracle);
         let resp = service
-            .send_heartbeat(Request::new(Heartbeat { worker_id: "never-registered".into(), active_seeds: 42 }))
-            .await.unwrap().into_inner();
+            .send_heartbeat(Request::new(Heartbeat {
+                worker_id: "never-registered".into(),
+                active_seeds: 42,
+            }))
+            .await
+            .unwrap()
+            .into_inner();
         assert!(resp.ok);
     }
 
@@ -1786,13 +1827,20 @@ mod tests {
                 results: vec![ProtoResult {
                     seed_id: "s1".into(),
                     status: "pass".into(),
-                    new_branches: vec![ProtoBranchId { file_id: 1, line: 1, col: 0, direction: 0 }],
+                    new_branches: vec![ProtoBranchId {
+                        file_id: 1,
+                        line: 1,
+                        col: 0,
+                        direction: 0,
+                    }],
                     duration_ms: 10,
                     stdout: String::new(),
                     stderr: String::new(),
                 }],
             }))
-            .await.unwrap().into_inner();
+            .await
+            .unwrap()
+            .into_inner();
         assert_eq!(resp.new_coverage_count, 1);
     }
 
@@ -1801,10 +1849,21 @@ mod tests {
     async fn bug_get_seeds_from_unregistered_worker_accepted() {
         let oracle = make_oracle();
         let service = CoordinatorService::new(oracle);
-        service.enqueue_seeds(vec![InputSeed { id: "s1".into(), data: vec![1], origin: "test".into() }]).await;
+        service
+            .enqueue_seeds(vec![InputSeed {
+                id: "s1".into(),
+                data: vec![1],
+                origin: "test".into(),
+            }])
+            .await;
         let resp = service
-            .get_seeds(Request::new(SeedRequest { worker_id: "unauthorized".into(), max_seeds: 10 }))
-            .await.unwrap().into_inner();
+            .get_seeds(Request::new(SeedRequest {
+                worker_id: "unauthorized".into(),
+                max_seeds: 10,
+            }))
+            .await
+            .unwrap()
+            .into_inner();
         assert_eq!(resp.seeds.len(), 1);
     }
 
@@ -1821,12 +1880,21 @@ mod tests {
                     id: format!("batch-{batch}"),
                     data: vec![batch],
                     origin: "concurrent".into(),
-                }]).await;
+                }])
+                .await;
             }));
         }
-        for h in handles { h.await.unwrap(); }
-        let resp = service.get_seeds(Request::new(SeedRequest { worker_id: "w1".into(), max_seeds: 100 }))
-            .await.unwrap().into_inner();
+        for h in handles {
+            h.await.unwrap();
+        }
+        let resp = service
+            .get_seeds(Request::new(SeedRequest {
+                worker_id: "w1".into(),
+                max_seeds: 100,
+            }))
+            .await
+            .unwrap()
+            .into_inner();
         assert_eq!(resp.seeds.len(), 10);
     }
 
@@ -1844,26 +1912,48 @@ mod tests {
                     results: vec![ProtoResult {
                         seed_id: format!("s{i}"),
                         status: "pass".into(),
-                        new_branches: vec![ProtoBranchId { file_id: 1, line: 1, col: 0, direction: 0 }],
+                        new_branches: vec![ProtoBranchId {
+                            file_id: 1,
+                            line: 1,
+                            col: 0,
+                            direction: 0,
+                        }],
                         duration_ms: 10,
                         stdout: String::new(),
                         stderr: String::new(),
                     }],
-                })).await.unwrap().into_inner().new_coverage_count
+                }))
+                .await
+                .unwrap()
+                .into_inner()
+                .new_coverage_count
             }));
         }
         let mut total_new: u64 = 0;
-        for h in handles { total_new += h.await.unwrap(); }
+        for h in handles {
+            total_new += h.await.unwrap();
+        }
         assert_eq!(total_new, 1, "Only one submit should report new coverage");
     }
 
     /// Roundtrip lossy for large col values.
     #[tokio::test]
     async fn bug_roundtrip_lossy_for_large_col() {
-        let proto_orig = ProtoBranchId { file_id: 1, line: 1, col: 80000, direction: 300 };
+        let proto_orig = ProtoBranchId {
+            file_id: 1,
+            line: 1,
+            col: 80000,
+            direction: 300,
+        };
         let core = proto_to_core_branch(&proto_orig);
         let proto_back = core_to_proto_branch(&core);
-        assert_ne!(proto_orig.col, proto_back.col, "BUG: col data lost in roundtrip");
-        assert_ne!(proto_orig.direction, proto_back.direction, "BUG: direction data lost");
+        assert_ne!(
+            proto_orig.col, proto_back.col,
+            "BUG: col data lost in roundtrip"
+        );
+        assert_ne!(
+            proto_orig.direction, proto_back.direction,
+            "BUG: direction data lost"
+        );
     }
 }

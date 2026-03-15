@@ -1,4 +1,4 @@
-# Agent Distribution Protocols & Registries — Research
+<!-- status: FUTURE --># Agent Distribution Protocols & Registries — Research
 
 **Date:** 2026-03-15
 **Status:** Research complete

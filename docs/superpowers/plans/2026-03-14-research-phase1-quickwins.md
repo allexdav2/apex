@@ -1,4 +1,4 @@
-# Phase 1 — Quick Wins: Coverage, Fuzzing, Synthesis, Agent, Security
+<!-- status: DONE --># Phase 1 — Quick Wins: Coverage, Fuzzing, Synthesis, Agent, Security
 
 > **For agentic workers:** REQUIRED: Use superpowers:subagent-driven-development to implement this plan. Steps use checkbox (`- [ ]`) syntax for tracking.
 

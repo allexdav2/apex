@@ -144,10 +144,7 @@ pub fn discover_artifacts(target: &Path) -> Artifacts {
                 }
                 "sql" => {
                     // Only count files under a migrations/ directory
-                    if path
-                        .components()
-                        .any(|c| c.as_os_str() == "migrations")
-                    {
+                    if path.components().any(|c| c.as_os_str() == "migrations") {
                         artifacts.sql_migrations.push(path.clone());
                     }
                     continue;
@@ -163,9 +160,7 @@ pub fn discover_artifacts(target: &Path) -> Artifacts {
         }
 
         // OpenAPI / Swagger specs
-        if file_name == "openapi.json"
-            || file_name == "swagger.json"
-            || file_name == "openapi.yaml"
+        if file_name == "openapi.json" || file_name == "swagger.json" || file_name == "openapi.yaml"
         {
             artifacts.openapi_specs.push(path.clone());
             continue;
@@ -182,11 +177,7 @@ pub fn discover_artifacts(target: &Path) -> Artifacts {
         }
 
         // Runbook files (runbooks/*.md)
-        if file_name.ends_with(".md")
-            && path
-                .components()
-                .any(|c| c.as_os_str() == "runbooks")
-        {
+        if file_name.ends_with(".md") && path.components().any(|c| c.as_os_str() == "runbooks") {
             artifacts.runbook_files.push(path.clone());
             continue;
         }
@@ -198,25 +189,22 @@ pub fn discover_artifacts(target: &Path) -> Artifacts {
         }
 
         // locales/ directory check for i18n
-        if path
-            .components()
-            .any(|c| c.as_os_str() == "locales")
+        if path.components().any(|c| c.as_os_str() == "locales")
             && path
                 .extension()
-                .map_or(false, |e| e == "json" || e == "yaml" || e == "yml")
+                .is_some_and(|e| e == "json" || e == "yaml" || e == "yml")
         {
             artifacts.i18n_files.push(path.clone());
             continue;
         }
 
         // .apex/index.json
-        if file_name == "index.json" {
-            if path
+        if file_name == "index.json"
+            && path
                 .components()
-                .any(|c| c.as_os_str() == ".apex")
-            {
-                artifacts.has_apex_index = true;
-            }
+                .any(|c: std::path::Component| c.as_os_str() == ".apex")
+        {
+            artifacts.has_apex_index = true;
         }
     }
 
@@ -243,29 +231,29 @@ pub fn discover_artifacts(target: &Path) -> Artifacts {
 
 /// Determine which analyzers are applicable given the discovered artifacts and language.
 pub fn applicable_analyzers(artifacts: &Artifacts, lang: Language) -> Vec<ApplicableAnalyzer> {
-    let mut analyzers = Vec::new();
-
     // Always applicable (any language)
-    analyzers.push(ApplicableAnalyzer {
-        name: "service-map",
-        description: "Discover inter-service dependencies",
-        artifacts_used: vec![],
-    });
-    analyzers.push(ApplicableAnalyzer {
-        name: "secret-scan",
-        description: "Scan for hardcoded secrets and credentials",
-        artifacts_used: vec![],
-    });
-    analyzers.push(ApplicableAnalyzer {
-        name: "mem-check",
-        description: "Check for memory safety issues",
-        artifacts_used: vec![],
-    });
-    analyzers.push(ApplicableAnalyzer {
-        name: "cost-estimate",
-        description: "Estimate cloud cost drivers",
-        artifacts_used: vec![],
-    });
+    let mut analyzers = vec![
+        ApplicableAnalyzer {
+            name: "service-map",
+            description: "Discover inter-service dependencies",
+            artifacts_used: vec![],
+        },
+        ApplicableAnalyzer {
+            name: "secret-scan",
+            description: "Scan for hardcoded secrets and credentials",
+            artifacts_used: vec![],
+        },
+        ApplicableAnalyzer {
+            name: "mem-check",
+            description: "Check for memory safety issues",
+            artifacts_used: vec![],
+        },
+        ApplicableAnalyzer {
+            name: "cost-estimate",
+            description: "Estimate cloud cost drivers",
+            artifacts_used: vec![],
+        },
+    ];
 
     // Dockerfile → container-scan
     if !artifacts.dockerfiles.is_empty() {
@@ -418,7 +406,10 @@ pub async fn run_applicable_analyzers(
             Ok(value) => (AnalyzerStatus::Ok, value),
             Err(e) => {
                 warn!(analyzer = analyzer.name, error = %e, "analyzer failed");
-                (AnalyzerStatus::Failed(e.to_string()), serde_json::Value::Null)
+                (
+                    AnalyzerStatus::Failed(e.to_string()),
+                    serde_json::Value::Null,
+                )
             }
         };
 
@@ -530,7 +521,9 @@ fn run_single_analyzer(
             let mut reports = Vec::new();
             for path in &artifacts.runbook_files {
                 if let Ok(content) = std::fs::read_to_string(path) {
-                    reports.push(crate::runbook_check::validate_runbook(&content, path, target));
+                    reports.push(crate::runbook_check::validate_runbook(
+                        &content, path, target,
+                    ));
                 }
             }
             Ok(serde_json::to_value(reports)?)
@@ -587,9 +580,7 @@ mod tests {
     #[test]
     fn dockerfile_triggers_container_scan() {
         let mut artifacts = Artifacts::default();
-        artifacts
-            .dockerfiles
-            .push(PathBuf::from("Dockerfile"));
+        artifacts.dockerfiles.push(PathBuf::from("Dockerfile"));
         let analyzers = applicable_analyzers(&artifacts, Language::Rust);
         let names: Vec<&str> = analyzers.iter().map(|a| a.name).collect();
         assert!(names.contains(&"container-scan"));
@@ -656,9 +647,7 @@ mod tests {
     #[test]
     fn openapi_triggers_api_and_doc_coverage() {
         let mut artifacts = Artifacts::default();
-        artifacts
-            .openapi_specs
-            .push(PathBuf::from("openapi.json"));
+        artifacts.openapi_specs.push(PathBuf::from("openapi.json"));
         let analyzers = applicable_analyzers(&artifacts, Language::Python);
         let names: Vec<&str> = analyzers.iter().map(|a| a.name).collect();
         assert!(names.contains(&"api-coverage"));

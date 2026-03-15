@@ -65,20 +65,14 @@ impl PropertyInferer {
 
         for func in &functions {
             // Idempotent check.
-            if IDEMPOTENT_PREFIXES
-                .iter()
-                .any(|p| func.starts_with(p))
-            {
+            if IDEMPOTENT_PREFIXES.iter().any(|p| func.starts_with(p)) {
                 props.push(InferredProperty::Idempotent {
                     function: func.clone(),
                 });
             }
 
             // Commutative check.
-            if COMMUTATIVE_PREFIXES
-                .iter()
-                .any(|p| func.starts_with(p))
-            {
+            if COMMUTATIVE_PREFIXES.iter().any(|p| func.starts_with(p)) {
                 props.push(InferredProperty::Commutative {
                     function: func.clone(),
                 });
@@ -321,9 +315,15 @@ def merge(a, b):
         let props = PropertyInferer::infer(source);
         // Should have idempotent, roundtrip, commutative, and NoException entries
         assert!(props.len() >= 4);
-        assert!(props.iter().any(|p| matches!(p, InferredProperty::Idempotent { .. })));
-        assert!(props.iter().any(|p| matches!(p, InferredProperty::RoundTrip { .. })));
-        assert!(props.iter().any(|p| matches!(p, InferredProperty::Commutative { .. })));
+        assert!(props
+            .iter()
+            .any(|p| matches!(p, InferredProperty::Idempotent { .. })));
+        assert!(props
+            .iter()
+            .any(|p| matches!(p, InferredProperty::RoundTrip { .. })));
+        assert!(props
+            .iter()
+            .any(|p| matches!(p, InferredProperty::Commutative { .. })));
     }
 
     #[test]
@@ -384,7 +384,10 @@ def merge(a, b):
         let has_length_preserving = props.contains(&InferredProperty::LengthPreserving {
             function: "filter_items".into(),
         });
-        assert!(!has_length_preserving, "filter should not be length-preserving");
+        assert!(
+            !has_length_preserving,
+            "filter should not be length-preserving"
+        );
     }
 
     /// Verify generated Python tests have correct indentation.
@@ -430,7 +433,8 @@ def merge(a, b):
     /// `trimmed.find("fn ")` matches `// fn helper(` inside comments.
     #[test]
     fn bug_rust_fn_extracted_from_comments() {
-        let source = "// fn ghost_function(x: i32) -> i32 { x }\npub fn real(x: i32) -> i32 { x }\n";
+        let source =
+            "// fn ghost_function(x: i32) -> i32 { x }\npub fn real(x: i32) -> i32 { x }\n";
         let names = PropertyInferer::extract_function_names(source);
         assert!(
             !names.contains(&"ghost_function".to_string()),
@@ -533,7 +537,10 @@ def merge(a, b):
         };
         let py = PropertyInferer::generate_hypothesis_test(&prop, "python");
         let unknown = PropertyInferer::generate_hypothesis_test(&prop, "cobol");
-        assert_eq!(py, unknown, "Unknown language should default to Python output");
+        assert_eq!(
+            py, unknown,
+            "Unknown language should default to Python output"
+        );
     }
 
     /// Rust: pub fn should be detected as public.
@@ -570,7 +577,9 @@ def merge(a, b):
         for &(enc, dec) in ROUNDTRIP_PAIRS {
             let source = format!("def {enc}(data):\n    pass\ndef {dec}(data):\n    pass\n");
             let props = PropertyInferer::infer(&source);
-            let has_rt = props.iter().any(|p| matches!(p, InferredProperty::RoundTrip { .. }));
+            let has_rt = props
+                .iter()
+                .any(|p| matches!(p, InferredProperty::RoundTrip { .. }));
             assert!(has_rt, "Roundtrip not detected for pair ({enc}, {dec})");
         }
     }
@@ -581,7 +590,9 @@ def merge(a, b):
     fn no_roundtrip_without_matching_pair() {
         let source = "def encode(data):\n    pass\n";
         let props = PropertyInferer::infer(source);
-        let has_rt = props.iter().any(|p| matches!(p, InferredProperty::RoundTrip { .. }));
+        let has_rt = props
+            .iter()
+            .any(|p| matches!(p, InferredProperty::RoundTrip { .. }));
         assert!(!has_rt, "Should not infer RoundTrip with only encode");
     }
 
@@ -600,8 +611,10 @@ def merge(a, b):
     fn bug_fn_not_extracted_from_string_literal() {
         let source = "let s = \"fn fake_func(x)\";\nfn real_func() {}";
         let names = PropertyInferer::extract_function_names(source);
-        assert!(!names.contains(&"fake_func".to_string()),
-            "Should not extract fn from string literals");
+        assert!(
+            !names.contains(&"fake_func".to_string()),
+            "Should not extract fn from string literals"
+        );
         assert!(names.contains(&"real_func".to_string()));
     }
 
@@ -609,16 +622,20 @@ def merge(a, b):
     fn bug_fn_not_extracted_from_inline_comment() {
         let source = "let x = 1; // fn ghost_function(x) does stuff\nfn real_function() {}";
         let names = PropertyInferer::extract_function_names(source);
-        assert!(!names.contains(&"ghost_function".to_string()),
-            "Should not extract fn from inline comments");
+        assert!(
+            !names.contains(&"ghost_function".to_string()),
+            "Should not extract fn from inline comments"
+        );
         assert!(names.contains(&"real_function".to_string()));
     }
 
     #[test]
     fn bug_indented_python_method_not_public() {
         let source = "class Foo:\n    def helper(self):\n        pass";
-        assert!(!PropertyInferer::is_public_function(source, "helper"),
-            "Indented Python methods should not be public");
+        assert!(
+            !PropertyInferer::is_public_function(source, "helper"),
+            "Indented Python methods should not be public"
+        );
     }
 
     #[test]

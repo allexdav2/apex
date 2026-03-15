@@ -250,7 +250,9 @@ pub fn convert_to_ssa(cpg: &Cpg, method_node: NodeId) -> SsaFunction {
         if let NodeKind::Identifier { name, .. } = kind {
             if let Some(version) = counter.current(name) {
                 let ssa_var = SsaVar::new(name, version);
-                uses.entry(id).or_insert_with(Vec::new).push(ssa_var.clone());
+                uses.entry(id)
+                    .or_insert_with(Vec::new)
+                    .push(ssa_var.clone());
                 use_def_chains.insert((id, name.clone()), ssa_var.clone());
                 def_use_chains.entry(ssa_var).or_default().push(id);
             }
@@ -705,7 +707,10 @@ mod tests {
 
         let succs = build_cfg_successors(&cpg);
         assert_eq!(succs[&a].len(), 2);
-        assert!(!succs.contains_key(&b), "AST edge should not appear in CFG successors");
+        assert!(
+            !succs.contains_key(&b),
+            "AST edge should not appear in CFG successors"
+        );
     }
 
     #[test]

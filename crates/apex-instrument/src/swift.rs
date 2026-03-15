@@ -134,14 +134,11 @@ impl<R: CommandRunner> Instrumentor for SwiftInstrumentor<R> {
         info!(target = %target_root.display(), "running Swift coverage instrumentation");
 
         // Run: swift test --enable-code-coverage
-        let spec = CommandSpec::new("swift", target_root)
-            .args(["test", "--enable-code-coverage"]);
+        let spec = CommandSpec::new("swift", target_root).args(["test", "--enable-code-coverage"]);
 
-        let output = self
-            .runner
-            .run_command(&spec)
-            .await
-            .map_err(|e| ApexError::Instrumentation(format!("swift test --enable-code-coverage: {e}")))?;
+        let output = self.runner.run_command(&spec).await.map_err(|e| {
+            ApexError::Instrumentation(format!("swift test --enable-code-coverage: {e}"))
+        })?;
 
         if output.exit_code != 0 {
             let stderr = String::from_utf8_lossy(&output.stderr);
@@ -150,13 +147,11 @@ impl<R: CommandRunner> Instrumentor for SwiftInstrumentor<R> {
 
         // Find the profdata and binary, then export with llvm-cov
         // swift test --show-codecov-path gives us the JSON path
-        let codecov_spec = CommandSpec::new("swift", target_root)
-            .args(["test", "--show-codecov-path"]);
-        let codecov_output = self
-            .runner
-            .run_command(&codecov_spec)
-            .await
-            .map_err(|e| ApexError::Instrumentation(format!("swift test --show-codecov-path: {e}")))?;
+        let codecov_spec =
+            CommandSpec::new("swift", target_root).args(["test", "--show-codecov-path"]);
+        let codecov_output = self.runner.run_command(&codecov_spec).await.map_err(|e| {
+            ApexError::Instrumentation(format!("swift test --show-codecov-path: {e}"))
+        })?;
 
         let codecov_path = String::from_utf8_lossy(&codecov_output.stdout)
             .trim()

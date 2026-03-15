@@ -35,10 +35,8 @@ pub fn check_migration(
     old_api: &str,
     new_api: &str,
 ) -> MigrationReport {
-    let old_re =
-        Regex::new(&regex::escape(old_api)).unwrap_or_else(|_| Regex::new("$^").unwrap());
-    let new_re =
-        Regex::new(&regex::escape(new_api)).unwrap_or_else(|_| Regex::new("$^").unwrap());
+    let old_re = Regex::new(&regex::escape(old_api)).unwrap_or_else(|_| Regex::new("$^").unwrap());
+    let new_re = Regex::new(&regex::escape(new_api)).unwrap_or_else(|_| Regex::new("$^").unwrap());
 
     let mut files = Vec::new();
     let mut total_old = 0usize;

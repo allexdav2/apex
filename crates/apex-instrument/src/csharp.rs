@@ -137,8 +137,8 @@ impl<R: CommandRunner> Instrumentor for CSharpInstrumentor<R> {
         info!(target = %target_root.display(), "running C# coverage instrumentation");
 
         // Run: dotnet test --collect:"XPlat Code Coverage"
-        let spec = CommandSpec::new("dotnet", target_root)
-            .args(["test", "--collect:XPlat Code Coverage"]);
+        let spec =
+            CommandSpec::new("dotnet", target_root).args(["test", "--collect:XPlat Code Coverage"]);
 
         let output = self
             .runner
@@ -155,10 +155,7 @@ impl<R: CommandRunner> Instrumentor for CSharpInstrumentor<R> {
         let coverage_xml = find_coverage_xml(target_root)?;
 
         let content = std::fs::read_to_string(&coverage_xml).map_err(|e| {
-            ApexError::Instrumentation(format!(
-                "failed to read {}: {e}",
-                coverage_xml.display()
-            ))
+            ApexError::Instrumentation(format!("failed to read {}: {e}", coverage_xml.display()))
         })?;
 
         let (all_branches, executed_branches, file_paths) =
@@ -297,10 +294,7 @@ mod tests {
             extract_xml_attr(tag, "filename"),
             Some("Program.cs".to_string())
         );
-        assert_eq!(
-            extract_xml_attr(tag, "name"),
-            Some("Program".to_string())
-        );
+        assert_eq!(extract_xml_attr(tag, "name"), Some("Program".to_string()));
         assert_eq!(extract_xml_attr(tag, "missing"), None);
     }
 

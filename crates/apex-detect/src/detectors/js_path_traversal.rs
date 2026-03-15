@@ -45,10 +45,10 @@ const FS_PATTERNS: &[FsPattern] = &[
 
 /// Safe argument patterns: string literals, __dirname, __filename, path.resolve constants.
 const SAFE_ARG_PREFIXES: &[&str] = &[
-    "\"",       // string literal (double quote)
-    "'",        // string literal (single quote)
-    "`",        // template literal
-    "__dirname", // Node.js directory constant
+    "\"",         // string literal (double quote)
+    "'",          // string literal (single quote)
+    "`",          // template literal
+    "__dirname",  // Node.js directory constant
     "__filename", // Node.js filename constant
 ];
 

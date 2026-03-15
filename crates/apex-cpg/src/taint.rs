@@ -616,7 +616,10 @@ def run(user_input):
         });
         // Node is both source and sink
         let flows = reachable_by(&cpg, &[node], &[node], 10);
-        assert!(!flows.is_empty(), "sink=source should produce a trivial flow");
+        assert!(
+            !flows.is_empty(),
+            "sink=source should produce a trivial flow"
+        );
         assert_eq!(flows[0].path, vec![node]);
     }
 }

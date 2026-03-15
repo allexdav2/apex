@@ -30,8 +30,7 @@ static PY_CIRCULAR_REF: LazyLock<Regex> =
 static PY_LARGE_CACHE: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"@(?:lru_cache|cache)\s*(?:\(\s*\)|$)").unwrap());
 // Rust patterns
-static RS_BOX_LEAK: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"Box::leak\b").unwrap());
+static RS_BOX_LEAK: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"Box::leak\b").unwrap());
 static RS_MEM_FORGET: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"(?:std::mem::forget|mem::forget)\b").unwrap());
 
@@ -139,10 +138,7 @@ mod tests {
     #[test]
     fn detects_mem_forget() {
         let mut c = HashMap::new();
-        c.insert(
-            PathBuf::from("lib.rs"),
-            "std::mem::forget(guard);".into(),
-        );
+        c.insert(PathBuf::from("lib.rs"), "std::mem::forget(guard);".into());
         let r = check_memory(&c, apex_core::types::Language::Rust);
         assert!(r.issues.iter().any(|i| i.pattern == "mem-forget"));
     }

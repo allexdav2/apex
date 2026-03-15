@@ -669,7 +669,7 @@ mod tests {
     fn pso_record_out_of_bounds_silently_drops() {
         let mut s = PsoMOptScheduler::new(3);
         s.record(99, true); // silently dropped
-        // All attempts should still be 0
+                            // All attempts should still be 0
         for i in 0..3 {
             assert_eq!(s.operator_attempts[i], 0);
             assert_eq!(s.operator_finds[i], 0);

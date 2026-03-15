@@ -5,7 +5,14 @@ use std::path::PathBuf;
 use uuid::Uuid;
 
 /// Weak hash algorithms.
-const WEAK_HASHES: &[&str] = &["MD5", "SHA1", "md5(", "sha1(", "hashlib.md5", "hashlib.sha1"];
+const WEAK_HASHES: &[&str] = &[
+    "MD5",
+    "SHA1",
+    "md5(",
+    "sha1(",
+    "hashlib.md5",
+    "hashlib.sha1",
+];
 
 /// Weak cipher algorithms.
 const WEAK_CIPHERS: &[&str] = &["DES", "RC4", "Blowfish", "ECB"];
@@ -20,9 +27,21 @@ const SECURITY_CONTEXT: &[&str] = &[
 
 /// Safe alternatives that should not be flagged.
 const SAFE_PATTERNS: &[&str] = &[
-    "sha256", "sha384", "sha512", "SHA256", "SHA384", "SHA512",
-    "secrets.", "os.urandom", "SystemRandom", "token_bytes", "token_hex",
-    "PBKDF2", "bcrypt", "argon2", "scrypt",
+    "sha256",
+    "sha384",
+    "sha512",
+    "SHA256",
+    "SHA384",
+    "SHA512",
+    "secrets.",
+    "os.urandom",
+    "SystemRandom",
+    "token_bytes",
+    "token_hex",
+    "PBKDF2",
+    "bcrypt",
+    "argon2",
+    "scrypt",
 ];
 
 /// Scan source code for cryptographic failure vulnerabilities.
@@ -106,7 +125,10 @@ pub fn scan_crypto_failure(source: &str, file_path: &str) -> Vec<Finding> {
         }
 
         // Check hardcoded keys/IVs.
-        if (trimmed.contains("key =") || trimmed.contains("key=") || trimmed.contains("iv =") || trimmed.contains("iv="))
+        if (trimmed.contains("key =")
+            || trimmed.contains("key=")
+            || trimmed.contains("iv =")
+            || trimmed.contains("iv="))
             && (trimmed.contains("\"") || trimmed.contains("b\"") || trimmed.contains("b'"))
         {
             // Heuristic: line assigns a key/iv to a string literal.

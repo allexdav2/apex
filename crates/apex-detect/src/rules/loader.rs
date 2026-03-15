@@ -81,7 +81,10 @@ rules:
         assert_eq!(rule.patterns.len(), 2);
         assert_eq!(rule.cwe, Some(89));
         assert_eq!(rule.languages, vec!["python", "ruby"]);
-        assert_eq!(rule.fix.as_deref(), Some("Use parameterized queries instead"));
+        assert_eq!(
+            rule.fix.as_deref(),
+            Some("Use parameterized queries instead")
+        );
     }
 
     #[test]

@@ -50,12 +50,7 @@ fn parse_csharp_coverage(
                 continue;
             };
 
-            let branch = BranchId::new(
-                current_file_id,
-                line_num,
-                0,
-                if hits > 0 { 0 } else { 1 },
-            );
+            let branch = BranchId::new(current_file_id, line_num, 0, if hits > 0 { 0 } else { 1 });
             branches.push(branch);
         }
     }

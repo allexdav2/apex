@@ -26,6 +26,9 @@ toml = "0.8"
 tracing = { workspace = true }
 uuid = { workspace = true }
 regex = "1"
+walkdir = "2"
+serde_yaml = "0.9"
+apex-reach = { path = "../apex-reach" }
 # Feature-gated: only with --features gnn or ml
 ort = { version = "2.0.0-rc.12", optional = true }
 

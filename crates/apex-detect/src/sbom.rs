@@ -3,9 +3,9 @@
 //! Generates SPDX 2.3 or CycloneDX 1.5 JSON documents from parsed
 //! lock-file dependencies.
 
-use apex_cpg::architecture::ImportGraph;
 use crate::lockfile::{self, Dependency};
 use apex_core::error::Result;
+use apex_cpg::architecture::ImportGraph;
 use serde_json::{json, Value};
 use std::path::Path;
 use uuid::Uuid;
@@ -259,8 +259,7 @@ impl SbomGenerator {
 
                 // Check if any edge in the graph imports this dependency
                 let imported = graph.all_edges().iter().any(|edge| {
-                    edge.to.starts_with(&dep_name_normalized)
-                        || edge.to == dep_name_normalized
+                    edge.to.starts_with(&dep_name_normalized) || edge.to == dep_name_normalized
                 });
 
                 ReachabilityAnnotation {
@@ -282,9 +281,8 @@ impl SbomGenerator {
                 if let Some(name) = pkg.get("name").and_then(|v| v.as_str()) {
                     if let Some(ann) = annotations.iter().find(|a| a.name == name) {
                         if let Some(obj) = pkg.as_object_mut() {
-                            let annotations_arr = obj
-                                .entry("annotations")
-                                .or_insert_with(|| json!([]));
+                            let annotations_arr =
+                                obj.entry("annotations").or_insert_with(|| json!([]));
                             if let Some(arr) = annotations_arr.as_array_mut() {
                                 arr.push(json!({
                                     "annotationType": "REVIEW",
@@ -312,9 +310,7 @@ impl SbomGenerator {
                 if let Some(name) = comp.get("name").and_then(|v| v.as_str()) {
                     if let Some(ann) = annotations.iter().find(|a| a.name == name) {
                         if let Some(obj) = comp.as_object_mut() {
-                            let props = obj
-                                .entry("properties")
-                                .or_insert_with(|| json!([]));
+                            let props = obj.entry("properties").or_insert_with(|| json!([]));
                             if let Some(arr) = props.as_array_mut() {
                                 arr.push(json!({"name": "apex:imported", "value": ann.imported.to_string()}));
                                 arr.push(json!({"name": "apex:vuln-reachable", "value": ann.vuln_reachable.to_string()}));

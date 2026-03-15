@@ -396,7 +396,10 @@ mod tests {
 
     #[test]
     fn path_to_module_python() {
-        assert_eq!(ImportGraph::path_to_module("src/utils/helpers.py"), "utils.helpers");
+        assert_eq!(
+            ImportGraph::path_to_module("src/utils/helpers.py"),
+            "utils.helpers"
+        );
     }
 
     #[test]

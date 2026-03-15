@@ -7,7 +7,9 @@ pub mod architecture;
 pub mod builder;
 pub mod deepdfa;
 pub mod model_loader;
+pub mod query;
 pub mod reaching_def;
+pub mod ssa;
 pub mod taint;
 pub mod taint_flows_store;
 pub mod taint_rules;
@@ -15,8 +17,6 @@ pub mod taint_store;
 pub mod taint_summary;
 pub mod taint_triage;
 pub mod type_taint;
-pub mod query;
-pub mod ssa;
 
 pub use taint_flows_store::find_taint_flows_with_store;
 pub use taint_rules::TaintRuleSet;

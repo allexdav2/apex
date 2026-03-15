@@ -12,10 +12,8 @@ use crate::Detector;
 pub struct SubstringSecurityDetector;
 
 static SECURITY_FN: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(
-        r"fn\s+(is_source|is_sink|is_sanitizer|is_trusted|is_authorized|check_permission)",
-    )
-    .expect("invalid security function regex")
+    Regex::new(r"fn\s+(is_source|is_sink|is_sanitizer|is_trusted|is_authorized|check_permission)")
+        .expect("invalid security function regex")
 });
 
 #[async_trait]

@@ -38,9 +38,9 @@ use std::{
     sync::{Arc, Mutex},
     time::Instant,
 };
+use tracing::{debug, info};
 #[cfg(feature = "firecracker")]
 use tracing::{error, warn};
-use tracing::{debug, info};
 
 // ---------------------------------------------------------------------------
 // Vsock frame serialization / deserialization

@@ -6,14 +6,23 @@ use regex::Regex;
 use std::collections::HashMap;
 use std::sync::LazyLock;
 
-static RE_FN_DECL: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^\s*(?:async\s+)?function\s+(\w+)\s*\(").unwrap());
-static RE_ARROW: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^\s*(?:export\s+)?(?:const|let|var)\s+(\w+)\s*=\s*(?:async\s+)?(?:\([^)]*\)|[a-zA-Z_]\w*)\s*=>").unwrap());
-static RE_METHOD: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^\s*(?:async\s+)?(\w+)\s*\([^)]*\)\s*\{").unwrap());
-static RE_EXPORT_FN: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^\s*export\s+(?:default\s+)?(?:async\s+)?function\s+(\w+)\s*\(").unwrap());
-static RE_TEST_CALL: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^\s*(describe|it|test)\s*\(").unwrap());
+static RE_FN_DECL: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"^\s*(?:async\s+)?function\s+(\w+)\s*\(").unwrap());
+static RE_ARROW: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r"^\s*(?:export\s+)?(?:const|let|var)\s+(\w+)\s*=\s*(?:async\s+)?(?:\([^)]*\)|[a-zA-Z_]\w*)\s*=>").unwrap()
+});
+static RE_METHOD: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"^\s*(?:async\s+)?(\w+)\s*\([^)]*\)\s*\{").unwrap());
+static RE_EXPORT_FN: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r"^\s*export\s+(?:default\s+)?(?:async\s+)?function\s+(\w+)\s*\(").unwrap()
+});
+static RE_TEST_CALL: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"^\s*(describe|it|test)\s*\(").unwrap());
 static RE_JS_CALL: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"(\w+)\s*\(").unwrap());
-static RE_JS_METHOD_CALL: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"(\w+)\.(\w+)\s*\(").unwrap());
-static RE_REQUIRE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r#"require\s*\(\s*['"]([^'"]+)['"]\s*\)"#).unwrap());
+static RE_JS_METHOD_CALL: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"(\w+)\.(\w+)\s*\(").unwrap());
+static RE_REQUIRE: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r#"require\s*\(\s*['"]([^'"]+)['"]\s*\)"#).unwrap());
 use std::path::{Path, PathBuf};
 
 pub struct JsExtractor;
@@ -84,8 +93,7 @@ impl CallGraphExtractor for JsExtractor {
                     continue;
                 }
                 let body_lines = &lines[(body_start - 1)..body_end.min(lines.len())];
-                let calls =
-                    extract_calls_in_body(body_lines, func.start_line, &func.name);
+                let calls = extract_calls_in_body(body_lines, func.start_line, &func.name);
                 for cs in calls {
                     pending_edges.push((fn_id, cs.callee_name, cs.line, cs.block_id));
                 }
@@ -141,16 +149,11 @@ struct FileEntryFlags {
 }
 
 fn detect_file_entry_points(source: &str, path: &Path) -> FileEntryFlags {
-    let fname = path
-        .file_name()
-        .and_then(|f| f.to_str())
-        .unwrap_or("");
-    let has_require_main = source.contains("require.main === module")
-        || source.contains("require.main===module");
-    let is_main_file = fname == "index.js"
-        || fname == "main.js"
-        || fname == "index.ts"
-        || fname == "main.ts";
+    let fname = path.file_name().and_then(|f| f.to_str()).unwrap_or("");
+    let has_require_main =
+        source.contains("require.main === module") || source.contains("require.main===module");
+    let is_main_file =
+        fname == "index.js" || fname == "main.js" || fname == "index.ts" || fname == "main.ts";
     let has_commander = source.contains("commander") || source.contains("yargs");
     let has_yargs = source.contains("yargs");
     let has_dot_command = source.contains(".command(");
@@ -264,9 +267,7 @@ fn extract_functions(source: &str) -> Vec<FnDef> {
         let trimmed = line.trim();
 
         // Detect class start.
-        if (trimmed.starts_with("class ") || trimmed.contains("class "))
-            && trimmed.contains('{')
-        {
+        if (trimmed.starts_with("class ") || trimmed.contains("class ")) && trimmed.contains('{') {
             in_class = true;
             class_brace_depth = 1;
             // Count additional braces on the same line.
@@ -299,8 +300,17 @@ fn extract_functions(source: &str) -> Vec<FnDef> {
                 // Skip keywords.
                 if matches!(
                     name.as_str(),
-                    "if" | "else" | "for" | "while" | "switch" | "catch" | "class"
-                        | "return" | "new" | "typeof" | "delete" | "void"
+                    "if" | "else"
+                        | "for"
+                        | "while"
+                        | "switch"
+                        | "catch"
+                        | "class"
+                        | "return"
+                        | "new"
+                        | "typeof"
+                        | "delete"
+                        | "void"
                 ) {
                     continue;
                 }
@@ -451,11 +461,7 @@ fn strip_strings(line: &str) -> String {
 }
 
 /// Extract function calls from a body of lines.
-fn extract_calls_in_body(
-    body_lines: &[&str],
-    base_line: u32,
-    self_name: &str,
-) -> Vec<CallSite> {
+fn extract_calls_in_body(body_lines: &[&str], base_line: u32, self_name: &str) -> Vec<CallSite> {
     let re_call = &*RE_JS_CALL;
     let re_method_call = &*RE_JS_METHOD_CALL;
     let re_require = &*RE_REQUIRE;
@@ -496,8 +502,8 @@ fn extract_calls_in_body(
             if is_call_target(name) && name != self_name {
                 // Avoid duplicating method calls already captured.
                 let full_match_start = caps.get(0).unwrap().start();
-                let is_method =
-                    full_match_start > 0 && trimmed.as_bytes().get(full_match_start - 1) == Some(&b'.');
+                let is_method = full_match_start > 0
+                    && trimmed.as_bytes().get(full_match_start - 1) == Some(&b'.');
                 if !is_method {
                     calls.push(CallSite {
                         callee_name: name.to_string(),
@@ -594,7 +600,11 @@ function compute() {
 "#;
         let g = single_file_graph(src);
         // add, multiply, compute
-        assert!(g.node_count() >= 3, "should find at least 3 functions, got {}", g.node_count());
+        assert!(
+            g.node_count() >= 3,
+            "should find at least 3 functions, got {}",
+            g.node_count()
+        );
         // compute calls add and multiply
         let compute_ids = g.fns_named("compute");
         assert_eq!(compute_ids.len(), 1);
@@ -629,7 +639,11 @@ class Calculator {
 }
 "#;
         let g = single_file_graph(src);
-        assert!(g.node_count() >= 3, "should find 3 class methods, got {}", g.node_count());
+        assert!(
+            g.node_count() >= 3,
+            "should find 3 class methods, got {}",
+            g.node_count()
+        );
         let names: Vec<_> = g.nodes.iter().map(|n| &n.name).collect();
         assert!(names.contains(&&"add".to_string()));
         assert!(names.contains(&&"multiply".to_string()));
@@ -687,10 +701,7 @@ describe('math', () => {
             .iter()
             .filter(|n| n.entry_kind == Some(EntryPointKind::Test))
             .collect();
-        assert!(
-            !test_entries.is_empty(),
-            "should detect test entry points"
-        );
+        assert!(!test_entries.is_empty(), "should detect test entry points");
         let test_names: Vec<_> = test_entries.iter().map(|n| &n.name).collect();
         assert!(test_names.contains(&&"describe".to_string()));
     }
@@ -861,7 +872,13 @@ const processAsync = async (data) => {
 "#;
         let g = single_file_graph(src);
         let names: Vec<_> = g.nodes.iter().map(|n| &n.name).collect();
-        assert!(names.contains(&&"fetchData".to_string()), "should detect async function");
-        assert!(names.contains(&&"processAsync".to_string()), "should detect async arrow");
+        assert!(
+            names.contains(&&"fetchData".to_string()),
+            "should detect async function"
+        );
+        assert!(
+            names.contains(&&"processAsync".to_string()),
+            "should detect async arrow"
+        );
     }
 }

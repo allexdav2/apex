@@ -295,7 +295,8 @@ pub fn cwe_default_cvss(cwe_id: u32) -> CvssBase {
 /// CVSS v3.1 roundup: smallest number >= x that is a multiple of 0.1.
 fn roundup(x: f64) -> f32 {
     let int_x = (x * 100_000.0) as u64;
-    if int_x.is_multiple_of(10_000) {
+    #[allow(unknown_lints, clippy::manual_is_multiple_of)]
+    if int_x % 10_000 == 0 {
         (int_x as f64 / 100_000.0) as f32
     } else {
         ((int_x / 10_000 + 1) as f64 * 10_000.0 / 100_000.0) as f32
@@ -1035,6 +1036,9 @@ mod tests {
     fn roundup_negative_input_saturates() {
         // This documents the existing behavior: negative -> 0.0
         let result = roundup(-0.5);
-        assert_eq!(result, 0.0, "roundup(-0.5) should be 0.0 due to u64 saturation");
+        assert_eq!(
+            result, 0.0,
+            "roundup(-0.5) should be 0.0 due to u64 saturation"
+        );
     }
 }

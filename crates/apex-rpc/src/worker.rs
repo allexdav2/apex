@@ -1241,15 +1241,11 @@ mod tests {
             let tmp = tempfile::tempdir().expect("failed to create tempdir");
             let sock_path = tmp.path().join("coordinator.sock");
 
-            let (service, _handle) = match CoordinatorServer::start_uds_with_service(
-                &sock_path,
-                oracle.clone(),
-            )
-            .await
-            {
-                Ok(s) => s,
-                Err(_) => return None,
-            };
+            let (service, _handle) =
+                match CoordinatorServer::start_uds_with_service(&sock_path, oracle.clone()).await {
+                    Ok(s) => s,
+                    Err(_) => return None,
+                };
 
             // UDS is ready immediately after bind — no sleep needed.
             let worker = WorkerClient::connect_uds(&sock_path, "python".into())

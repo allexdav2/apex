@@ -1,4 +1,4 @@
-# Awesome List Targets for APEX
+<!-- status: DEPRECATED --># Awesome List Targets for APEX
 
 Research date: 2026-03-13
 

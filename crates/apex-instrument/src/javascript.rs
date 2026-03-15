@@ -2105,7 +2105,9 @@ mod tests {
         let json_path = root.join("coverage-final.json");
 
         // Build a branch with 257 arms via b counts
-        let counts: Vec<String> = (0..257).map(|i| if i == 0 { "1".into() } else { "0".into() }).collect();
+        let counts: Vec<String> = (0..257)
+            .map(|i| if i == 0 { "1".into() } else { "0".into() })
+            .collect();
         let counts_str = counts.join(", ");
 
         let json = format!(

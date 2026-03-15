@@ -17,8 +17,7 @@ static RUST_DISCARD_AWAIT: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"let\s+_\s*=.*\.await").unwrap());
 
 // JavaScript: `void asyncFn()` — explicit promise discard
-static JS_VOID_ASYNC: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"^\s*void\s+\w").unwrap());
+static JS_VOID_ASYNC: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^\s*void\s+\w").unwrap());
 
 #[async_trait]
 impl Detector for DiscardedAsyncResultDetector {
@@ -156,10 +155,7 @@ mod tests {
     #[tokio::test]
     async fn detects_void_async_js_no_indent() {
         let mut files = HashMap::new();
-        files.insert(
-            PathBuf::from("src/utils.js"),
-            "void fetchData();\n".into(),
-        );
+        files.insert(PathBuf::from("src/utils.js"), "void fetchData();\n".into());
         let ctx = make_ctx(files, Language::JavaScript);
         let findings = DiscardedAsyncResultDetector.analyze(&ctx).await.unwrap();
         assert_eq!(findings.len(), 1);
@@ -182,10 +178,7 @@ mod tests {
     #[tokio::test]
     async fn skips_unsupported_language() {
         let mut files = HashMap::new();
-        files.insert(
-            PathBuf::from("src/utils.py"),
-            "void something\n".into(),
-        );
+        files.insert(PathBuf::from("src/utils.py"), "void something\n".into());
         let ctx = make_ctx(files, Language::Python);
         let findings = DiscardedAsyncResultDetector.analyze(&ctx).await.unwrap();
         assert!(findings.is_empty());

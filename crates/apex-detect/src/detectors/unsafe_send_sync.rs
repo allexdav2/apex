@@ -23,10 +23,7 @@ fn has_safety_comment(lines: &[&str], match_line: usize, count: usize) -> bool {
         let trimmed = line.trim();
         if trimmed.starts_with("//") {
             let comment_body = trimmed.trim_start_matches('/').trim();
-            if comment_body
-                .to_ascii_lowercase()
-                .starts_with("safety:")
-            {
+            if comment_body.to_ascii_lowercase().starts_with("safety:") {
                 return true;
             }
         }
@@ -57,9 +54,7 @@ impl Detector for UnsafeSendSyncDetector {
             let lines: Vec<&str> = source.lines().collect();
 
             for (line_idx, line) in lines.iter().enumerate() {
-                if UNSAFE_SEND_SYNC_RE.is_match(line)
-                    && !has_safety_comment(&lines, line_idx, 3)
-                {
+                if UNSAFE_SEND_SYNC_RE.is_match(line) && !has_safety_comment(&lines, line_idx, 3) {
                     let line_1based = (line_idx + 1) as u32;
                     findings.push(Finding {
                         id: Uuid::new_v4(),
@@ -79,7 +74,9 @@ impl Detector for UnsafeSendSyncDetector {
                         ),
                         evidence: vec![],
                         covered: false,
-                        suggestion: "Add a `// SAFETY:` comment explaining why this Send/Sync impl is safe".into(),
+                        suggestion:
+                            "Add a `// SAFETY:` comment explaining why this Send/Sync impl is safe"
+                                .into(),
                         explanation: None,
                         fix: None,
                         cwe_ids: vec![362],

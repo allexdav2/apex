@@ -12,9 +12,8 @@ use crate::Detector;
 
 pub struct VecDequePartialDetector;
 
-static AS_SLICES_DOT_ZERO: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r"\.as_slices\(\)\s*\.0").expect("invalid vecdeque-partial regex")
-});
+static AS_SLICES_DOT_ZERO: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"\.as_slices\(\)\s*\.0").expect("invalid vecdeque-partial regex"));
 
 #[async_trait]
 impl Detector for VecDequePartialDetector {

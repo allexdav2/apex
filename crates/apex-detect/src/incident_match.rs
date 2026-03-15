@@ -24,13 +24,9 @@ pub struct IncidentReport {
 }
 
 /// Match an error message against known incident fingerprints.
-pub fn match_incidents(
-    error_msg: &str,
-    fingerprints: &[IncidentFingerprint],
-) -> IncidentReport {
+pub fn match_incidents(error_msg: &str, fingerprints: &[IncidentFingerprint]) -> IncidentReport {
     let error_lower = error_msg.to_lowercase();
-    let error_words: std::collections::HashSet<&str> =
-        error_lower.split_whitespace().collect();
+    let error_words: std::collections::HashSet<&str> = error_lower.split_whitespace().collect();
 
     let mut matches: Vec<IncidentMatch> = fingerprints
         .iter()

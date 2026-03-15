@@ -2,7 +2,7 @@
 
 use regex::Regex;
 use serde::Serialize;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::LazyLock;
 
 #[derive(Debug, Clone, Copy, Serialize)]
@@ -29,23 +29,19 @@ pub struct ContainerReport {
     pub files_scanned: usize,
 }
 
-static RUN_AS_ROOT: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"(?i)^USER\s+root").unwrap());
+static RUN_AS_ROOT: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"(?i)^USER\s+root").unwrap());
 static LATEST_TAG: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"(?i)^FROM\s+\S+:latest").unwrap());
-static NO_TAG: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"(?i)^FROM\s+(\w+)\s*$").unwrap());
-static ADD_INSTEAD_COPY: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"(?i)^ADD\s+").unwrap());
+static NO_TAG: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"(?i)^FROM\s+(\w+)\s*$").unwrap());
+static ADD_INSTEAD_COPY: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"(?i)^ADD\s+").unwrap());
 static CURL_PIPE_SH: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"curl.*\|\s*(?:sh|bash)").unwrap());
 #[allow(dead_code)]
 static APT_NO_VERSION: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"(?i)apt-get\s+install\s+\w+(?:\s+\w+)*\s*$").unwrap());
-static EXPOSE_SSH: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"(?i)^EXPOSE\s+22\b").unwrap());
+static EXPOSE_SSH: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"(?i)^EXPOSE\s+22\b").unwrap());
 
-pub fn scan_dockerfile(content: &str, path: &PathBuf) -> ContainerReport {
+pub fn scan_dockerfile(content: &str, path: &Path) -> ContainerReport {
     let mut issues = Vec::new();
     let mut has_user_directive = false;
 
@@ -101,9 +97,7 @@ pub fn scan_dockerfile(content: &str, path: &PathBuf) -> ContainerReport {
         }
         let ln = (line_num + 1) as u32;
 
-        if trimmed.to_uppercase().starts_with("USER")
-            && !trimmed.to_uppercase().contains("ROOT")
-        {
+        if trimmed.to_uppercase().starts_with("USER") && !trimmed.to_uppercase().contains("ROOT") {
             has_user_directive = true;
         }
 
@@ -111,7 +105,7 @@ pub fn scan_dockerfile(content: &str, path: &PathBuf) -> ContainerReport {
             if re.is_match(trimmed) {
                 issues.push(ContainerIssue {
                     severity: *sev,
-                    file: path.clone(),
+                    file: path.to_path_buf(),
                     line: ln,
                     rule: rule.to_string(),
                     description: desc.to_string(),
@@ -124,7 +118,7 @@ pub fn scan_dockerfile(content: &str, path: &PathBuf) -> ContainerReport {
     if !has_user_directive {
         issues.push(ContainerIssue {
             severity: ContainerSeverity::High,
-            file: path.clone(),
+            file: path.to_path_buf(),
             line: 0,
             rule: "user-directive".into(),
             description: "No USER directive — container runs as root by default".into(),

@@ -88,8 +88,7 @@ impl<R: CommandRunner> LanguageRunner for CppRunner<R> {
             || target.join("Makefile").exists()
             || target.join("meson.build").exists();
 
-        has_build && Self::has_cpp_sources(target)
-            || Self::has_cpp_sources(target)
+        has_build && Self::has_cpp_sources(target) || Self::has_cpp_sources(target)
     }
 
     async fn install_deps(&self, target: &Path) -> Result<()> {
@@ -157,15 +156,15 @@ impl<R: CommandRunner> LanguageRunner for CppRunner<R> {
                     info!("detected GoogleTest; running ctest");
                 }
                 (
-                    CommandSpec::new("ctest", target)
-                        .args(["--test-dir", "build", "--output-on-failure"]),
+                    CommandSpec::new("ctest", target).args([
+                        "--test-dir",
+                        "build",
+                        "--output-on-failure",
+                    ]),
                     "ctest",
                 )
             }
-            CppBuildSystem::Make => (
-                CommandSpec::new("make", target).args(["test"]),
-                "make-test",
-            ),
+            CppBuildSystem::Make => (CommandSpec::new("make", target).args(["test"]), "make-test"),
             CppBuildSystem::Meson => (
                 CommandSpec::new("meson", target).args(["test", "-C", "build"]),
                 "meson-test",

@@ -194,7 +194,8 @@ pub fn asvs_requirements() -> Vec<AsvsRequirement> {
         AsvsRequirement {
             id: "V8.1.1".into(),
             level: 1,
-            description: "Verify application protects sensitive data from server-side caching".into(),
+            description: "Verify application protects sensitive data from server-side caching"
+                .into(),
             detector_id: "cache_control".into(),
             automated: false,
         },
@@ -208,7 +209,8 @@ pub fn asvs_requirements() -> Vec<AsvsRequirement> {
         AsvsRequirement {
             id: "V10.3.1".into(),
             level: 1,
-            description: "Verify application source code and libraries do not contain backdoors".into(),
+            description: "Verify application source code and libraries do not contain backdoors"
+                .into(),
             detector_id: "backdoor_detection".into(),
             automated: false,
         },
@@ -290,10 +292,7 @@ pub fn asvs_requirements() -> Vec<AsvsRequirement> {
 ///
 /// `finding_detector_ids` contains the IDs of detectors that produced at least one finding.
 /// `level` determines which ASVS requirements are included (L1, L1+L2, or all).
-pub fn generate_asvs_report(
-    finding_detector_ids: &[String],
-    level: AsvsLevel,
-) -> AsvsReport {
+pub fn generate_asvs_report(finding_detector_ids: &[String], level: AsvsLevel) -> AsvsReport {
     let requirements = asvs_requirements();
     let max_level = match level {
         AsvsLevel::L1 => 1,
@@ -329,8 +328,14 @@ pub fn generate_asvs_report(
     let coverage = AsvsCoverage {
         total: statuses.len(),
         automated: statuses.iter().filter(|s| s.requirement.automated).count(),
-        verified: statuses.iter().filter(|s| s.status == AsvsStatus::Verified).count(),
-        failed: statuses.iter().filter(|s| s.status == AsvsStatus::Failed).count(),
+        verified: statuses
+            .iter()
+            .filter(|s| s.status == AsvsStatus::Verified)
+            .count(),
+        failed: statuses
+            .iter()
+            .filter(|s| s.status == AsvsStatus::Failed)
+            .count(),
         manual_required: statuses
             .iter()
             .filter(|s| s.status == AsvsStatus::NotAutomated)
@@ -395,10 +400,16 @@ mod tests {
             .iter()
             .filter(|s| s.requirement.detector_id == "sql_injection")
             .collect();
-        assert!(!sql_reqs.is_empty(), "Should have SQL injection requirements");
+        assert!(
+            !sql_reqs.is_empty(),
+            "Should have SQL injection requirements"
+        );
         for req in sql_reqs {
             assert_eq!(req.status, AsvsStatus::Failed);
-            assert!(!req.findings.is_empty(), "Failed requirement should have findings");
+            assert!(
+                !req.findings.is_empty(),
+                "Failed requirement should have findings"
+            );
         }
     }
 
@@ -440,24 +451,37 @@ mod tests {
         assert_eq!(cov.total, report.requirements.len());
         assert_eq!(
             cov.automated,
-            report.requirements.iter().filter(|s| s.requirement.automated).count()
+            report
+                .requirements
+                .iter()
+                .filter(|s| s.requirement.automated)
+                .count()
         );
         assert_eq!(
             cov.verified,
-            report.requirements.iter().filter(|s| s.status == AsvsStatus::Verified).count()
+            report
+                .requirements
+                .iter()
+                .filter(|s| s.status == AsvsStatus::Verified)
+                .count()
         );
         assert_eq!(
             cov.failed,
-            report.requirements.iter().filter(|s| s.status == AsvsStatus::Failed).count()
+            report
+                .requirements
+                .iter()
+                .filter(|s| s.status == AsvsStatus::Failed)
+                .count()
         );
         assert_eq!(
             cov.manual_required,
-            report.requirements.iter().filter(|s| s.status == AsvsStatus::NotAutomated).count()
+            report
+                .requirements
+                .iter()
+                .filter(|s| s.status == AsvsStatus::NotAutomated)
+                .count()
         );
-        assert_eq!(
-            cov.total,
-            cov.verified + cov.failed + cov.manual_required
-        );
+        assert_eq!(cov.total, cov.verified + cov.failed + cov.manual_required);
     }
 
     #[test]

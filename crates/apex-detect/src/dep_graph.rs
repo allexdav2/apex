@@ -45,11 +45,7 @@ pub fn analyze_cargo(target: &Path) -> DepGraphReport {
                     .map(String::from),
             });
 
-            for section in &[
-                "dependencies",
-                "dev-dependencies",
-                "build-dependencies",
-            ] {
+            for section in &["dependencies", "dev-dependencies", "build-dependencies"] {
                 if let Some(deps) = value.get(section).and_then(|d| d.as_table()) {
                     for (dep_name, _dep_val) in deps {
                         nodes.push(DepNode {
@@ -154,14 +150,7 @@ fn detect_cycles(edges: &[(String, String)]) -> Vec<Vec<String>> {
 
     for node in adj.keys() {
         if !visited.contains(node) {
-            dfs_cycles(
-                node,
-                &adj,
-                &mut visited,
-                &mut stack,
-                &mut path,
-                &mut cycles,
-            );
+            dfs_cycles(node, &adj, &mut visited, &mut stack, &mut path, &mut cycles);
         }
     }
     cycles
@@ -190,8 +179,7 @@ fn dfs_cycles<'a>(
             } else if stack.contains(next) {
                 // Found cycle
                 let start = path.iter().position(|&n| n == next).unwrap_or(0);
-                let cycle: Vec<String> =
-                    path[start..].iter().map(|s| s.to_string()).collect();
+                let cycle: Vec<String> = path[start..].iter().map(|s| s.to_string()).collect();
                 if !cycle.is_empty() {
                     cycles.push(cycle);
                 }

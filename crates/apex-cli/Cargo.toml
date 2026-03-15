@@ -29,6 +29,8 @@ apex-fuzz = { path = "../apex-fuzz" }
 apex-cpg = { path = "../apex-cpg" }
 apex-detect = { path = "../apex-detect" }
 apex-index = { path = "../apex-index" }
+apex-reach = { path = "../apex-reach" }
+rmcp = { version = "1", features = ["server", "schemars", "transport-io"] }
 tokio = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }

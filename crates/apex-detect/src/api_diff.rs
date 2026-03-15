@@ -245,10 +245,16 @@ impl ApiDiffer {
         // Check for type changes on existing parameters
         for (key, old_param) in &old_params {
             if let Some(new_param) = new_params.get(key) {
-                let old_schema =
-                    Self::resolve_ref(old_param.get("schema").unwrap_or(&Value::Null), old_root, &mut HashSet::new());
-                let new_schema =
-                    Self::resolve_ref(new_param.get("schema").unwrap_or(&Value::Null), new_root, &mut HashSet::new());
+                let old_schema = Self::resolve_ref(
+                    old_param.get("schema").unwrap_or(&Value::Null),
+                    old_root,
+                    &mut HashSet::new(),
+                );
+                let new_schema = Self::resolve_ref(
+                    new_param.get("schema").unwrap_or(&Value::Null),
+                    new_root,
+                    &mut HashSet::new(),
+                );
                 let old_type = old_schema.get("type").and_then(Value::as_str);
                 let new_type = new_schema.get("type").and_then(Value::as_str);
                 if let (Some(old_t), Some(new_t)) = (&old_type, &new_type) {
@@ -2182,9 +2188,7 @@ mod tests {
         // This diff triggers resolve_ref on the circular chain.
         // If the recursion guard is broken, this will stack overflow.
         let spec = spec_json.clone();
-        let result = std::panic::catch_unwind(move || {
-            ApiDiffer::diff(&spec, &spec)
-        });
+        let result = std::panic::catch_unwind(move || ApiDiffer::diff(&spec, &spec));
         // Stack overflow may abort the process rather than unwinding.
         // If this test crashes entirely, the bug is confirmed.
         if result.is_err() {
@@ -2205,5 +2209,4 @@ mod tests {
         // "summary" is not an HTTP method, should have no changes
         assert_eq!(report.changes.len(), 0);
     }
-
 }

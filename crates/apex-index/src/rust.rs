@@ -455,13 +455,16 @@ fn extract_covered_branches(json: &LlvmCovJson, target_str: &str) -> Vec<BranchI
                 if seg.len() < 6 {
                     continue;
                 }
-                let has_count = seg.get(3)
+                let has_count = seg
+                    .get(3)
                     .and_then(|v| v.as_bool().or_else(|| v.as_u64().map(|n| n != 0)))
                     .unwrap_or(false);
-                let is_entry = seg.get(4)
+                let is_entry = seg
+                    .get(4)
                     .and_then(|v| v.as_bool().or_else(|| v.as_u64().map(|n| n != 0)))
                     .unwrap_or(false);
-                let is_gap = seg.get(5)
+                let is_gap = seg
+                    .get(5)
                     .and_then(|v| v.as_bool().or_else(|| v.as_u64().map(|n| n != 0)))
                     .unwrap_or(false);
                 let count = seg[2].as_f64().map(|f| f as u64).unwrap_or(0);
@@ -499,13 +502,16 @@ fn parse_coverage_stats(
                 if seg.len() < 6 {
                     continue;
                 }
-                let has_count = seg.get(3)
+                let has_count = seg
+                    .get(3)
                     .and_then(|v| v.as_bool().or_else(|| v.as_u64().map(|n| n != 0)))
                     .unwrap_or(false);
-                let is_entry = seg.get(4)
+                let is_entry = seg
+                    .get(4)
                     .and_then(|v| v.as_bool().or_else(|| v.as_u64().map(|n| n != 0)))
                     .unwrap_or(false);
-                let is_gap = seg.get(5)
+                let is_gap = seg
+                    .get(5)
                     .and_then(|v| v.as_bool().or_else(|| v.as_u64().map(|n| n != 0)))
                     .unwrap_or(false);
 
@@ -648,10 +654,7 @@ mod tests {
     #[test]
     fn bug_make_relative_prefix_substring_of_different_dir() {
         // path is in "projectfoo", NOT in "project" — should be returned as-is
-        let result = make_relative(
-            "/home/user/projectfoo/src/main.rs",
-            "/home/user/project",
-        );
+        let result = make_relative("/home/user/projectfoo/src/main.rs", "/home/user/project");
         assert_eq!(
             result, "/home/user/projectfoo/src/main.rs",
             "make_relative should not strip prefix that is a substring of a different directory"
@@ -690,7 +693,10 @@ mod tests {
     #[test]
     fn fnv1a_empty_input() {
         let hash = fnv1a(b"");
-        assert_eq!(hash, 0xcbf29ce484222325, "empty input should return FNV offset basis");
+        assert_eq!(
+            hash, 0xcbf29ce484222325,
+            "empty input should return FNV offset basis"
+        );
     }
 
     /// Edge case: segments with fewer than 6 elements should be skipped
@@ -702,11 +708,15 @@ mod tests {
                 files: vec![LlvmCovFile {
                     filename: "/project/src/lib.rs".to_string(),
                     segments: vec![
-                        vec![],                                    // 0 elements
-                        vec![serde_json::json!(1)],                // 1 element
-                        vec![serde_json::json!(1), serde_json::json!(2),
-                             serde_json::json!(3), serde_json::json!(4),
-                             serde_json::json!(5)],                // 5 elements (< 6)
+                        vec![],                     // 0 elements
+                        vec![serde_json::json!(1)], // 1 element
+                        vec![
+                            serde_json::json!(1),
+                            serde_json::json!(2),
+                            serde_json::json!(3),
+                            serde_json::json!(4),
+                            serde_json::json!(5),
+                        ], // 5 elements (< 6)
                     ],
                 }],
             }],
@@ -722,22 +732,23 @@ mod tests {
             data: vec![LlvmCovData {
                 files: vec![LlvmCovFile {
                     filename: "/project/src/lib.rs".to_string(),
-                    segments: vec![
-                        vec![
-                            serde_json::json!(null),
-                            serde_json::json!(null),
-                            serde_json::json!(null),
-                            serde_json::json!(null),
-                            serde_json::json!(null),
-                            serde_json::json!(null),
-                        ],
-                    ],
+                    segments: vec![vec![
+                        serde_json::json!(null),
+                        serde_json::json!(null),
+                        serde_json::json!(null),
+                        serde_json::json!(null),
+                        serde_json::json!(null),
+                        serde_json::json!(null),
+                    ]],
                 }],
             }],
         };
         // Should not panic — null fields default to false/0 via unwrap_or
         let branches = extract_covered_branches(&json, "/project");
-        assert!(branches.is_empty(), "null segments should produce no branches");
+        assert!(
+            branches.is_empty(),
+            "null segments should produce no branches"
+        );
     }
 
     /// parse_coverage_stats should agree with extract_covered_branches
@@ -751,21 +762,30 @@ mod tests {
                     segments: vec![
                         // Covered entry
                         vec![
-                            serde_json::json!(10), serde_json::json!(5),
-                            serde_json::json!(3),  serde_json::json!(true),
-                            serde_json::json!(true), serde_json::json!(false),
+                            serde_json::json!(10),
+                            serde_json::json!(5),
+                            serde_json::json!(3),
+                            serde_json::json!(true),
+                            serde_json::json!(true),
+                            serde_json::json!(false),
                         ],
                         // Uncovered entry
                         vec![
-                            serde_json::json!(20), serde_json::json!(1),
-                            serde_json::json!(0),  serde_json::json!(true),
-                            serde_json::json!(true), serde_json::json!(false),
+                            serde_json::json!(20),
+                            serde_json::json!(1),
+                            serde_json::json!(0),
+                            serde_json::json!(true),
+                            serde_json::json!(true),
+                            serde_json::json!(false),
                         ],
                         // Gap
                         vec![
-                            serde_json::json!(30), serde_json::json!(1),
-                            serde_json::json!(5),  serde_json::json!(true),
-                            serde_json::json!(true), serde_json::json!(true),
+                            serde_json::json!(30),
+                            serde_json::json!(1),
+                            serde_json::json!(5),
+                            serde_json::json!(true),
+                            serde_json::json!(true),
+                            serde_json::json!(true),
                         ],
                     ],
                 }],
@@ -777,7 +797,11 @@ mod tests {
 
         assert_eq!(total, 2, "total should count non-gap entries");
         assert_eq!(covered, 1, "covered should count entries with count > 0");
-        assert_eq!(branches.len(), covered, "extract and parse should agree on covered count");
+        assert_eq!(
+            branches.len(),
+            covered,
+            "extract and parse should agree on covered count"
+        );
     }
 
     /// parse_coverage_stats with completely empty JSON
@@ -799,17 +823,23 @@ mod tests {
                     LlvmCovFile {
                         filename: "/project/src/a.rs".to_string(),
                         segments: vec![vec![
-                            serde_json::json!(1), serde_json::json!(1),
-                            serde_json::json!(1), serde_json::json!(true),
-                            serde_json::json!(true), serde_json::json!(false),
+                            serde_json::json!(1),
+                            serde_json::json!(1),
+                            serde_json::json!(1),
+                            serde_json::json!(true),
+                            serde_json::json!(true),
+                            serde_json::json!(false),
                         ]],
                     },
                     LlvmCovFile {
                         filename: "/project/src/b.rs".to_string(),
                         segments: vec![vec![
-                            serde_json::json!(1), serde_json::json!(1),
-                            serde_json::json!(0), serde_json::json!(true),
-                            serde_json::json!(true), serde_json::json!(false),
+                            serde_json::json!(1),
+                            serde_json::json!(1),
+                            serde_json::json!(0),
+                            serde_json::json!(true),
+                            serde_json::json!(true),
+                            serde_json::json!(false),
                         ]],
                     },
                 ],
@@ -830,9 +860,12 @@ mod tests {
                 files: vec![LlvmCovFile {
                     filename: "/project/src/lib.rs".to_string(),
                     segments: vec![vec![
-                        serde_json::json!(10), serde_json::json!(5),
-                        serde_json::json!(1), serde_json::json!(true),
-                        serde_json::json!(true), serde_json::json!(false),
+                        serde_json::json!(10),
+                        serde_json::json!(5),
+                        serde_json::json!(1),
+                        serde_json::json!(true),
+                        serde_json::json!(true),
+                        serde_json::json!(false),
                     ]],
                 }],
             }],
@@ -853,9 +886,12 @@ mod tests {
                 files: vec![LlvmCovFile {
                     filename: "/project/src/lib.rs".to_string(),
                     segments: vec![vec![
-                        serde_json::json!(42), serde_json::json!(17),
-                        serde_json::json!(5),  serde_json::json!(true),
-                        serde_json::json!(true), serde_json::json!(false),
+                        serde_json::json!(42),
+                        serde_json::json!(17),
+                        serde_json::json!(5),
+                        serde_json::json!(true),
+                        serde_json::json!(true),
+                        serde_json::json!(false),
                     ]],
                 }],
             }],
@@ -865,7 +901,10 @@ mod tests {
         assert_eq!(branches.len(), 1);
         assert_eq!(branches[0].line, 42);
         assert_eq!(branches[0].col, 17);
-        assert_eq!(branches[0].direction, 0, "direction should always be 0 from LLVM segments");
+        assert_eq!(
+            branches[0].direction, 0,
+            "direction should always be 0 from LLVM segments"
+        );
     }
 
     /// make_relative with double slashes in path
@@ -889,9 +928,12 @@ mod tests {
                 files: vec![LlvmCovFile {
                     filename: "/project/src/lib.rs".to_string(),
                     segments: vec![vec![
-                        serde_json::json!(u32::MAX as u64), serde_json::json!(u16::MAX as u64),
-                        serde_json::json!(1), serde_json::json!(true),
-                        serde_json::json!(true), serde_json::json!(false),
+                        serde_json::json!(u32::MAX as u64),
+                        serde_json::json!(u16::MAX as u64),
+                        serde_json::json!(1),
+                        serde_json::json!(true),
+                        serde_json::json!(true),
+                        serde_json::json!(false),
                     ]],
                 }],
             }],
@@ -912,9 +954,12 @@ mod tests {
                 files: vec![LlvmCovFile {
                     filename: "/project/src/lib.rs".to_string(),
                     segments: vec![vec![
-                        serde_json::json!(big_line), serde_json::json!(1),
-                        serde_json::json!(1), serde_json::json!(true),
-                        serde_json::json!(true), serde_json::json!(false),
+                        serde_json::json!(big_line),
+                        serde_json::json!(1),
+                        serde_json::json!(1),
+                        serde_json::json!(true),
+                        serde_json::json!(true),
+                        serde_json::json!(false),
                     ]],
                 }],
             }],
@@ -922,9 +967,12 @@ mod tests {
 
         let branches = extract_covered_branches(&json, "/project");
         assert_eq!(branches.len(), 1);
-        // `as u32` truncates: u32::MAX + 1 wraps to 0
-        // This is a silent data corruption bug — line number becomes 0
-        assert_eq!(branches[0].line, 0, "u64 -> u32 cast silently truncates large line numbers");
+        // Saturating cast: values > u32::MAX clamp to u32::MAX
+        assert_eq!(
+            branches[0].line,
+            u32::MAX,
+            "u64 -> u32 cast should saturate, not truncate"
+        );
     }
 
     /// Col value larger than u16::MAX should truncate (potential data loss bug)
@@ -936,9 +984,12 @@ mod tests {
                 files: vec![LlvmCovFile {
                     filename: "/project/src/lib.rs".to_string(),
                     segments: vec![vec![
-                        serde_json::json!(1), serde_json::json!(big_col),
-                        serde_json::json!(1), serde_json::json!(true),
-                        serde_json::json!(true), serde_json::json!(false),
+                        serde_json::json!(1),
+                        serde_json::json!(big_col),
+                        serde_json::json!(1),
+                        serde_json::json!(true),
+                        serde_json::json!(true),
+                        serde_json::json!(false),
                     ]],
                 }],
             }],
@@ -946,8 +997,12 @@ mod tests {
 
         let branches = extract_covered_branches(&json, "/project");
         assert_eq!(branches.len(), 1);
-        // `as u16` truncates: u16::MAX + 1 wraps to 0
-        assert_eq!(branches[0].col, 0, "u64 -> u16 cast silently truncates large col numbers");
+        // Saturating cast: values > u16::MAX clamp to u16::MAX
+        assert_eq!(
+            branches[0].col,
+            u16::MAX,
+            "u64 -> u16 cast should saturate, not truncate"
+        );
     }
 
     #[test]
@@ -1026,7 +1081,11 @@ mod tests {
         let json_str = r#"{"data":[{"files":[{"filename":"src/lib.rs","segments":[[10,70000,1,true,true,false]]}]}]}"#;
         let json: LlvmCovJson = serde_json::from_str(json_str).unwrap();
         let branches = extract_covered_branches(&json, "");
-        assert_eq!(branches[0].col, u16::MAX, "column 70000 should saturate to u16::MAX");
+        assert_eq!(
+            branches[0].col,
+            u16::MAX,
+            "column 70000 should saturate to u16::MAX"
+        );
     }
 
     #[test]
@@ -1035,9 +1094,18 @@ mod tests {
         let sanitized = name
             .replace("::", "__")
             .replace(['/', ' ', '<', '>', '\\'], "_");
-        assert!(!sanitized.contains('<'), "sanitized name should not contain <");
-        assert!(!sanitized.contains('>'), "sanitized name should not contain >");
-        assert!(!sanitized.contains('\\'), "sanitized name should not contain \\");
+        assert!(
+            !sanitized.contains('<'),
+            "sanitized name should not contain <"
+        );
+        assert!(
+            !sanitized.contains('>'),
+            "sanitized name should not contain >"
+        );
+        assert!(
+            !sanitized.contains('\\'),
+            "sanitized name should not contain \\"
+        );
     }
 
     // -----------------------------------------------------------------------
@@ -1061,13 +1129,22 @@ mod tests {
     #[test]
     fn fnv1a_no_trivial_collisions() {
         let paths = vec![
-            "src/main.rs", "src/lib.rs", "src/main.r", "src/main.rss",
-            "src/Main.rs", "SRC/main.rs", "src/main.rs/",
+            "src/main.rs",
+            "src/lib.rs",
+            "src/main.r",
+            "src/main.rss",
+            "src/Main.rs",
+            "SRC/main.rs",
+            "src/main.rs/",
         ];
         let hashes: Vec<u64> = paths.iter().map(|p| fnv1a(p.as_bytes())).collect();
         for i in 0..hashes.len() {
             for j in (i + 1)..hashes.len() {
-                assert_ne!(hashes[i], hashes[j], "collision between '{}' and '{}'", paths[i], paths[j]);
+                assert_ne!(
+                    hashes[i], hashes[j],
+                    "collision between '{}' and '{}'",
+                    paths[i], paths[j]
+                );
             }
         }
     }
@@ -1078,7 +1155,10 @@ mod tests {
 
     #[test]
     fn make_relative_empty_target() {
-        assert_eq!(make_relative("/some/path/file.rs", ""), "/some/path/file.rs");
+        assert_eq!(
+            make_relative("/some/path/file.rs", ""),
+            "/some/path/file.rs"
+        );
     }
 
     #[test]
@@ -1098,7 +1178,10 @@ mod tests {
 
     #[test]
     fn make_relative_windows_backslashes() {
-        let result = make_relative("C:\\Users\\dev\\project\\src\\main.rs", "C:\\Users\\dev\\project");
+        let result = make_relative(
+            "C:\\Users\\dev\\project\\src\\main.rs",
+            "C:\\Users\\dev\\project",
+        );
         assert_eq!(result, "C:\\Users\\dev\\project\\src\\main.rs");
     }
 
@@ -1109,16 +1192,14 @@ mod tests {
             data: vec![LlvmCovData {
                 files: vec![LlvmCovFile {
                     filename: "/project/src/lib.rs".to_string(),
-                    segments: vec![
-                        vec![
-                            serde_json::json!(10),
-                            serde_json::json!(70000),  // > u16::MAX
-                            serde_json::json!(1),
-                            serde_json::json!(true),
-                            serde_json::json!(true),
-                            serde_json::json!(false),
-                        ],
-                    ],
+                    segments: vec![vec![
+                        serde_json::json!(10),
+                        serde_json::json!(70000), // > u16::MAX
+                        serde_json::json!(1),
+                        serde_json::json!(true),
+                        serde_json::json!(true),
+                        serde_json::json!(false),
+                    ]],
                 }],
             }],
         };
@@ -1137,18 +1218,22 @@ mod tests {
                 files: vec![LlvmCovFile {
                     filename: "/proj/src/lib.rs".to_string(),
                     segments: vec![vec![
-                        serde_json::json!(null), // line = null → 0 → rejected
-                        serde_json::json!(null), // col = null
-                        serde_json::json!(5),    // count = 5
-                        serde_json::json!(true), // has_count
-                        serde_json::json!(true), // is_entry
+                        serde_json::json!(null),  // line = null → 0 → rejected
+                        serde_json::json!(null),  // col = null
+                        serde_json::json!(5),     // count = 5
+                        serde_json::json!(true),  // has_count
+                        serde_json::json!(true),  // is_entry
                         serde_json::json!(false), // is_gap
                     ]],
                 }],
             }],
         };
         let branches = extract_covered_branches(&json, "/proj");
-        assert_eq!(branches.len(), 0, "null line (→0) must be rejected by line==0 guard");
+        assert_eq!(
+            branches.len(),
+            0,
+            "null line (→0) must be rejected by line==0 guard"
+        );
     }
 
     #[test]
@@ -1170,7 +1255,11 @@ mod tests {
             }],
         };
         let branches = extract_covered_branches(&json, "/proj");
-        assert_eq!(branches.len(), 0, "string line (→0) must be rejected by line==0 guard");
+        assert_eq!(
+            branches.len(),
+            0,
+            "string line (→0) must be rejected by line==0 guard"
+        );
     }
 
     #[test]
@@ -1193,7 +1282,11 @@ mod tests {
             }],
         };
         let branches = extract_covered_branches(&json, "/proj");
-        assert_eq!(branches.len(), 1, "float count 1.0 must be treated as covered");
+        assert_eq!(
+            branches.len(),
+            1,
+            "float count 1.0 must be treated as covered"
+        );
         assert_eq!(branches[0].line, 10);
     }
 
@@ -1228,7 +1321,7 @@ mod tests {
                 files: vec![LlvmCovFile {
                     filename: "/proj/src/lib.rs".to_string(),
                     segments: vec![vec![
-                        serde_json::json!(-1),  // negative line → as_u64()=None → 0
+                        serde_json::json!(-1), // negative line → as_u64()=None → 0
                         serde_json::json!(5),
                         serde_json::json!(1),
                         serde_json::json!(true),
@@ -1239,7 +1332,11 @@ mod tests {
             }],
         };
         let branches = extract_covered_branches(&json, "/proj");
-        assert_eq!(branches.len(), 0, "negative line (→0) must be rejected by line==0 guard");
+        assert_eq!(
+            branches.len(),
+            0,
+            "negative line (→0) must be rejected by line==0 guard"
+        );
     }
 
     #[test]
@@ -1267,7 +1364,7 @@ mod tests {
                         serde_json::json!(10),
                         serde_json::json!(1),
                         serde_json::json!(5),
-                        serde_json::json!(1),     // has_count as integer 1
+                        serde_json::json!(1), // has_count as integer 1
                         serde_json::json!(true),
                         serde_json::json!(false),
                     ]],
@@ -1275,7 +1372,11 @@ mod tests {
             }],
         };
         let branches = extract_covered_branches(&json, "/proj");
-        assert_eq!(branches.len(), 1, "integer 1 for has_count must be treated as true");
+        assert_eq!(
+            branches.len(),
+            1,
+            "integer 1 for has_count must be treated as true"
+        );
         assert_eq!(branches[0].line, 10);
     }
 }

@@ -16,13 +16,11 @@ use rand::RngCore;
 use std::collections::{HashMap, VecDeque};
 use std::sync::{Arc, LazyLock};
 
-static RE_EXPECTED: LazyLock<regex::Regex> = LazyLock::new(|| {
-    regex::Regex::new(r"expected\s+(\S+?)[\s,]+(?:but\s+)?got\s+(\S+)").unwrap()
-});
+static RE_EXPECTED: LazyLock<regex::Regex> =
+    LazyLock::new(|| regex::Regex::new(r"expected\s+(\S+?)[\s,]+(?:but\s+)?got\s+(\S+)").unwrap());
 
-static RE_LEFT_RIGHT: LazyLock<regex::Regex> = LazyLock::new(|| {
-    regex::Regex::new(r"left=`([^`]+)`.*right=`([^`]+)`").unwrap()
-});
+static RE_LEFT_RIGHT: LazyLock<regex::Regex> =
+    LazyLock::new(|| regex::Regex::new(r"left=`([^`]+)`.*right=`([^`]+)`").unwrap());
 
 /// A single comparison observation: two byte sequences being compared.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -862,7 +860,7 @@ mod tests {
         let mut log = CmpLog::new();
         // 0x41414141 = "AAAA" (4 bytes), 0x424242 = "BBB" (3 bytes)
         log.add(CmpEntry::new(
-            0x41414141u32.to_be_bytes().to_vec(), // b"AAAA"
+            0x41414141u32.to_be_bytes().to_vec(),    // b"AAAA"
             0x424242u32.to_be_bytes()[1..].to_vec(), // b"BBB"
         ));
         let m = CmpLogMutator::new(log);
@@ -877,7 +875,10 @@ mod tests {
                 break;
             }
         }
-        assert!(found, "CmpLogMutator should splice different-length operands");
+        assert!(
+            found,
+            "CmpLogMutator should splice different-length operands"
+        );
     }
 
     #[test]

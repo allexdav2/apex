@@ -13,9 +13,8 @@ static RE_C_FUNC: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r"^\s*(?:static\s+)?(?:inline\s+)?(?:const\s+)?\w+[\s*]+(\w+)\s*\(").unwrap()
 });
 
-static RE_CPP_METHOD: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r"^\s*\w+[\s*]+(\w+)::(\w+)\s*\(").unwrap()
-});
+static RE_CPP_METHOD: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"^\s*\w+[\s*]+(\w+)::(\w+)\s*\(").unwrap());
 
 static RE_CALL: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"(\w+)\s*\(").unwrap());
 
@@ -29,14 +28,64 @@ static RE_BOOST: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"^\s*BOOST_AUTO_TEST_CASE\s*\(\s*(\w+)").unwrap());
 
 const KEYWORDS: &[&str] = &[
-    "if", "else", "for", "while", "switch", "case", "do", "return", "break",
-    "continue", "goto", "sizeof", "typedef", "struct", "enum", "union", "class",
-    "namespace", "template", "typename", "static", "extern", "inline", "const",
-    "void", "int", "char", "float", "double", "long", "short", "unsigned",
-    "signed", "auto", "register", "volatile", "bool", "true", "false",
-    "new", "delete", "throw", "try", "catch", "nullptr", "this",
-    "public", "private", "protected", "virtual", "override", "final",
-    "include", "define", "ifdef", "ifndef", "endif", "pragma",
+    "if",
+    "else",
+    "for",
+    "while",
+    "switch",
+    "case",
+    "do",
+    "return",
+    "break",
+    "continue",
+    "goto",
+    "sizeof",
+    "typedef",
+    "struct",
+    "enum",
+    "union",
+    "class",
+    "namespace",
+    "template",
+    "typename",
+    "static",
+    "extern",
+    "inline",
+    "const",
+    "void",
+    "int",
+    "char",
+    "float",
+    "double",
+    "long",
+    "short",
+    "unsigned",
+    "signed",
+    "auto",
+    "register",
+    "volatile",
+    "bool",
+    "true",
+    "false",
+    "new",
+    "delete",
+    "throw",
+    "try",
+    "catch",
+    "nullptr",
+    "this",
+    "public",
+    "private",
+    "protected",
+    "virtual",
+    "override",
+    "final",
+    "include",
+    "define",
+    "ifdef",
+    "ifndef",
+    "endif",
+    "pragma",
 ];
 
 impl CallGraphExtractor for CCppExtractor {
@@ -60,7 +109,11 @@ impl CallGraphExtractor for CCppExtractor {
                 let line_num = (i + 1) as u32;
                 let trimmed = line.trim();
 
-                if trimmed.starts_with("//") || trimmed.starts_with("/*") || trimmed.starts_with("*") || trimmed.starts_with("#") {
+                if trimmed.starts_with("//")
+                    || trimmed.starts_with("/*")
+                    || trimmed.starts_with("*")
+                    || trimmed.starts_with("#")
+                {
                     continue;
                 }
 
@@ -70,8 +123,11 @@ impl CallGraphExtractor for CCppExtractor {
                     let id = FnId(next_id);
                     next_id += 1;
                     graph.nodes.push(FnNode {
-                        id, name: name.clone(), file: path.clone(),
-                        start_line: line_num, end_line: line_num,
+                        id,
+                        name: name.clone(),
+                        file: path.clone(),
+                        start_line: line_num,
+                        end_line: line_num,
                         entry_kind: Some(EntryPointKind::Test),
                     });
                     fn_index.entry(name).or_default().push(id);
@@ -83,8 +139,11 @@ impl CallGraphExtractor for CCppExtractor {
                     let id = FnId(next_id);
                     next_id += 1;
                     graph.nodes.push(FnNode {
-                        id, name: name.clone(), file: path.clone(),
-                        start_line: line_num, end_line: line_num,
+                        id,
+                        name: name.clone(),
+                        file: path.clone(),
+                        start_line: line_num,
+                        end_line: line_num,
                         entry_kind: Some(EntryPointKind::Test),
                     });
                     fn_index.entry(name).or_default().push(id);
@@ -96,8 +155,11 @@ impl CallGraphExtractor for CCppExtractor {
                     let id = FnId(next_id);
                     next_id += 1;
                     graph.nodes.push(FnNode {
-                        id, name: name.clone(), file: path.clone(),
-                        start_line: line_num, end_line: line_num,
+                        id,
+                        name: name.clone(),
+                        file: path.clone(),
+                        start_line: line_num,
+                        end_line: line_num,
                         entry_kind: Some(EntryPointKind::Test),
                     });
                     fn_index.entry(name).or_default().push(id);
@@ -117,8 +179,11 @@ impl CallGraphExtractor for CCppExtractor {
                     let id = FnId(next_id);
                     next_id += 1;
                     graph.nodes.push(FnNode {
-                        id, name: name.clone(), file: path.clone(),
-                        start_line: line_num, end_line: line_num,
+                        id,
+                        name: name.clone(),
+                        file: path.clone(),
+                        start_line: line_num,
+                        end_line: line_num,
                         entry_kind: None,
                     });
                     fn_index.entry(name.clone()).or_default().push(id);
@@ -144,8 +209,11 @@ impl CallGraphExtractor for CCppExtractor {
                             let id = FnId(next_id);
                             next_id += 1;
                             graph.nodes.push(FnNode {
-                                id, name: name.clone(), file: path.clone(),
-                                start_line: line_num, end_line: line_num,
+                                id,
+                                name: name.clone(),
+                                file: path.clone(),
+                                start_line: line_num,
+                                end_line: line_num,
                                 entry_kind,
                             });
                             fn_index.entry(name).or_default().push(id);
@@ -163,7 +231,8 @@ impl CallGraphExtractor for CCppExtractor {
                             brace_depth -= 1;
                             if let Some((fn_id, open_depth)) = &current_fn {
                                 if brace_depth <= *open_depth {
-                                    if let Some(n) = graph.nodes.iter_mut().find(|n| n.id == *fn_id) {
+                                    if let Some(n) = graph.nodes.iter_mut().find(|n| n.id == *fn_id)
+                                    {
                                         n.end_line = line_num;
                                     }
                                     current_fn = None;
@@ -176,7 +245,11 @@ impl CallGraphExtractor for CCppExtractor {
 
                 // Extract calls
                 if let Some((fn_id, _)) = &current_fn {
-                    if trimmed.starts_with("if ") || trimmed.starts_with("for ") || trimmed.starts_with("while ") || trimmed.starts_with("switch ") {
+                    if trimmed.starts_with("if ")
+                        || trimmed.starts_with("for ")
+                        || trimmed.starts_with("while ")
+                        || trimmed.starts_with("switch ")
+                    {
                         block_id += 1;
                     }
                     let block = if block_id > 0 { Some(block_id) } else { None };
@@ -197,8 +270,10 @@ impl CallGraphExtractor for CCppExtractor {
                 for &callee_id in callee_ids {
                     if callee_id != caller_id {
                         graph.edges.push(CallEdge {
-                            caller: caller_id, callee: callee_id,
-                            call_site_line: line, call_site_block: block,
+                            caller: caller_id,
+                            callee: callee_id,
+                            call_site_line: line,
+                            call_site_block: block,
                         });
                     }
                 }
@@ -241,9 +316,17 @@ mod tests {
     fn detects_gtest() {
         let src = "TEST(MathTest, Addition) {\n    EXPECT_EQ(1+1, 2);\n}\n\nTEST_F(FixtureTest, Works) {\n    ASSERT_TRUE(true);\n}\n";
         let g = CCppExtractor.extract(&single_file("test.cpp", src));
-        let test1 = g.nodes.iter().find(|n| n.name == "MathTest_Addition").unwrap();
+        let test1 = g
+            .nodes
+            .iter()
+            .find(|n| n.name == "MathTest_Addition")
+            .unwrap();
         assert_eq!(test1.entry_kind, Some(EntryPointKind::Test));
-        let test2 = g.nodes.iter().find(|n| n.name == "FixtureTest_Works").unwrap();
+        let test2 = g
+            .nodes
+            .iter()
+            .find(|n| n.name == "FixtureTest_Works")
+            .unwrap();
         assert_eq!(test2.entry_kind, Some(EntryPointKind::Test));
     }
 
@@ -273,7 +356,10 @@ mod tests {
     #[test]
     fn cross_file_resolution() {
         let mut sources = HashMap::new();
-        sources.insert(PathBuf::from("a.c"), "void caller() {\n    callee();\n}\n".to_string());
+        sources.insert(
+            PathBuf::from("a.c"),
+            "void caller() {\n    callee();\n}\n".to_string(),
+        );
         sources.insert(PathBuf::from("b.c"), "void callee() {\n}\n".to_string());
         let g = CCppExtractor.extract(&sources);
         assert!(g.edge_count() >= 1);

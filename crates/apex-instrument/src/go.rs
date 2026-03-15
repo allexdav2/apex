@@ -171,10 +171,7 @@ impl<R: CommandRunner> Instrumentor for GoInstrumentor<R> {
 
         // Parse coverage.out
         let content = std::fs::read_to_string(&coverage_out).map_err(|e| {
-            ApexError::Instrumentation(format!(
-                "failed to read {}: {e}",
-                coverage_out.display()
-            ))
+            ApexError::Instrumentation(format!("failed to read {}: {e}", coverage_out.display()))
         })?;
 
         let (all_branches, executed_branches, file_paths) =

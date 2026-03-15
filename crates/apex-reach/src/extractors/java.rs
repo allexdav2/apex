@@ -32,10 +32,36 @@ static RE_MAIN: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"public\s+static\s+void\s+main\s*\(").unwrap());
 
 const KEYWORDS: &[&str] = &[
-    "if", "else", "for", "while", "switch", "case", "try", "catch", "finally",
-    "throw", "return", "new", "class", "interface", "enum", "import", "package",
-    "super", "this", "void", "null", "true", "false", "instanceof", "synchronized",
-    "assert", "break", "continue", "default", "do",
+    "if",
+    "else",
+    "for",
+    "while",
+    "switch",
+    "case",
+    "try",
+    "catch",
+    "finally",
+    "throw",
+    "return",
+    "new",
+    "class",
+    "interface",
+    "enum",
+    "import",
+    "package",
+    "super",
+    "this",
+    "void",
+    "null",
+    "true",
+    "false",
+    "instanceof",
+    "synchronized",
+    "assert",
+    "break",
+    "continue",
+    "default",
+    "do",
 ];
 
 impl CallGraphExtractor for JavaExtractor {
@@ -71,7 +97,10 @@ impl CallGraphExtractor for JavaExtractor {
                 }
 
                 // Skip comments
-                if trimmed.starts_with("//") || trimmed.starts_with("/*") || trimmed.starts_with("*") {
+                if trimmed.starts_with("//")
+                    || trimmed.starts_with("/*")
+                    || trimmed.starts_with("*")
+                {
                     continue;
                 }
 
@@ -131,7 +160,9 @@ impl CallGraphExtractor for JavaExtractor {
                             brace_depth -= 1;
                             if let Some((fn_id, _, open_depth)) = &current_fn {
                                 if brace_depth <= *open_depth as i32 {
-                                    if let Some(node) = graph.nodes.iter_mut().find(|n| n.id == *fn_id) {
+                                    if let Some(node) =
+                                        graph.nodes.iter_mut().find(|n| n.id == *fn_id)
+                                    {
                                         node.end_line = line_num;
                                     }
                                     current_fn = None;
@@ -145,7 +176,12 @@ impl CallGraphExtractor for JavaExtractor {
                 // Extract calls inside current function
                 if let Some((fn_id, _, _)) = &current_fn {
                     // Track blocks
-                    if trimmed.starts_with("if ") || trimmed.starts_with("for ") || trimmed.starts_with("while ") || trimmed.starts_with("switch ") || trimmed.starts_with("try ") {
+                    if trimmed.starts_with("if ")
+                        || trimmed.starts_with("for ")
+                        || trimmed.starts_with("while ")
+                        || trimmed.starts_with("switch ")
+                        || trimmed.starts_with("try ")
+                    {
                         block_id += 1;
                     }
 
@@ -263,8 +299,14 @@ mod tests {
     #[test]
     fn cross_file_resolution() {
         let mut sources = HashMap::new();
-        sources.insert(PathBuf::from("A.java"), "class A {\n    void use() {\n        helper();\n    }\n}\n".to_string());
-        sources.insert(PathBuf::from("B.java"), "class B {\n    void helper() {\n    }\n}\n".to_string());
+        sources.insert(
+            PathBuf::from("A.java"),
+            "class A {\n    void use() {\n        helper();\n    }\n}\n".to_string(),
+        );
+        sources.insert(
+            PathBuf::from("B.java"),
+            "class B {\n    void helper() {\n    }\n}\n".to_string(),
+        );
         let g = JavaExtractor.extract(&sources);
         assert!(g.edge_count() >= 1);
     }
@@ -272,7 +314,10 @@ mod tests {
     #[test]
     fn kotlin_fun_detection() {
         let mut sources = HashMap::new();
-        sources.insert(PathBuf::from("App.kt"), "fun main() {\n    greet()\n}\n\nfun greet() {\n    println(\"hi\")\n}\n".to_string());
+        sources.insert(
+            PathBuf::from("App.kt"),
+            "fun main() {\n    greet()\n}\n\nfun greet() {\n    println(\"hi\")\n}\n".to_string(),
+        );
         let g = JavaExtractor.extract(&sources);
         assert_eq!(g.fns_named("main").len(), 1);
         assert_eq!(g.fns_named("greet").len(), 1);

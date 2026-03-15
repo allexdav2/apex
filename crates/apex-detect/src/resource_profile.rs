@@ -35,8 +35,7 @@ static N_PLUS_ONE: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r"(?i)for\s+\w+\s+in\s+.*:\s*\n\s+.*(?:query|execute|fetch|select)").unwrap()
 });
 #[allow(dead_code)]
-static UNBOUNDED_COLLECT: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"\.collect\(\)").unwrap());
+static UNBOUNDED_COLLECT: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\.collect\(\)").unwrap());
 
 pub fn profile_resources(source_cache: &HashMap<PathBuf, String>) -> ResourceReport {
     let mut issues = Vec::new();

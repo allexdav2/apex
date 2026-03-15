@@ -1,4 +1,4 @@
-# Close APEX Detection Gaps vs Semgrep/Bearer/OSV-Scanner
+<!-- status: DONE --># Close APEX Detection Gaps vs Semgrep/Bearer/OSV-Scanner
 
 > **For agentic workers:** REQUIRED: Use superpowers:subagent-driven-development to implement this plan. Steps use checkbox (`- [ ]`) syntax for tracking.
 

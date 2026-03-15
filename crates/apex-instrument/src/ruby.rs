@@ -16,7 +16,9 @@ pub struct RubyInstrumentor {
 
 impl RubyInstrumentor {
     pub fn new() -> Self {
-        RubyInstrumentor { runner: Arc::new(RealCommandRunner) }
+        RubyInstrumentor {
+            runner: Arc::new(RealCommandRunner),
+        }
     }
     pub fn with_runner(runner: Arc<dyn CommandRunner>) -> Self {
         RubyInstrumentor { runner }
@@ -24,7 +26,9 @@ impl RubyInstrumentor {
 }
 
 impl Default for RubyInstrumentor {
-    fn default() -> Self { Self::new() }
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 // SimpleCov JSON format
@@ -91,7 +95,9 @@ pub fn parse_simplecov_json(json: &str) -> (Vec<BranchId>, Vec<BranchId>, HashMa
 
 #[async_trait]
 impl Instrumentor for RubyInstrumentor {
-    fn branch_ids(&self) -> &[BranchId] { &[] }
+    fn branch_ids(&self) -> &[BranchId] {
+        &[]
+    }
 
     async fn instrument(&self, target: &Target) -> Result<InstrumentedTarget> {
         let target_path = &target.root;
@@ -102,7 +108,10 @@ impl Instrumentor for RubyInstrumentor {
             .args(["-e", "require 'simplecov'; SimpleCov.start; SimpleCov.formatter = SimpleCov::Formatter::JSONFormatter; load 'Rakefile'; Rake::Task[:test].invoke"])
             .env("RUBYOPT", "-rsimplecov");
 
-        let _output = self.runner.run_command(&spec).await
+        let _output = self
+            .runner
+            .run_command(&spec)
+            .await
             .map_err(|e| ApexError::Instrumentation(format!("ruby simplecov: {e}")))?;
 
         // Try to read SimpleCov JSON output

@@ -1710,7 +1710,8 @@ fn next_fn() -> () {
         assert_eq!(funcs[1].name, "next_fn");
         // The real test: does the first function's bb0 get parsed correctly?
         assert_eq!(
-            funcs[0].block_count(), 1,
+            funcs[0].block_count(),
+            1,
             "string_brace should have 1 block, got {}",
             funcs[0].block_count()
         );

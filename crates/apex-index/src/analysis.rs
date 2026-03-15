@@ -211,9 +211,7 @@ fn extract_functions(
                     trimmed.starts_with(p)
                 }
                 // Java: require "(" after the keyword to ensure it's a method signature
-                apex_core::types::Language::Java => {
-                    trimmed.contains(p) && trimmed.contains('(')
-                }
+                apex_core::types::Language::Java => trimmed.contains(p) && trimmed.contains('('),
                 // JS: for "=> {", require ")" before "=>" to confirm arrow function
                 apex_core::types::Language::JavaScript => {
                     if *p == "=> {" {
@@ -224,8 +222,7 @@ fn extract_functions(
                 }
                 _ => trimmed.contains(p),
             }
-        })
-            && !trimmed.starts_with('#')
+        }) && !trimmed.starts_with('#')
             && !trimmed.starts_with("//")
             && !trimmed.starts_with("///");
 
@@ -4300,16 +4297,16 @@ mod tests {
     #[test]
     fn bug_java_extract_functions_false_positives() {
         let lines: Vec<&str> = vec![
-            "public class MyService {",          // line 1 - NOT a function
-            "    public int counter = 0;",        // line 2 - NOT a function
-            "    private String name;",           // line 3 - NOT a function
-            "    public void doWork() {",         // line 4 - IS a function
-            "        counter++;",                 // line 5
-            "    }",                              // line 6
-            "    private void helper() {",        // line 7 - IS a function
-            "        name = \"test\";",           // line 8
-            "    }",                              // line 9
-            "}",                                  // line 10
+            "public class MyService {",    // line 1 - NOT a function
+            "    public int counter = 0;", // line 2 - NOT a function
+            "    private String name;",    // line 3 - NOT a function
+            "    public void doWork() {",  // line 4 - IS a function
+            "        counter++;",          // line 5
+            "    }",                       // line 6
+            "    private void helper() {", // line 7 - IS a function
+            "        name = \"test\";",    // line 8
+            "    }",                       // line 9
+            "}",                           // line 10
         ];
 
         let functions = extract_functions(&lines, apex_core::types::Language::Java);
@@ -4319,10 +4316,12 @@ mod tests {
         // So it'll also match the class declaration and field declarations.
         let names: Vec<&str> = functions.iter().map(|(n, _, _)| n.as_str()).collect();
         assert_eq!(
-            names.len(), 2,
+            names.len(),
+            2,
             "BUG: Java extract_functions found {} functions ({:?}), expected 2 (doWork, helper). \
              Field declarations and class declarations are incorrectly matched.",
-            names.len(), names
+            names.len(),
+            names
         );
     }
 
@@ -4332,10 +4331,10 @@ mod tests {
     #[test]
     fn bug_js_extract_functions_arrow_in_string() {
         let lines: Vec<&str> = vec![
-            "const msg = 'arrow => {test}';",     // line 1 - NOT a function
-            "const fn1 = (x) => {",               // line 2 - IS a function
-            "    return x + 1;",                   // line 3
-            "};",                                  // line 4
+            "const msg = 'arrow => {test}';", // line 1 - NOT a function
+            "const fn1 = (x) => {",           // line 2 - IS a function
+            "    return x + 1;",              // line 3
+            "};",                             // line 4
         ];
 
         let functions = extract_functions(&lines, apex_core::types::Language::JavaScript);
@@ -4344,10 +4343,12 @@ mod tests {
         // "=> {" inside a string on line 1 should NOT be detected.
         // We expect only 1 function (the actual arrow function on line 2).
         assert_eq!(
-            names.len(), 1,
+            names.len(),
+            1,
             "BUG: JS extract_functions found {} functions ({:?}), expected 1. \
              '=> {{' inside a string was incorrectly matched as a function.",
-            names.len(), names
+            names.len(),
+            names
         );
     }
 
@@ -4356,18 +4357,20 @@ mod tests {
     #[test]
     fn bug_python_func_in_string() {
         let lines: Vec<&str> = vec![
-            "description = \"use def process(x) to start\"",  // NOT a function
-            "def actual_function(x):",                         // IS a function
+            "description = \"use def process(x) to start\"", // NOT a function
+            "def actual_function(x):",                       // IS a function
             "    pass",
         ];
 
         let functions = extract_functions(&lines, apex_core::types::Language::Python);
         let names: Vec<&str> = functions.iter().map(|(n, _, _)| n.as_str()).collect();
         assert_eq!(
-            names.len(), 1,
+            names.len(),
+            1,
             "BUG: Python extract_functions found {} functions ({:?}), expected 1. \
              'def ' inside a string was incorrectly matched.",
-            names.len(), names
+            names.len(),
+            names
         );
     }
 }

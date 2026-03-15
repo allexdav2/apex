@@ -195,11 +195,7 @@ fn parse_invocation_line(line: &str) -> Option<ShimInvocation> {
         .and_then(|c| c.as_str())
         .unwrap_or("")
         .to_string();
-    Some(ShimInvocation {
-        program,
-        args,
-        cwd,
-    })
+    Some(ShimInvocation { program, args, cwd })
 }
 
 #[cfg(test)]
@@ -289,7 +285,9 @@ mod tests {
         use crate::command::{CommandRunner, CommandSpec, RealCommandRunner};
 
         let shims = PathShimDir::new().unwrap();
-        shims.add("pip", 0, "Successfully installed requests\n").unwrap();
+        shims
+            .add("pip", 0, "Successfully installed requests\n")
+            .unwrap();
 
         let spec = CommandSpec::new("pip", shims.path())
             .args(["install", "-r", "requirements.txt"])
@@ -386,11 +384,8 @@ mod tests {
 
         let runner = RealCommandRunner;
 
-        let arg_sets: Vec<Vec<&str>> = vec![
-            vec!["--version"],
-            vec!["-c", "pass"],
-            vec!["script.py"],
-        ];
+        let arg_sets: Vec<Vec<&str>> =
+            vec![vec!["--version"], vec!["-c", "pass"], vec!["script.py"]];
         for args in &arg_sets {
             let spec = CommandSpec::new("python3", shims.path())
                 .args(args.iter().copied())

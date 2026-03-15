@@ -4,6 +4,7 @@
 //! LLVM IR (feature-gated), and WebAssembly (feature-gated).
 
 pub mod c_coverage;
+pub mod csharp;
 pub mod go;
 pub mod java;
 pub mod javascript;
@@ -13,9 +14,8 @@ pub mod ruby;
 pub mod rust_cov;
 pub mod rustc_wrapper;
 pub mod source_map;
-pub mod v8_coverage;
-pub mod csharp;
 pub mod swift;
+pub mod v8_coverage;
 pub mod wasm;
 
 pub use c_coverage::CCoverageInstrumentor;

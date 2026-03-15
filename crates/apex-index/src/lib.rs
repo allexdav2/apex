@@ -1,9 +1,9 @@
 pub mod analysis;
 pub mod change_impact;
+pub mod csharp;
 pub mod dead_code;
 pub mod flaky;
 pub mod flaky_repair;
-pub mod csharp;
 pub mod go;
 pub mod impact;
 pub mod prioritize;

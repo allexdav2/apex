@@ -14,12 +14,12 @@ use crate::Detector;
 pub struct DuplicatedFnDetector;
 
 // Rust: `fn name(` or `pub fn name(` etc.
-static RUST_FN: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"^\s*(?:pub(?:\(crate\))?\s+)?(?:async\s+)?fn\s+(\w+)\s*[<(]").unwrap());
+static RUST_FN: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r"^\s*(?:pub(?:\(crate\))?\s+)?(?:async\s+)?fn\s+(\w+)\s*[<(]").unwrap()
+});
 
 // Python: `def name(`
-static PY_FN: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"^def\s+(\w+)\s*\(").unwrap());
+static PY_FN: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^def\s+(\w+)\s*\(").unwrap());
 
 // JavaScript: `function name(` or `export function name(` or `async function name(`
 static JS_FN: LazyLock<Regex> =
@@ -159,10 +159,7 @@ mod tests {
     use super::*;
     use crate::context::AnalysisContext;
 
-    fn make_ctx(
-        files: HashMap<PathBuf, String>,
-        lang: Language,
-    ) -> AnalysisContext {
+    fn make_ctx(files: HashMap<PathBuf, String>, lang: Language) -> AnalysisContext {
         AnalysisContext {
             language: lang,
             source_cache: files,
@@ -175,14 +172,8 @@ mod tests {
     #[tokio::test]
     async fn detects_duplicated_fn_rust() {
         let mut files = HashMap::new();
-        files.insert(
-            PathBuf::from("src/a.rs"),
-            "fn helper() {}\n".into(),
-        );
-        files.insert(
-            PathBuf::from("src/b.rs"),
-            "fn helper() {}\n".into(),
-        );
+        files.insert(PathBuf::from("src/a.rs"), "fn helper() {}\n".into());
+        files.insert(PathBuf::from("src/b.rs"), "fn helper() {}\n".into());
         let ctx = make_ctx(files, Language::Rust);
         let findings = DuplicatedFnDetector.analyze(&ctx).await.unwrap();
         assert_eq!(findings.len(), 1);
@@ -193,14 +184,8 @@ mod tests {
     #[tokio::test]
     async fn no_finding_for_unique_fns_rust() {
         let mut files = HashMap::new();
-        files.insert(
-            PathBuf::from("src/a.rs"),
-            "fn alpha() {}\n".into(),
-        );
-        files.insert(
-            PathBuf::from("src/b.rs"),
-            "fn beta() {}\n".into(),
-        );
+        files.insert(PathBuf::from("src/a.rs"), "fn alpha() {}\n".into());
+        files.insert(PathBuf::from("src/b.rs"), "fn beta() {}\n".into());
         let ctx = make_ctx(files, Language::Rust);
         let findings = DuplicatedFnDetector.analyze(&ctx).await.unwrap();
         assert!(findings.is_empty());
@@ -260,14 +245,8 @@ mod tests {
     #[tokio::test]
     async fn no_finding_unique_fns_python() {
         let mut files = HashMap::new();
-        files.insert(
-            PathBuf::from("src/a.py"),
-            "def alpha():\n    pass\n".into(),
-        );
-        files.insert(
-            PathBuf::from("src/b.py"),
-            "def beta():\n    pass\n".into(),
-        );
+        files.insert(PathBuf::from("src/a.py"), "def alpha():\n    pass\n".into());
+        files.insert(PathBuf::from("src/b.py"), "def beta():\n    pass\n".into());
         let ctx = make_ctx(files, Language::Python);
         let findings = DuplicatedFnDetector.analyze(&ctx).await.unwrap();
         assert!(findings.is_empty());
@@ -278,14 +257,8 @@ mod tests {
     #[tokio::test]
     async fn detects_duplicated_fn_js() {
         let mut files = HashMap::new();
-        files.insert(
-            PathBuf::from("src/a.js"),
-            "function helper() {}\n".into(),
-        );
-        files.insert(
-            PathBuf::from("src/b.js"),
-            "function helper() {}\n".into(),
-        );
+        files.insert(PathBuf::from("src/a.js"), "function helper() {}\n".into());
+        files.insert(PathBuf::from("src/b.js"), "function helper() {}\n".into());
         let ctx = make_ctx(files, Language::JavaScript);
         let findings = DuplicatedFnDetector.analyze(&ctx).await.unwrap();
         assert_eq!(findings.len(), 1);
@@ -329,14 +302,8 @@ mod tests {
     #[tokio::test]
     async fn skips_unsupported_language() {
         let mut files = HashMap::new();
-        files.insert(
-            PathBuf::from("src/Main.java"),
-            "void helper() {}\n".into(),
-        );
-        files.insert(
-            PathBuf::from("src/Other.java"),
-            "void helper() {}\n".into(),
-        );
+        files.insert(PathBuf::from("src/Main.java"), "void helper() {}\n".into());
+        files.insert(PathBuf::from("src/Other.java"), "void helper() {}\n".into());
         let ctx = make_ctx(files, Language::Java);
         let findings = DuplicatedFnDetector.analyze(&ctx).await.unwrap();
         assert!(findings.is_empty());

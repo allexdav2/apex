@@ -13,9 +13,8 @@ static OPEN_VAR_RE: LazyLock<Regex> =
 static PATH_VAR_RE: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r#"Path\(\s*([a-zA-Z_][a-zA-Z0-9_.]*)\s*\)"#).unwrap());
 // Pattern: os.path.join with variable.
-static PATH_JOIN_RE: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r#"os\.path\.join\([^)]*[a-zA-Z_][a-zA-Z0-9_.]*[^)]*\)"#).unwrap()
-});
+static PATH_JOIN_RE: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r#"os\.path\.join\([^)]*[a-zA-Z_][a-zA-Z0-9_.]*[^)]*\)"#).unwrap());
 static OPEN_LITERAL_RE: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r#"open\(\s*(?:f["']|["'])"#).unwrap());
 

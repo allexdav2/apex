@@ -16,10 +16,8 @@ static PYTHON_PATH_RE: LazyLock<Regex> =
 static JS_ROUTE_RE: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r#"(?:app|router)\.(get|post|put|delete|patch)\s*\(\s*['"]([^'"]+)['"]"#).unwrap()
 });
-static SPEC_PARAM_RE: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"\{[^}]+\}").unwrap());
-static CODE_PARAM_RE: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"<[^>]+>|:\w+").unwrap());
+static SPEC_PARAM_RE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\{[^}]+\}").unwrap());
+static CODE_PARAM_RE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"<[^>]+>|:\w+").unwrap());
 
 #[derive(Debug, Clone, Serialize)]
 pub enum EndpointStatus {

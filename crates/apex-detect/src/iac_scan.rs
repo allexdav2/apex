@@ -33,10 +33,7 @@ pub struct IacReport {
 }
 
 static PUBLIC_ACCESS: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(
-        r#"(?i)(?:public.access|acl\s*=\s*"public|publicly.accessible\s*=\s*true)"#,
-    )
-    .unwrap()
+    Regex::new(r#"(?i)(?:public.access|acl\s*=\s*"public|publicly.accessible\s*=\s*true)"#).unwrap()
 });
 static NO_ENCRYPTION: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r#"(?i)(?:encrypted\s*=\s*false|storage_encrypted\s*=\s*false)"#).unwrap()
@@ -44,10 +41,8 @@ static NO_ENCRYPTION: LazyLock<Regex> = LazyLock::new(|| {
 static OPEN_CIDR: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r#"(?:0\.0\.0\.0/0|::/0)"#).unwrap());
 static WILDCARD_IAM: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(
-        r#"(?i)(?:actions?\s*=\s*\[?\s*"\*"|effect\s*=\s*"Allow".*resource\s*=\s*"\*")"#,
-    )
-    .unwrap()
+    Regex::new(r#"(?i)(?:actions?\s*=\s*\[?\s*"\*"|effect\s*=\s*"Allow".*resource\s*=\s*"\*")"#)
+        .unwrap()
 });
 static NO_LOGGING: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(

@@ -52,7 +52,11 @@ const PYTHON_TRANSFORMS: &[TransformPair] = &[
 
 const RUST_TRANSFORMS: &[TransformPair] = &[
     ("base64", "base64::encode", "base64::decode"),
-    ("serde_json", "serde_json::to_string", "serde_json::from_str"),
+    (
+        "serde_json",
+        "serde_json::to_string",
+        "serde_json::from_str",
+    ),
     ("serde_json", "serde_json::to_vec", "serde_json::from_slice"),
     ("serde_json", "to_string(", "from_str("),
     ("bincode", "bincode::serialize", "bincode::deserialize"),
@@ -304,7 +308,10 @@ mod tests {
         );
         let ctx = make_ctx(files, Language::JavaScript);
         let findings = DataTransformSpecMiner.analyze(&ctx).await.unwrap();
-        let json_findings: Vec<_> = findings.iter().filter(|f| f.title.contains("JSON")).collect();
+        let json_findings: Vec<_> = findings
+            .iter()
+            .filter(|f| f.title.contains("JSON"))
+            .collect();
         assert!(json_findings.is_empty());
     }
 

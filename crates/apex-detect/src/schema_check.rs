@@ -28,31 +28,23 @@ pub struct MigrationReport {
     pub dangerous_count: usize,
 }
 
-static DROP_COLUMN: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r"(?i)ALTER\s+TABLE\s+\S+\s+DROP\s+COLUMN").unwrap()
-});
+static DROP_COLUMN: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"(?i)ALTER\s+TABLE\s+\S+\s+DROP\s+COLUMN").unwrap());
 static ADD_NOT_NULL: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r"(?i)ALTER\s+TABLE\s+\S+\s+ADD\s+(?:COLUMN\s+)?\S+\s+\S+\s+NOT\s+NULL").unwrap()
 });
-static HAS_DEFAULT: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"(?i)\bDEFAULT\b").unwrap());
-static DROP_TABLE: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"(?i)DROP\s+TABLE").unwrap());
-static RENAME_COL: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r"(?i)ALTER\s+TABLE\s+\S+\s+RENAME\s+COLUMN").unwrap()
-});
+static HAS_DEFAULT: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"(?i)\bDEFAULT\b").unwrap());
+static DROP_TABLE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"(?i)DROP\s+TABLE").unwrap());
+static RENAME_COL: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"(?i)ALTER\s+TABLE\s+\S+\s+RENAME\s+COLUMN").unwrap());
 static CHANGE_TYPE: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r"(?i)ALTER\s+TABLE\s+\S+\s+ALTER\s+COLUMN\s+\S+\s+(?:SET\s+DATA\s+)?TYPE")
-        .unwrap()
+    Regex::new(r"(?i)ALTER\s+TABLE\s+\S+\s+ALTER\s+COLUMN\s+\S+\s+(?:SET\s+DATA\s+)?TYPE").unwrap()
 });
-static CREATE_INDEX: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r"(?i)CREATE\s+(?:UNIQUE\s+)?INDEX\s+").unwrap()
-});
-static CONCURRENT_INDEX: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r"(?i)CREATE\s+(?:UNIQUE\s+)?INDEX\s+CONCURRENTLY").unwrap()
-});
-static TRUNCATE: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"(?i)TRUNCATE\s+").unwrap());
+static CREATE_INDEX: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"(?i)CREATE\s+(?:UNIQUE\s+)?INDEX\s+").unwrap());
+static CONCURRENT_INDEX: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"(?i)CREATE\s+(?:UNIQUE\s+)?INDEX\s+CONCURRENTLY").unwrap());
+static TRUNCATE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"(?i)TRUNCATE\s+").unwrap());
 
 pub fn analyze_migration(sql: &str) -> MigrationReport {
     let mut issues = Vec::new();

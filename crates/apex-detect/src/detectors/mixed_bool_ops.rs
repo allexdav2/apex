@@ -168,10 +168,7 @@ mod tests {
     #[tokio::test]
     async fn detects_mixed_ops_rust() {
         let mut files = HashMap::new();
-        files.insert(
-            PathBuf::from("src/lib.rs"),
-            "if a || b && c { }\n".into(),
-        );
+        files.insert(PathBuf::from("src/lib.rs"), "if a || b && c { }\n".into());
         let ctx = make_ctx(files, Language::Rust);
         let findings = MixedBoolOpsDetector.analyze(&ctx).await.unwrap();
         assert_eq!(findings.len(), 1);
@@ -182,10 +179,7 @@ mod tests {
     #[tokio::test]
     async fn no_finding_when_parenthesized_rust() {
         let mut files = HashMap::new();
-        files.insert(
-            PathBuf::from("src/lib.rs"),
-            "if (a || b) && c { }\n".into(),
-        );
+        files.insert(PathBuf::from("src/lib.rs"), "if (a || b) && c { }\n".into());
         let ctx = make_ctx(files, Language::Rust);
         let findings = MixedBoolOpsDetector.analyze(&ctx).await.unwrap();
         assert!(findings.is_empty());
@@ -194,10 +188,7 @@ mod tests {
     #[tokio::test]
     async fn no_finding_single_operator_rust() {
         let mut files = HashMap::new();
-        files.insert(
-            PathBuf::from("src/lib.rs"),
-            "if a || b || c { }\n".into(),
-        );
+        files.insert(PathBuf::from("src/lib.rs"), "if a || b || c { }\n".into());
         let ctx = make_ctx(files, Language::Rust);
         let findings = MixedBoolOpsDetector.analyze(&ctx).await.unwrap();
         assert!(findings.is_empty());
@@ -234,10 +225,7 @@ mod tests {
     #[tokio::test]
     async fn detects_mixed_ops_python() {
         let mut files = HashMap::new();
-        files.insert(
-            PathBuf::from("src/utils.py"),
-            "if a or b and c:\n".into(),
-        );
+        files.insert(PathBuf::from("src/utils.py"), "if a or b and c:\n".into());
         let ctx = make_ctx(files, Language::Python);
         let findings = MixedBoolOpsDetector.analyze(&ctx).await.unwrap();
         assert_eq!(findings.len(), 1);
@@ -247,10 +235,7 @@ mod tests {
     #[tokio::test]
     async fn no_finding_when_parenthesized_python() {
         let mut files = HashMap::new();
-        files.insert(
-            PathBuf::from("src/utils.py"),
-            "if (a or b) and c:\n".into(),
-        );
+        files.insert(PathBuf::from("src/utils.py"), "if (a or b) and c:\n".into());
         let ctx = make_ctx(files, Language::Python);
         let findings = MixedBoolOpsDetector.analyze(&ctx).await.unwrap();
         assert!(findings.is_empty());
@@ -259,10 +244,7 @@ mod tests {
     #[tokio::test]
     async fn no_finding_single_operator_python() {
         let mut files = HashMap::new();
-        files.insert(
-            PathBuf::from("src/utils.py"),
-            "if a or b or c:\n".into(),
-        );
+        files.insert(PathBuf::from("src/utils.py"), "if a or b or c:\n".into());
         let ctx = make_ctx(files, Language::Python);
         let findings = MixedBoolOpsDetector.analyze(&ctx).await.unwrap();
         assert!(findings.is_empty());
@@ -271,10 +253,7 @@ mod tests {
     #[tokio::test]
     async fn skips_comments() {
         let mut files = HashMap::new();
-        files.insert(
-            PathBuf::from("src/lib.rs"),
-            "// if a || b && c\n".into(),
-        );
+        files.insert(PathBuf::from("src/lib.rs"), "// if a || b && c\n".into());
         let ctx = make_ctx(files, Language::Rust);
         let findings = MixedBoolOpsDetector.analyze(&ctx).await.unwrap();
         assert!(findings.is_empty());
@@ -283,10 +262,7 @@ mod tests {
     #[tokio::test]
     async fn skips_python_comments() {
         let mut files = HashMap::new();
-        files.insert(
-            PathBuf::from("src/utils.py"),
-            "# if a or b and c\n".into(),
-        );
+        files.insert(PathBuf::from("src/utils.py"), "# if a or b and c\n".into());
         let ctx = make_ctx(files, Language::Python);
         let findings = MixedBoolOpsDetector.analyze(&ctx).await.unwrap();
         assert!(findings.is_empty());

@@ -19,14 +19,27 @@ const HTTP_FUNCS: &[&str] = &[
 
 /// Indicators that the URL comes from user input.
 const USER_INPUT_INDICATORS: &[&str] = &[
-    "request.", "params[", "args[", "input(", "sys.argv", "os.environ",
-    "req.", "query[", "body[", "GET[", "POST[",
+    "request.",
+    "params[",
+    "args[",
+    "input(",
+    "sys.argv",
+    "os.environ",
+    "req.",
+    "query[",
+    "body[",
+    "GET[",
+    "POST[",
 ];
 
 /// Sanitization indicators that suggest the URL is validated.
 const SANITIZATION_INDICATORS: &[&str] = &[
-    "urlparse", "validators.url", "allowlist", "whitelist",
-    "ALLOWED_HOSTS", "validate_url",
+    "urlparse",
+    "validators.url",
+    "allowlist",
+    "whitelist",
+    "ALLOWED_HOSTS",
+    "validate_url",
 ];
 
 /// Scan source code for SSRF vulnerabilities.
@@ -34,9 +47,7 @@ pub fn scan_ssrf(source: &str, file_path: &str) -> Vec<Finding> {
     let mut findings = Vec::new();
 
     // Check if file has any sanitization imports/usage globally.
-    let has_sanitization = SANITIZATION_INDICATORS
-        .iter()
-        .any(|s| source.contains(s));
+    let has_sanitization = SANITIZATION_INDICATORS.iter().any(|s| source.contains(s));
 
     for (line_num, line) in source.lines().enumerate() {
         let line_1based = (line_num + 1) as u32;
@@ -57,7 +68,8 @@ pub fn scan_ssrf(source: &str, file_path: &str) -> Vec<Finding> {
         let has_user_input = USER_INPUT_INDICATORS.iter().any(|i| trimmed.contains(i));
 
         // Also detect f-string URL construction or concatenation with variables.
-        let has_dynamic_url = trimmed.contains("f\"") || trimmed.contains("f'")
+        let has_dynamic_url = trimmed.contains("f\"")
+            || trimmed.contains("f'")
             || (trimmed.contains('+') && trimmed.contains("http"));
 
         if !has_user_input && !has_dynamic_url {

@@ -217,13 +217,19 @@ impl PythonConcolicStrategy {
                 let affix = caps[3].to_string();
                 match (method.as_str(), target_direction) {
                     ("startswith", 0) => {
-                        assignments.push(vec![(name.clone(), serde_json::json!(format!("{affix}suffix")))]);
+                        assignments.push(vec![(
+                            name.clone(),
+                            serde_json::json!(format!("{affix}suffix")),
+                        )]);
                     }
                     ("startswith", _) => {
                         assignments.push(vec![(name.clone(), serde_json::json!("__no_match__"))]);
                     }
                     ("endswith", 0) => {
-                        assignments.push(vec![(name.clone(), serde_json::json!(format!("prefix{affix}")))]);
+                        assignments.push(vec![(
+                            name.clone(),
+                            serde_json::json!(format!("prefix{affix}")),
+                        )]);
                     }
                     ("endswith", _) => {
                         assignments.push(vec![(name.clone(), serde_json::json!("__no_match__"))]);
@@ -238,8 +244,13 @@ impl PythonConcolicStrategy {
             if let Some(caps) = RE_IN_LIST.captures(condition.trim()) {
                 let name = caps[1].to_string();
                 let items_str = caps[2].to_string();
-                let items: Vec<String> = items_str.split(',')
-                    .map(|s| s.trim().trim_matches(|c: char| c == '\'' || c == '"').to_string())
+                let items: Vec<String> = items_str
+                    .split(',')
+                    .map(|s| {
+                        s.trim()
+                            .trim_matches(|c: char| c == '\'' || c == '"')
+                            .to_string()
+                    })
                     .collect();
                 if target_direction == 0 {
                     for item in items.iter().take(3) {
@@ -284,7 +295,10 @@ impl PythonConcolicStrategy {
                 let substring = caps[1].to_string();
                 let name = caps[2].to_string();
                 if target_direction == 0 {
-                    assignments.push(vec![(name.clone(), serde_json::json!(format!("prefix{substring}suffix")))]);
+                    assignments.push(vec![(
+                        name.clone(),
+                        serde_json::json!(format!("prefix{substring}suffix")),
+                    )]);
                 } else {
                     assignments.push(vec![(name.clone(), serde_json::json!("no_match_here"))]);
                 }
@@ -299,8 +313,20 @@ impl PythonConcolicStrategy {
                 let n: usize = caps[3].parse().unwrap_or(0);
                 let target_len = match (op.as_str(), target_direction) {
                     (">", 0) | (">=", 0) => n + 1,
-                    (">", _) | (">=", _) => if n > 0 { n - 1 } else { 0 },
-                    ("<", 0) | ("<=", 0) => if n > 0 { n - 1 } else { 0 },
+                    (">", _) | (">=", _) => {
+                        if n > 0 {
+                            n - 1
+                        } else {
+                            0
+                        }
+                    }
+                    ("<", 0) | ("<=", 0) => {
+                        if n > 0 {
+                            n - 1
+                        } else {
+                            0
+                        }
+                    }
                     ("<", _) | ("<=", _) => n + 1,
                     ("==", 0) => n,
                     ("==", _) => n + 1,
@@ -803,22 +829,35 @@ mod tests {
     fn boundary_seeds_startswith() {
         let s = make_strategy();
         let entry = make_trace_entry(
-            "test.py", 10, 1, "x.startswith(\"http\")",
-            "check_url", "mod", vec!["x"],
+            "test.py",
+            10,
+            1,
+            "x.startswith(\"http\")",
+            "check_url",
+            "mod",
+            vec!["x"],
             [("x".into(), serde_json::json!("ftp://foo"))].into(),
         );
         let seeds = s.boundary_seeds(&entry, 0); // want True
         assert!(!seeds.is_empty());
         let combined: String = seeds.join("\n");
-        assert!(combined.contains("http"), "should contain 'http' prefix: {combined}");
+        assert!(
+            combined.contains("http"),
+            "should contain 'http' prefix: {combined}"
+        );
     }
 
     #[test]
     fn boundary_seeds_in_list() {
         let s = make_strategy();
         let entry = make_trace_entry(
-            "test.py", 20, 1, "x in [\"GET\", \"POST\"]",
-            "handle", "views", vec!["x"],
+            "test.py",
+            20,
+            1,
+            "x in [\"GET\", \"POST\"]",
+            "handle",
+            "views",
+            vec!["x"],
             [("x".into(), serde_json::json!("PUT"))].into(),
         );
         let seeds = s.boundary_seeds(&entry, 0); // want True (in list)
@@ -831,56 +870,88 @@ mod tests {
     fn boundary_seeds_isinstance() {
         let s = make_strategy();
         let entry = make_trace_entry(
-            "test.py", 30, 1, "isinstance(x, str)",
-            "validate", "util", vec!["x"],
+            "test.py",
+            30,
+            1,
+            "isinstance(x, str)",
+            "validate",
+            "util",
+            vec!["x"],
             [("x".into(), serde_json::json!(42))].into(),
         );
         let seeds = s.boundary_seeds(&entry, 0); // want True (is str)
         assert!(!seeds.is_empty());
         let combined: String = seeds.join("\n");
-        assert!(combined.contains("\"\""), "should contain empty string literal: {combined}");
+        assert!(
+            combined.contains("\"\""),
+            "should contain empty string literal: {combined}"
+        );
     }
 
     #[test]
     fn boundary_seeds_substring_contains() {
         let s = make_strategy();
         let entry = make_trace_entry(
-            "test.py", 40, 1, "\"://\" in x",
-            "parse_url", "net", vec!["x"],
+            "test.py",
+            40,
+            1,
+            "\"://\" in x",
+            "parse_url",
+            "net",
+            vec!["x"],
             [("x".into(), serde_json::json!("noprotocol"))].into(),
         );
         let seeds = s.boundary_seeds(&entry, 0); // want True (contains ://)
         assert!(!seeds.is_empty());
         let combined: String = seeds.join("\n");
-        assert!(combined.contains("://"), "should contain '://' substring: {combined}");
+        assert!(
+            combined.contains("://"),
+            "should contain '://' substring: {combined}"
+        );
     }
 
     #[test]
     fn boundary_seeds_len_check() {
         let s = make_strategy();
         let entry = make_trace_entry(
-            "test.py", 50, 1, "len(x) > 0",
-            "process", "core", vec!["x"],
+            "test.py",
+            50,
+            1,
+            "len(x) > 0",
+            "process",
+            "core",
+            vec!["x"],
             [("x".into(), serde_json::json!(""))].into(),
         );
         let seeds = s.boundary_seeds(&entry, 0); // want True (len > 0)
         assert!(!seeds.is_empty());
         let combined: String = seeds.join("\n");
-        assert!(combined.contains("a") || combined.contains("x"), "should contain non-empty string: {combined}");
+        assert!(
+            combined.contains("a") || combined.contains("x"),
+            "should contain non-empty string: {combined}"
+        );
     }
 
     #[test]
     fn boundary_seeds_none_check() {
         let s = make_strategy();
         let entry = make_trace_entry(
-            "test.py", 60, 0, "x is None",
-            "check_val", "util", vec!["x"],
+            "test.py",
+            60,
+            0,
+            "x is None",
+            "check_val",
+            "util",
+            vec!["x"],
             [("x".into(), serde_json::json!(42))].into(),
         );
         let seeds = s.boundary_seeds(&entry, 0); // want True (is None)
         assert!(!seeds.is_empty());
         let combined: String = seeds.join("\n");
-        assert!(combined.contains("None") || combined.contains("null"), "should contain None: {combined}");
+        assert!(
+            combined.contains("None") || combined.contains("null"),
+            "should contain None: {combined}"
+        );
     }
 
     // -----------------------------------------------------------------------
@@ -1700,45 +1771,69 @@ mod tests {
     fn boundary_seeds_startswith_want_false() {
         let s = make_strategy();
         let entry = make_trace_entry(
-            "test.py", 10, 0, "x.startswith('http')",
-            "check_url", "mod", vec!["x"],
+            "test.py",
+            10,
+            0,
+            "x.startswith('http')",
+            "check_url",
+            "mod",
+            vec!["x"],
             [("x".into(), serde_json::json!("http://foo"))].into(),
         );
         // direction != 0 for startswith => "__no_match__"
         let seeds = s.boundary_seeds(&entry, 1);
         assert!(!seeds.is_empty());
         let combined: String = seeds.join("\n");
-        assert!(combined.contains("__no_match__"), "should contain __no_match__: {combined}");
+        assert!(
+            combined.contains("__no_match__"),
+            "should contain __no_match__: {combined}"
+        );
     }
 
     #[test]
     fn boundary_seeds_endswith_want_true() {
         let s = make_strategy();
         let entry = make_trace_entry(
-            "test.py", 10, 1, "x.endswith('.py')",
-            "check_ext", "mod", vec!["x"],
+            "test.py",
+            10,
+            1,
+            "x.endswith('.py')",
+            "check_ext",
+            "mod",
+            vec!["x"],
             [("x".into(), serde_json::json!("file.txt"))].into(),
         );
         // endswith direction=0 => "prefix{affix}"
         let seeds = s.boundary_seeds(&entry, 0);
         assert!(!seeds.is_empty());
         let combined: String = seeds.join("\n");
-        assert!(combined.contains("prefix.py"), "should contain 'prefix.py': {combined}");
+        assert!(
+            combined.contains("prefix.py"),
+            "should contain 'prefix.py': {combined}"
+        );
     }
 
     #[test]
     fn boundary_seeds_endswith_want_false() {
         let s = make_strategy();
         let entry = make_trace_entry(
-            "test.py", 10, 0, "x.endswith('.py')",
-            "check_ext", "mod", vec!["x"],
+            "test.py",
+            10,
+            0,
+            "x.endswith('.py')",
+            "check_ext",
+            "mod",
+            vec!["x"],
             [("x".into(), serde_json::json!("file.py"))].into(),
         );
         // endswith direction != 0 => "__no_match__"
         let seeds = s.boundary_seeds(&entry, 1);
         assert!(!seeds.is_empty());
         let combined: String = seeds.join("\n");
-        assert!(combined.contains("__no_match__"), "should contain __no_match__: {combined}");
+        assert!(
+            combined.contains("__no_match__"),
+            "should contain __no_match__: {combined}"
+        );
     }
 
     // -----------------------------------------------------------------------
@@ -1749,15 +1844,23 @@ mod tests {
     fn boundary_seeds_in_list_want_not_in() {
         let s = make_strategy();
         let entry = make_trace_entry(
-            "test.py", 20, 0, "x in [\"GET\", \"POST\"]",
-            "handle", "views", vec!["x"],
+            "test.py",
+            20,
+            0,
+            "x in [\"GET\", \"POST\"]",
+            "handle",
+            "views",
+            vec!["x"],
             [("x".into(), serde_json::json!("GET"))].into(),
         );
         // direction=1 => "__NOT_IN_LIST__"
         let seeds = s.boundary_seeds(&entry, 1);
         assert!(!seeds.is_empty());
         let combined: String = seeds.join("\n");
-        assert!(combined.contains("__NOT_IN_LIST__"), "should contain __NOT_IN_LIST__: {combined}");
+        assert!(
+            combined.contains("__NOT_IN_LIST__"),
+            "should contain __NOT_IN_LIST__: {combined}"
+        );
     }
 
     // -----------------------------------------------------------------------
@@ -1768,8 +1871,13 @@ mod tests {
     fn boundary_seeds_isinstance_int_want_true() {
         let s = make_strategy();
         let entry = make_trace_entry(
-            "test.py", 30, 1, "isinstance(x, int)",
-            "validate", "util", vec!["x"],
+            "test.py",
+            30,
+            1,
+            "isinstance(x, int)",
+            "validate",
+            "util",
+            vec!["x"],
             [("x".into(), serde_json::json!("text"))].into(),
         );
         let seeds = s.boundary_seeds(&entry, 0);
@@ -1782,64 +1890,101 @@ mod tests {
     fn boundary_seeds_isinstance_float_want_true() {
         let s = make_strategy();
         let entry = make_trace_entry(
-            "test.py", 30, 1, "isinstance(x, float)",
-            "validate", "util", vec!["x"],
+            "test.py",
+            30,
+            1,
+            "isinstance(x, float)",
+            "validate",
+            "util",
+            vec!["x"],
             [("x".into(), serde_json::json!("text"))].into(),
         );
         let seeds = s.boundary_seeds(&entry, 0);
         assert!(!seeds.is_empty());
         let combined: String = seeds.join("\n");
-        assert!(combined.contains("0.0"), "should contain float 0.0: {combined}");
+        assert!(
+            combined.contains("0.0"),
+            "should contain float 0.0: {combined}"
+        );
     }
 
     #[test]
     fn boundary_seeds_isinstance_bool_want_true() {
         let s = make_strategy();
         let entry = make_trace_entry(
-            "test.py", 30, 1, "isinstance(x, bool)",
-            "validate", "util", vec!["x"],
+            "test.py",
+            30,
+            1,
+            "isinstance(x, bool)",
+            "validate",
+            "util",
+            vec!["x"],
             [("x".into(), serde_json::json!(0))].into(),
         );
         let seeds = s.boundary_seeds(&entry, 0);
         assert!(!seeds.is_empty());
         let combined: String = seeds.join("\n");
-        assert!(combined.contains("true"), "should contain bool true: {combined}");
+        assert!(
+            combined.contains("true"),
+            "should contain bool true: {combined}"
+        );
     }
 
     #[test]
     fn boundary_seeds_isinstance_list_want_true() {
         let s = make_strategy();
         let entry = make_trace_entry(
-            "test.py", 30, 1, "isinstance(x, list)",
-            "validate", "util", vec!["x"],
+            "test.py",
+            30,
+            1,
+            "isinstance(x, list)",
+            "validate",
+            "util",
+            vec!["x"],
             [("x".into(), serde_json::json!(0))].into(),
         );
         let seeds = s.boundary_seeds(&entry, 0);
         assert!(!seeds.is_empty());
         let combined: String = seeds.join("\n");
-        assert!(combined.contains("[]"), "should contain empty list []: {combined}");
+        assert!(
+            combined.contains("[]"),
+            "should contain empty list []: {combined}"
+        );
     }
 
     #[test]
     fn boundary_seeds_isinstance_dict_want_true() {
         let s = make_strategy();
         let entry = make_trace_entry(
-            "test.py", 30, 1, "isinstance(x, dict)",
-            "validate", "util", vec!["x"],
+            "test.py",
+            30,
+            1,
+            "isinstance(x, dict)",
+            "validate",
+            "util",
+            vec!["x"],
             [("x".into(), serde_json::json!(0))].into(),
         );
         let seeds = s.boundary_seeds(&entry, 0);
         assert!(!seeds.is_empty());
         let combined: String = seeds.join("\n");
-        assert!(combined.contains("{}"), "should contain empty dict {{}}: {combined}");
+        assert!(
+            combined.contains("{}"),
+            "should contain empty dict {{}}: {combined}"
+        );
     }
 
     #[test]
     fn boundary_seeds_isinstance_unknown_type_want_true() {
         let s = make_strategy();
         let entry = make_trace_entry(
-            "test.py", 30, 1, "isinstance(x, MyClass)",
-            "validate", "util", vec!["x"],
+            "test.py",
+            30,
+            1,
+            "isinstance(x, MyClass)",
+            "validate",
+            "util",
+            vec!["x"],
             [("x".into(), serde_json::json!(0))].into(),
         );
         // Unknown type, direction=0 => default json!("")
@@ -1851,61 +1996,92 @@ mod tests {
     fn boundary_seeds_isinstance_str_want_false() {
         let s = make_strategy();
         let entry = make_trace_entry(
-            "test.py", 30, 0, "isinstance(x, str)",
-            "validate", "util", vec!["x"],
+            "test.py",
+            30,
+            0,
+            "isinstance(x, str)",
+            "validate",
+            "util",
+            vec!["x"],
             [("x".into(), serde_json::json!("hello"))].into(),
         );
         // direction=1 for str => json!(0)
         let seeds = s.boundary_seeds(&entry, 1);
         assert!(!seeds.is_empty());
         let combined: String = seeds.join("\n");
-        assert!(combined.contains("0"), "str want-false should produce int 0: {combined}");
+        assert!(
+            combined.contains("0"),
+            "str want-false should produce int 0: {combined}"
+        );
     }
 
     #[test]
     fn boundary_seeds_isinstance_int_want_false() {
         let s = make_strategy();
         let entry = make_trace_entry(
-            "test.py", 30, 0, "isinstance(x, int)",
-            "validate", "util", vec!["x"],
+            "test.py",
+            30,
+            0,
+            "isinstance(x, int)",
+            "validate",
+            "util",
+            vec!["x"],
             [("x".into(), serde_json::json!(42))].into(),
         );
         // direction=1 for int => json!("not_a_number")
         let seeds = s.boundary_seeds(&entry, 1);
         assert!(!seeds.is_empty());
         let combined: String = seeds.join("\n");
-        assert!(combined.contains("not_a_number"), "int want-false should produce string: {combined}");
+        assert!(
+            combined.contains("not_a_number"),
+            "int want-false should produce string: {combined}"
+        );
     }
 
     #[test]
     fn boundary_seeds_isinstance_float_want_false() {
         let s = make_strategy();
         let entry = make_trace_entry(
-            "test.py", 30, 0, "isinstance(x, float)",
-            "validate", "util", vec!["x"],
+            "test.py",
+            30,
+            0,
+            "isinstance(x, float)",
+            "validate",
+            "util",
+            vec!["x"],
             [("x".into(), serde_json::json!(3.14))].into(),
         );
         // direction=1 for float => json!("not_a_number")
         let seeds = s.boundary_seeds(&entry, 1);
         assert!(!seeds.is_empty());
         let combined: String = seeds.join("\n");
-        assert!(combined.contains("not_a_number"), "float want-false should produce string: {combined}");
+        assert!(
+            combined.contains("not_a_number"),
+            "float want-false should produce string: {combined}"
+        );
     }
 
     #[test]
     fn boundary_seeds_isinstance_unknown_want_false() {
         let s = make_strategy();
         let entry = make_trace_entry(
-            "test.py", 30, 0, "isinstance(x, MyClass)",
-            "validate", "util", vec!["x"],
+            "test.py",
+            30,
+            0,
+            "isinstance(x, MyClass)",
+            "validate",
+            "util",
+            vec!["x"],
             [("x".into(), serde_json::json!("obj"))].into(),
         );
         // direction=1 for unknown type => json!(null)
         let seeds = s.boundary_seeds(&entry, 1);
         assert!(!seeds.is_empty());
         let combined: String = seeds.join("\n");
-        assert!(combined.contains("null") || combined.contains("None"),
-            "unknown want-false should produce null: {combined}");
+        assert!(
+            combined.contains("null") || combined.contains("None"),
+            "unknown want-false should produce null: {combined}"
+        );
     }
 
     // -----------------------------------------------------------------------
@@ -1916,15 +2092,23 @@ mod tests {
     fn boundary_seeds_substring_contains_want_false() {
         let s = make_strategy();
         let entry = make_trace_entry(
-            "test.py", 40, 0, "\"://\" in x",
-            "parse_url", "net", vec!["x"],
+            "test.py",
+            40,
+            0,
+            "\"://\" in x",
+            "parse_url",
+            "net",
+            vec!["x"],
             [("x".into(), serde_json::json!("http://foo"))].into(),
         );
         // direction=1 => "no_match_here"
         let seeds = s.boundary_seeds(&entry, 1);
         assert!(!seeds.is_empty());
         let combined: String = seeds.join("\n");
-        assert!(combined.contains("no_match_here"), "should contain 'no_match_here': {combined}");
+        assert!(
+            combined.contains("no_match_here"),
+            "should contain 'no_match_here': {combined}"
+        );
     }
 
     // -----------------------------------------------------------------------
@@ -1935,8 +2119,13 @@ mod tests {
     fn boundary_seeds_len_gt_want_false() {
         let s = make_strategy();
         let entry = make_trace_entry(
-            "test.py", 50, 0, "len(x) > 3",
-            "process", "core", vec!["x"],
+            "test.py",
+            50,
+            0,
+            "len(x) > 3",
+            "process",
+            "core",
+            vec!["x"],
             [("x".into(), serde_json::json!("abcd"))].into(),
         );
         // (">", _) want false => n - 1 = 2
@@ -1944,30 +2133,46 @@ mod tests {
         assert!(!seeds.is_empty());
         let combined: String = seeds.join("\n");
         // target_len = if n > 0 { n - 1 } else { 0 } = 2, so "aa"
-        assert!(combined.contains("aa"), "should contain string of len 2: {combined}");
+        assert!(
+            combined.contains("aa"),
+            "should contain string of len 2: {combined}"
+        );
     }
 
     #[test]
     fn boundary_seeds_len_ge_want_true() {
         let s = make_strategy();
         let entry = make_trace_entry(
-            "test.py", 50, 1, "len(x) >= 3",
-            "process", "core", vec!["x"],
+            "test.py",
+            50,
+            1,
+            "len(x) >= 3",
+            "process",
+            "core",
+            vec!["x"],
             [("x".into(), serde_json::json!("a"))].into(),
         );
         // (">=", 0) => n + 1 = 4
         let seeds = s.boundary_seeds(&entry, 0);
         assert!(!seeds.is_empty());
         let combined: String = seeds.join("\n");
-        assert!(combined.contains("aaaa"), "should contain string of len 4: {combined}");
+        assert!(
+            combined.contains("aaaa"),
+            "should contain string of len 4: {combined}"
+        );
     }
 
     #[test]
     fn boundary_seeds_len_ge_want_false() {
         let s = make_strategy();
         let entry = make_trace_entry(
-            "test.py", 50, 0, "len(x) >= 3",
-            "process", "core", vec!["x"],
+            "test.py",
+            50,
+            0,
+            "len(x) >= 3",
+            "process",
+            "core",
+            vec!["x"],
             [("x".into(), serde_json::json!("abcd"))].into(),
         );
         // (">=", _) want false => n - 1 = 2
@@ -1979,98 +2184,151 @@ mod tests {
     fn boundary_seeds_len_lt_want_true() {
         let s = make_strategy();
         let entry = make_trace_entry(
-            "test.py", 50, 1, "len(x) < 5",
-            "process", "core", vec!["x"],
+            "test.py",
+            50,
+            1,
+            "len(x) < 5",
+            "process",
+            "core",
+            vec!["x"],
             [("x".into(), serde_json::json!("abcdef"))].into(),
         );
         // ("<", 0) => n - 1 = 4
         let seeds = s.boundary_seeds(&entry, 0);
         assert!(!seeds.is_empty());
         let combined: String = seeds.join("\n");
-        assert!(combined.contains("aaaa"), "should contain string of len 4: {combined}");
+        assert!(
+            combined.contains("aaaa"),
+            "should contain string of len 4: {combined}"
+        );
     }
 
     #[test]
     fn boundary_seeds_len_lt_want_false() {
         let s = make_strategy();
         let entry = make_trace_entry(
-            "test.py", 50, 0, "len(x) < 5",
-            "process", "core", vec!["x"],
+            "test.py",
+            50,
+            0,
+            "len(x) < 5",
+            "process",
+            "core",
+            vec!["x"],
             [("x".into(), serde_json::json!("ab"))].into(),
         );
         // ("<", _) want false => n + 1 = 6
         let seeds = s.boundary_seeds(&entry, 1);
         assert!(!seeds.is_empty());
         let combined: String = seeds.join("\n");
-        assert!(combined.contains("aaaaaa"), "should contain string of len 6: {combined}");
+        assert!(
+            combined.contains("aaaaaa"),
+            "should contain string of len 6: {combined}"
+        );
     }
 
     #[test]
     fn boundary_seeds_len_le_want_true() {
         let s = make_strategy();
         let entry = make_trace_entry(
-            "test.py", 50, 1, "len(x) <= 3",
-            "process", "core", vec!["x"],
+            "test.py",
+            50,
+            1,
+            "len(x) <= 3",
+            "process",
+            "core",
+            vec!["x"],
             [("x".into(), serde_json::json!("abcde"))].into(),
         );
         // ("<=", 0) => n - 1 = 2
         let seeds = s.boundary_seeds(&entry, 0);
         assert!(!seeds.is_empty());
         let combined: String = seeds.join("\n");
-        assert!(combined.contains("aa"), "should contain string of len 2: {combined}");
+        assert!(
+            combined.contains("aa"),
+            "should contain string of len 2: {combined}"
+        );
     }
 
     #[test]
     fn boundary_seeds_len_le_want_false() {
         let s = make_strategy();
         let entry = make_trace_entry(
-            "test.py", 50, 0, "len(x) <= 3",
-            "process", "core", vec!["x"],
+            "test.py",
+            50,
+            0,
+            "len(x) <= 3",
+            "process",
+            "core",
+            vec!["x"],
             [("x".into(), serde_json::json!("ab"))].into(),
         );
         // ("<=", _) want false => n + 1 = 4
         let seeds = s.boundary_seeds(&entry, 1);
         assert!(!seeds.is_empty());
         let combined: String = seeds.join("\n");
-        assert!(combined.contains("aaaa"), "should contain string of len 4: {combined}");
+        assert!(
+            combined.contains("aaaa"),
+            "should contain string of len 4: {combined}"
+        );
     }
 
     #[test]
     fn boundary_seeds_len_eq_want_true() {
         let s = make_strategy();
         let entry = make_trace_entry(
-            "test.py", 50, 1, "len(x) == 3",
-            "process", "core", vec!["x"],
+            "test.py",
+            50,
+            1,
+            "len(x) == 3",
+            "process",
+            "core",
+            vec!["x"],
             [("x".into(), serde_json::json!("abcde"))].into(),
         );
         // ("==", 0) => n = 3
         let seeds = s.boundary_seeds(&entry, 0);
         assert!(!seeds.is_empty());
         let combined: String = seeds.join("\n");
-        assert!(combined.contains("aaa"), "should contain string of len 3: {combined}");
+        assert!(
+            combined.contains("aaa"),
+            "should contain string of len 3: {combined}"
+        );
     }
 
     #[test]
     fn boundary_seeds_len_eq_want_false() {
         let s = make_strategy();
         let entry = make_trace_entry(
-            "test.py", 50, 0, "len(x) == 3",
-            "process", "core", vec!["x"],
+            "test.py",
+            50,
+            0,
+            "len(x) == 3",
+            "process",
+            "core",
+            vec!["x"],
             [("x".into(), serde_json::json!("abc"))].into(),
         );
         // ("==", _) want false => n + 1 = 4
         let seeds = s.boundary_seeds(&entry, 1);
         assert!(!seeds.is_empty());
         let combined: String = seeds.join("\n");
-        assert!(combined.contains("aaaa"), "should contain string of len 4: {combined}");
+        assert!(
+            combined.contains("aaaa"),
+            "should contain string of len 4: {combined}"
+        );
     }
 
     #[test]
     fn boundary_seeds_len_gt_zero_want_false() {
         let s = make_strategy();
         let entry = make_trace_entry(
-            "test.py", 50, 0, "len(x) > 0",
-            "process", "core", vec!["x"],
+            "test.py",
+            50,
+            0,
+            "len(x) > 0",
+            "process",
+            "core",
+            vec!["x"],
             [("x".into(), serde_json::json!("a"))].into(),
         );
         // (">", _) want false => n > 0 ? n-1 : 0 => 0-1 can't happen, n=0 so target_len=0
@@ -2087,46 +2345,69 @@ mod tests {
     fn boundary_seeds_is_not_none_want_true() {
         let s = make_strategy();
         let entry = make_trace_entry(
-            "test.py", 60, 1, "x is not None",
-            "check_val", "util", vec!["x"],
+            "test.py",
+            60,
+            1,
+            "x is not None",
+            "check_val",
+            "util",
+            vec!["x"],
             [("x".into(), serde_json::json!(null))].into(),
         );
         // ("not None", 0) => non-None value => json!(0)
         let seeds = s.boundary_seeds(&entry, 0);
         assert!(!seeds.is_empty());
         let combined: String = seeds.join("\n");
-        assert!(combined.contains("0"), "should contain non-None value 0: {combined}");
+        assert!(
+            combined.contains("0"),
+            "should contain non-None value 0: {combined}"
+        );
     }
 
     #[test]
     fn boundary_seeds_is_not_none_want_false() {
         let s = make_strategy();
         let entry = make_trace_entry(
-            "test.py", 60, 0, "x is not None",
-            "check_val", "util", vec!["x"],
+            "test.py",
+            60,
+            0,
+            "x is not None",
+            "check_val",
+            "util",
+            vec!["x"],
             [("x".into(), serde_json::json!(42))].into(),
         );
         // ("not None", 1) => json!(null)
         let seeds = s.boundary_seeds(&entry, 1);
         assert!(!seeds.is_empty());
         let combined: String = seeds.join("\n");
-        assert!(combined.contains("null") || combined.contains("None"),
-            "should contain null/None: {combined}");
+        assert!(
+            combined.contains("null") || combined.contains("None"),
+            "should contain null/None: {combined}"
+        );
     }
 
     #[test]
     fn boundary_seeds_is_none_want_false() {
         let s = make_strategy();
         let entry = make_trace_entry(
-            "test.py", 60, 0, "x is None",
-            "check_val", "util", vec!["x"],
+            "test.py",
+            60,
+            0,
+            "x is None",
+            "check_val",
+            "util",
+            vec!["x"],
             [("x".into(), serde_json::json!(null))].into(),
         );
         // ("None", 1) => non-None value => json!(0)
         let seeds = s.boundary_seeds(&entry, 1);
         assert!(!seeds.is_empty());
         let combined: String = seeds.join("\n");
-        assert!(combined.contains("0"), "should contain non-None value: {combined}");
+        assert!(
+            combined.contains("0"),
+            "should contain non-None value: {combined}"
+        );
     }
 
     // -----------------------------------------------------------------------
@@ -2138,8 +2419,13 @@ mod tests {
         let s = make_strategy();
         // Condition with string literal: lit.parse::<i64>() will fail
         let entry = make_trace_entry(
-            "test.py", 10, 0, "x == 'hello'",
-            "check", "mod", vec!["x"],
+            "test.py",
+            10,
+            0,
+            "x == 'hello'",
+            "check",
+            "mod",
+            vec!["x"],
             [("x".into(), serde_json::json!("hello"))].into(),
         );
         // Regex matches (name=x, op===, lit='hello') but parse::<i64> fails
@@ -2155,8 +2441,13 @@ mod tests {
         let s = make_strategy();
         // Condition with None literal: lit.parse::<i64>() will fail
         let entry = make_trace_entry(
-            "test.py", 10, 0, "x == None",
-            "check", "mod", vec!["x"],
+            "test.py",
+            10,
+            0,
+            "x == None",
+            "check",
+            "mod",
+            vec!["x"],
             [("x".into(), serde_json::json!(null))].into(),
         );
         // Falls through to fallback (null local)
@@ -2169,8 +2460,13 @@ mod tests {
         let s = make_strategy();
         // Condition with True literal
         let entry = make_trace_entry(
-            "test.py", 10, 0, "x == True",
-            "check", "mod", vec!["x"],
+            "test.py",
+            10,
+            0,
+            "x == True",
+            "check",
+            "mod",
+            vec!["x"],
             [("x".into(), serde_json::json!(true))].into(),
         );
         // True doesn't parse as i64, falls through
@@ -2234,8 +2530,13 @@ mod tests {
         let s = make_strategy();
         // Float literal: regex matches but parse::<i64> fails on "3.14"
         let entry = make_trace_entry(
-            "test.py", 10, 0, "x > 3.14",
-            "check", "mod", vec!["x"],
+            "test.py",
+            10,
+            0,
+            "x > 3.14",
+            "check",
+            "mod",
+            vec!["x"],
             [("x".into(), serde_json::json!(5))].into(),
         );
         // Falls through to fallback (integer local)
@@ -2251,27 +2552,44 @@ mod tests {
     fn boundary_seeds_in_list_single_item() {
         let s = make_strategy();
         let entry = make_trace_entry(
-            "test.py", 20, 1, "x in [\"admin\"]",
-            "auth", "views", vec!["x"],
+            "test.py",
+            20,
+            1,
+            "x in [\"admin\"]",
+            "auth",
+            "views",
+            vec!["x"],
             [("x".into(), serde_json::json!("user"))].into(),
         );
         let seeds = s.boundary_seeds(&entry, 0);
         assert!(!seeds.is_empty());
         let combined: String = seeds.join("\n");
-        assert!(combined.contains("admin"), "should contain admin: {combined}");
+        assert!(
+            combined.contains("admin"),
+            "should contain admin: {combined}"
+        );
     }
 
     #[test]
     fn boundary_seeds_in_list_many_items_takes_3() {
         let s = make_strategy();
         let entry = make_trace_entry(
-            "test.py", 20, 1, "x in [\"a\", \"b\", \"c\", \"d\", \"e\"]",
-            "check", "mod", vec!["x"],
+            "test.py",
+            20,
+            1,
+            "x in [\"a\", \"b\", \"c\", \"d\", \"e\"]",
+            "check",
+            "mod",
+            vec!["x"],
             [("x".into(), serde_json::json!("z"))].into(),
         );
         // direction=0, takes first 3 items
         let seeds = s.boundary_seeds(&entry, 0);
-        assert!(seeds.len() == 3, "should produce exactly 3 seeds for 5-item list: got {}", seeds.len());
+        assert!(
+            seeds.len() == 3,
+            "should produce exactly 3 seeds for 5-item list: got {}",
+            seeds.len()
+        );
     }
 
     // -----------------------------------------------------------------------
@@ -2282,8 +2600,13 @@ mod tests {
     fn boundary_seeds_fallback_mixed_locals() {
         let s = make_strategy();
         let entry = make_trace_entry(
-            "test.py", 30, 0, "complex(a, b, c)",
-            "func", "mod", vec!["a", "b", "c"],
+            "test.py",
+            30,
+            0,
+            "complex(a, b, c)",
+            "func",
+            "mod",
+            vec!["a", "b", "c"],
             [
                 ("a".into(), serde_json::json!(5)),
                 ("b".into(), serde_json::json!(null)),
@@ -2320,8 +2643,13 @@ mod tests {
     #[test]
     fn branch_trace_clone() {
         let entry = make_trace_entry(
-            "test.py", 10, 0, "x > 5",
-            "check", "mod", vec!["x"],
+            "test.py",
+            10,
+            0,
+            "x > 5",
+            "check",
+            "mod",
+            vec!["x"],
             [("x".into(), serde_json::json!(10))].into(),
         );
         let cloned = entry.clone();
@@ -2394,15 +2722,23 @@ mod tests {
     fn boundary_seeds_generated_code_has_try_except() {
         let s = make_strategy();
         let entry = make_trace_entry(
-            "app.py", 42, 0, "x > 10",
-            "process", "mymod", vec!["x"],
+            "app.py",
+            42,
+            0,
+            "x > 10",
+            "process",
+            "mymod",
+            vec!["x"],
             [("x".into(), serde_json::json!(15))].into(),
         );
         let seeds = s.boundary_seeds(&entry, 1);
         assert!(!seeds.is_empty());
         let code = &seeds[0];
         assert!(code.contains("try:"), "should contain try block");
-        assert!(code.contains("except Exception:"), "should contain except block");
+        assert!(
+            code.contains("except Exception:"),
+            "should contain except block"
+        );
         assert!(code.contains("pass"), "should contain pass statement");
     }
 
@@ -2415,15 +2751,22 @@ mod tests {
             vec!["pytest".to_string()],
         );
         let entry = make_trace_entry(
-            "app.py", 42, 0, "x > 10",
-            "process", "mymod", vec!["x"],
+            "app.py",
+            42,
+            0,
+            "x > 10",
+            "process",
+            "mymod",
+            vec!["x"],
             [("x".into(), serde_json::json!(15))].into(),
         );
         let seeds = s.boundary_seeds(&entry, 1);
         assert!(!seeds.is_empty());
         let code = &seeds[0];
-        assert!(code.contains("sys.path.insert(0, \"/my/project\")"),
-            "should contain sys.path.insert with target_root: {code}");
+        assert!(
+            code.contains("sys.path.insert(0, \"/my/project\")"),
+            "should contain sys.path.insert with target_root: {code}"
+        );
     }
 
     // -----------------------------------------------------------------------
@@ -2434,15 +2777,29 @@ mod tests {
     fn boundary_seeds_condition_comment_in_code() {
         let s = make_strategy();
         let entry = make_trace_entry(
-            "app.py", 42, 0, "x > 10",
-            "process", "mymod", vec!["x"],
+            "app.py",
+            42,
+            0,
+            "x > 10",
+            "process",
+            "mymod",
+            vec!["x"],
             [("x".into(), serde_json::json!(15))].into(),
         );
         let seeds = s.boundary_seeds(&entry, 1);
         let code = &seeds[0];
-        assert!(code.contains("# condition: x > 10"), "should contain condition comment: {code}");
-        assert!(code.contains("# apex-concolic: app.py:42"), "should contain file:line comment: {code}");
-        assert!(code.contains("# variant 0"), "should contain variant index: {code}");
+        assert!(
+            code.contains("# condition: x > 10"),
+            "should contain condition comment: {code}"
+        );
+        assert!(
+            code.contains("# apex-concolic: app.py:42"),
+            "should contain file:line comment: {code}"
+        );
+        assert!(
+            code.contains("# variant 0"),
+            "should contain variant index: {code}"
+        );
     }
 
     // -----------------------------------------------------------------------
@@ -2453,8 +2810,13 @@ mod tests {
     fn boundary_seeds_len_ge_zero_want_false() {
         let s = make_strategy();
         let entry = make_trace_entry(
-            "test.py", 50, 0, "len(x) >= 0",
-            "process", "core", vec!["x"],
+            "test.py",
+            50,
+            0,
+            "len(x) >= 0",
+            "process",
+            "core",
+            vec!["x"],
             [("x".into(), serde_json::json!("abc"))].into(),
         );
         // (">=", _) want false => if n > 0 { n-1 } else { 0 } => n=0, so target_len=0
@@ -2466,8 +2828,13 @@ mod tests {
     fn boundary_seeds_len_lt_zero_want_true() {
         let s = make_strategy();
         let entry = make_trace_entry(
-            "test.py", 50, 1, "len(x) < 0",
-            "process", "core", vec!["x"],
+            "test.py",
+            50,
+            1,
+            "len(x) < 0",
+            "process",
+            "core",
+            vec!["x"],
             [("x".into(), serde_json::json!("abc"))].into(),
         );
         // ("<", 0) => if n > 0 { n-1 } else { 0 } => n=0, target_len=0

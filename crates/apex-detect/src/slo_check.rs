@@ -28,7 +28,7 @@ pub struct SloReport {
     pub slo_count: usize,
     pub issues: Vec<SloIssue>,
     pub timeouts_found: Vec<(PathBuf, u32, u64)>, // file, line, timeout_ms
-    pub retries_found: Vec<(PathBuf, u32, u32)>,   // file, line, count
+    pub retries_found: Vec<(PathBuf, u32, u32)>,  // file, line, count
     pub health_check_found: bool,
 }
 
@@ -179,7 +179,8 @@ mod tests {
 
     #[test]
     fn parse_slo_json() {
-        let json = r#"[{"name":"api","latency_ms":500,"error_rate_pct":1.0,"availability_pct":99.9}]"#;
+        let json =
+            r#"[{"name":"api","latency_ms":500,"error_rate_pct":1.0,"availability_pct":99.9}]"#;
         let slos = parse_slo_file(json);
         assert_eq!(slos.len(), 1);
         assert_eq!(slos[0].name, "api");

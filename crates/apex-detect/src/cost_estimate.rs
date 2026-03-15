@@ -30,9 +30,8 @@ static S3_OP: LazyLock<Regex> = LazyLock::new(|| {
 });
 static LAMBDA_INVOKE: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"(?i)(?:lambda.*invoke|invoke_function)").unwrap());
-static API_CALL: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r"(?i)(?:requests\.\w+|httpx\.\w+|fetch\()").unwrap()
-});
+static API_CALL: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"(?i)(?:requests\.\w+|httpx\.\w+|fetch\()").unwrap());
 
 pub fn estimate_costs(source_cache: &HashMap<PathBuf, String>) -> CostReport {
     let mut drivers = Vec::new();
@@ -82,10 +81,7 @@ mod tests {
     #[test]
     fn detects_db_queries() {
         let mut c = HashMap::new();
-        c.insert(
-            PathBuf::from("app.py"),
-            "cursor.execute('SELECT 1')".into(),
-        );
+        c.insert(PathBuf::from("app.py"), "cursor.execute('SELECT 1')".into());
         let r = estimate_costs(&c);
         assert!(r.drivers.iter().any(|d| d.category == "database"));
     }
@@ -104,10 +100,7 @@ mod tests {
     #[test]
     fn estimates_monthly_cost() {
         let mut c = HashMap::new();
-        c.insert(
-            PathBuf::from("app.py"),
-            "cursor.execute('SELECT 1')".into(),
-        );
+        c.insert(PathBuf::from("app.py"), "cursor.execute('SELECT 1')".into());
         let r = estimate_costs(&c);
         assert!(r.total_estimated_monthly > 0.0);
     }

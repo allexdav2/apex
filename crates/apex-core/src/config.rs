@@ -35,8 +35,8 @@ impl ApexConfig {
 
     /// Parse config from a TOML string.
     pub fn parse_toml(s: &str) -> crate::Result<Self> {
-        let cfg: Self =
-            toml::from_str(s).map_err(|e| crate::ApexError::Config(format!("invalid TOML: {e}")))?;
+        let cfg: Self = toml::from_str(s)
+            .map_err(|e| crate::ApexError::Config(format!("invalid TOML: {e}")))?;
         Ok(cfg.validate())
     }
 

@@ -74,11 +74,7 @@ impl<R: CommandRunner> LanguageRunner for CSharpRunner<R> {
         Ok(())
     }
 
-    async fn run_tests(
-        &self,
-        target: &Path,
-        extra_args: &[String],
-    ) -> Result<TestRunOutput> {
+    async fn run_tests(&self, target: &Path, extra_args: &[String]) -> Result<TestRunOutput> {
         info!(target = %target.display(), "running C# tests");
 
         let start = Instant::now();

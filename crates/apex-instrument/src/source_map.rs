@@ -87,7 +87,11 @@ fn load_source_map(js_path: &Path) -> Option<sourcemap::SourceMap> {
         if let Some(pos) = content.rfind("//# sourceMappingURL=data:") {
             let data_url = &content[pos + 26..];
             if let Some(comma_pos) = data_url.find(',') {
-                let b64 = data_url[comma_pos + 1..].lines().next().unwrap_or("").trim();
+                let b64 = data_url[comma_pos + 1..]
+                    .lines()
+                    .next()
+                    .unwrap_or("")
+                    .trim();
                 if let Ok(decoded) = base64_decode(b64) {
                     return sourcemap::SourceMap::from_reader(&decoded[..]).ok();
                 }
@@ -175,7 +179,10 @@ mod tests {
         let with_trailing = "SGVsbG8 \n// some trailing JS content";
         // Both should decode identically — the trailing content is ignored.
         let decoded_clean = base64_decode(clean).unwrap();
-        let b64_extracted = with_trailing.split_whitespace().next().unwrap_or(with_trailing);
+        let b64_extracted = with_trailing
+            .split_whitespace()
+            .next()
+            .unwrap_or(with_trailing);
         let decoded_trailing = base64_decode(b64_extracted).unwrap();
         assert_eq!(decoded_clean, decoded_trailing);
         assert_eq!(decoded_clean, b"Hello");
@@ -226,8 +233,7 @@ mod tests {
         let _ = std::fs::create_dir_all(&dir);
         let js_path = dir.join("test_trailing.js");
 
-        let source_map_json =
-            r#"{"version":3,"sources":["test.ts"],"names":[],"mappings":"AAAA"}"#;
+        let source_map_json = r#"{"version":3,"sources":["test.ts"],"names":[],"mappings":"AAAA"}"#;
         let b64 = simple_base64_encode(source_map_json.as_bytes());
         // Simulate file with content after the source map comment
         let js_content = format!(
@@ -301,7 +307,10 @@ mod tests {
         let large_col: u32 = 70000;
         let clamped = large_col.min(u16::MAX as u32) as u16;
         assert_eq!(clamped, u16::MAX, "column 70000 is clamped to u16::MAX");
-        assert_ne!(clamped as u32, large_col, "column information is lost for values > 65535");
+        assert_ne!(
+            clamped as u32, large_col,
+            "column information is lost for values > 65535"
+        );
     }
 
     #[test]

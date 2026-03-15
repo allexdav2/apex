@@ -21,10 +21,10 @@ pub mod router;
 pub mod source;
 
 pub use adversarial::{AdversarialConfig, AdversarialLoop, AdversarialRound};
-pub use driller::{DrillerEscalation, DrillerStrategy, StuckDetector};
 pub use bandit::StrategyBandit;
 pub use budget::BudgetAllocator;
 pub use classifier::{BranchClassifier, BranchDifficulty};
+pub use driller::{DrillerEscalation, DrillerStrategy, StuckDetector};
 pub use feedback::{FeedbackAggregator, StrategyFeedback};
 pub use history::{ExplorationLog, LogEntry};
 pub use ledger::BugLedger;

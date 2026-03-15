@@ -1,3 +1,4 @@
+<!-- status: DONE -->
 # Fleet Review Fixes — 78 Issues Across 6 Crews
 
 > **For agentic workers:** REQUIRED: Use superpowers:subagent-driven-development or superpowers:executing-plans to implement this plan. Steps use checkbox (`- [ ]`) syntax for tracking.

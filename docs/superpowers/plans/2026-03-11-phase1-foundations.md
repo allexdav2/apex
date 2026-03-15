@@ -1,4 +1,4 @@
-# Phase 1: Foundation Traits & Infrastructure
+<!-- status: DONE --># Phase 1: Foundation Traits & Infrastructure
 
 > **For agentic workers:** REQUIRED: Use superpowers:subagent-driven-development (if subagents available) or superpowers:executing-plans to implement this plan. Steps use checkbox (`- [ ]`) syntax for tracking.
 

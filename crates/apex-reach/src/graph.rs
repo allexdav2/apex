@@ -48,8 +48,7 @@ impl CallGraph {
                 .or_default()
                 .push(node.id);
             for line in node.start_line..=node.end_line {
-                self.by_file_line
-                    .insert((node.file.clone(), line), node.id);
+                self.by_file_line.insert((node.file.clone(), line), node.id);
             }
         }
 

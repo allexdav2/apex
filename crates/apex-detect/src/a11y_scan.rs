@@ -35,17 +35,13 @@ pub struct A11yReport {
 
 // Match patterns (without look-ahead — Rust regex crate doesn't support it).
 // We match the tag then check for absence of required attributes in code.
-static IMG_TAG: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r#"<img\b[^>]*>"#).unwrap());
+static IMG_TAG: LazyLock<Regex> = LazyLock::new(|| Regex::new(r#"<img\b[^>]*>"#).unwrap());
 
-static ALT_ATTR: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r#"\balt\s*="#).unwrap());
+static ALT_ATTR: LazyLock<Regex> = LazyLock::new(|| Regex::new(r#"\balt\s*="#).unwrap());
 
-static INPUT_TAG: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r#"<input\b[^>]*>"#).unwrap());
+static INPUT_TAG: LazyLock<Regex> = LazyLock::new(|| Regex::new(r#"<input\b[^>]*>"#).unwrap());
 
-static ARIA_LABEL_ATTR: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r#"\baria-label"#).unwrap());
+static ARIA_LABEL_ATTR: LazyLock<Regex> = LazyLock::new(|| Regex::new(r#"\baria-label"#).unwrap());
 
 static BUTTON_EMPTY: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r#"<button[^>]*>\s*</button>"#).unwrap());
@@ -53,14 +49,11 @@ static BUTTON_EMPTY: LazyLock<Regex> =
 static ONCLICK_DIV: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r#"<div\b[^>]*\bonClick\b[^>]*>"#).unwrap());
 
-static HTML_TAG: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r#"<html\b[^>]*>"#).unwrap());
+static HTML_TAG: LazyLock<Regex> = LazyLock::new(|| Regex::new(r#"<html\b[^>]*>"#).unwrap());
 
-static LANG_ATTR: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r#"\blang\s*="#).unwrap());
+static LANG_ATTR: LazyLock<Regex> = LazyLock::new(|| Regex::new(r#"\blang\s*="#).unwrap());
 
-static AUTOFOCUS: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r#"\bautofocus\b"#).unwrap());
+static AUTOFOCUS: LazyLock<Regex> = LazyLock::new(|| Regex::new(r#"\bautofocus\b"#).unwrap());
 
 /// A rule that matches when a tag is present but a required attribute is absent.
 struct AbsenceRule {
@@ -250,10 +243,7 @@ mod tests {
     #[test]
     fn skips_non_jsx_files() {
         let mut src = HashMap::new();
-        src.insert(
-            PathBuf::from("app.py"),
-            r#"<img src="photo.jpg" />"#.into(),
-        );
+        src.insert(PathBuf::from("app.py"), r#"<img src="photo.jpg" />"#.into());
         let r = scan_accessibility(&src);
         assert_eq!(r.files_scanned, 0);
     }

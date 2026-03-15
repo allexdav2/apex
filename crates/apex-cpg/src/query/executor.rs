@@ -1,11 +1,16 @@
 //! Query execution engine — evaluates parsed queries against a CPG.
 
+use std::cell::RefCell;
 use std::collections::HashMap;
 
 use anyhow::Result;
 use regex::Regex;
 
 use crate::taint::reachable_by;
+
+thread_local! {
+    static REGEX_CACHE: RefCell<HashMap<String, Regex>> = RefCell::new(HashMap::new());
+}
 use crate::taint_rules::TaintRuleSet;
 use crate::{Cpg, NodeId};
 
@@ -211,10 +216,13 @@ fn evaluate_condition(
                 return false;
             };
             let name = node_name(node);
-            match Regex::new(pattern) {
-                Ok(re) => re.is_match(name),
-                Err(_) => false,
-            }
+            REGEX_CACHE.with(|cache| {
+                let mut cache = cache.borrow_mut();
+                let re = cache
+                    .entry(pattern.to_string())
+                    .or_insert_with(|| Regex::new(pattern).unwrap());
+                re.is_match(name)
+            })
         }
         Condition::And(left, right) => {
             evaluate_condition(cpg, bindings, left, rules)

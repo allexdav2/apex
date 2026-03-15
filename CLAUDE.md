@@ -42,10 +42,11 @@ rm -f .claude/sessions/${PPID}.attn    # back to green
 ## Build & Test
 
 ```bash
-cargo test --workspace                    # all tests (~3000+)
-cargo test -p apex-detect                 # single crate
-cargo clippy --workspace -- -D warnings   # lint
-cargo fmt --check                         # format check
+cargo nextest run --workspace              # all tests (~3000+, parallel)
+cargo nextest run -p apex-detect           # single crate
+cargo test --workspace                     # fallback if nextest not installed
+cargo clippy --workspace -- -D warnings    # lint
+cargo fmt --check                          # format check
 ```
 
 ## Code Style

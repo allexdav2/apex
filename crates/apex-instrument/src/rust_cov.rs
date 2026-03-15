@@ -1067,7 +1067,10 @@ mod tests {
     fn test_parse_llvm_json_empty_object() {
         // Empty JSON `{}` — should error on missing "data" key
         let result = parse_llvm_json(b"{}", Path::new("/tmp"));
-        assert!(result.is_err(), "empty object should fail: missing data array");
+        assert!(
+            result.is_err(),
+            "empty object should fail: missing data array"
+        );
     }
 
     #[test]
@@ -1149,7 +1152,11 @@ mod tests {
         );
         let (all, exec, _) = parse_llvm_json(json.as_bytes(), root).unwrap();
         assert_eq!(all.len(), 1);
-        assert_eq!(exec.len(), 1, "u64::MAX count should be treated as executed");
+        assert_eq!(
+            exec.len(),
+            1,
+            "u64::MAX count should be treated as executed"
+        );
     }
 
     #[test]

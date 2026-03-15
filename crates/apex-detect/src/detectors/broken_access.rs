@@ -6,11 +6,9 @@ use std::path::PathBuf;
 use std::sync::LazyLock;
 use uuid::Uuid;
 
-static ROUTE_DECORATOR: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r#"@(app|router)\.(get|post|put|delete|route|patch)\("#).unwrap()
-});
-static DJANGO_URL: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r#"def\s+\w+\(request"#).unwrap());
+static ROUTE_DECORATOR: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r#"@(app|router)\.(get|post|put|delete|route|patch)\("#).unwrap());
+static DJANGO_URL: LazyLock<Regex> = LazyLock::new(|| Regex::new(r#"def\s+\w+\(request"#).unwrap());
 
 /// Auth decorators that indicate protected endpoints.
 const AUTH_DECORATORS: &[&str] = &[

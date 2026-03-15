@@ -74,10 +74,8 @@ pub fn analyze_doc_coverage(spec_json: &str) -> Result<DocCoverageReport> {
                                 .unwrap_or("")
                                 .is_empty()
                             {
-                                let param_name = param
-                                    .get("name")
-                                    .and_then(|n| n.as_str())
-                                    .unwrap_or("?");
+                                let param_name =
+                                    param.get("name").and_then(|n| n.as_str()).unwrap_or("?");
                                 issues.push(DocIssue {
                                     path: path.clone(),
                                     method: method.to_uppercase(),
@@ -118,7 +116,8 @@ mod tests {
 
     #[test]
     fn fully_documented_spec() {
-        let spec = r#"{"paths":{"/users":{"get":{"description":"List users","responses":{"200":{}}}}}}"#;
+        let spec =
+            r#"{"paths":{"/users":{"get":{"description":"List users","responses":{"200":{}}}}}}"#;
         let r = analyze_doc_coverage(spec).unwrap();
         assert_eq!(r.total_endpoints, 1);
         assert_eq!(r.documented_endpoints, 1);

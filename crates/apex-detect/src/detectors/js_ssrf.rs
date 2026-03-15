@@ -214,10 +214,7 @@ mod tests {
     #[tokio::test]
     async fn skips_non_javascript_files() {
         let mut files = HashMap::new();
-        files.insert(
-            PathBuf::from("src/api.py"),
-            "resp = fetch(url)\n".into(),
-        );
+        files.insert(PathBuf::from("src/api.py"), "resp = fetch(url)\n".into());
         let ctx = make_ctx(files, Language::Python);
         let findings = JsSsrfDetector.analyze(&ctx).await.unwrap();
         assert!(findings.is_empty());

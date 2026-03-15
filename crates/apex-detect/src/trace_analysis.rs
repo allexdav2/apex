@@ -42,10 +42,7 @@ pub struct TraceReport {
 pub fn analyze_traces(spans: &[Span], slow_threshold_ms: f64) -> TraceReport {
     let mut traces: HashMap<&str, Vec<&Span>> = HashMap::new();
     for span in spans {
-        traces
-            .entry(span.trace_id.as_str())
-            .or_default()
-            .push(span);
+        traces.entry(span.trace_id.as_str()).or_default().push(span);
     }
 
     let mut slow_spans: Vec<Span> = spans

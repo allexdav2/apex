@@ -63,11 +63,7 @@ impl<R: CommandRunner> LanguageRunner for GoRunner<R> {
         Ok(())
     }
 
-    async fn run_tests(
-        &self,
-        target: &Path,
-        extra_args: &[String],
-    ) -> Result<TestRunOutput> {
+    async fn run_tests(&self, target: &Path, extra_args: &[String]) -> Result<TestRunOutput> {
         info!(target = %target.display(), "running Go tests");
 
         let start = Instant::now();

@@ -27,10 +27,7 @@ static PATTERNS: LazyLock<Vec<CompiledPattern>> = LazyLock::new(|| {
     vec![
         CompiledPattern {
             name: "Template literal in query",
-            regex: Regex::new(
-                r#"\.query\s*\(\s*`[^`]*\$\{[^}]+\}[^`]*`"#,
-            )
-            .expect("invalid regex"),
+            regex: Regex::new(r#"\.query\s*\(\s*`[^`]*\$\{[^}]+\}[^`]*`"#).expect("invalid regex"),
             description: "SQL query built with template literal interpolation",
         },
         CompiledPattern {
@@ -43,18 +40,14 @@ static PATTERNS: LazyLock<Vec<CompiledPattern>> = LazyLock::new(|| {
         },
         CompiledPattern {
             name: "Raw query call",
-            regex: Regex::new(
-                r#"(?:\.raw|knex\.raw|sequelize\.query)\s*\("#,
-            )
-            .expect("invalid regex"),
+            regex: Regex::new(r#"(?:\.raw|knex\.raw|sequelize\.query)\s*\("#)
+                .expect("invalid regex"),
             description: "Raw SQL query API used — verify input is sanitized",
         },
         CompiledPattern {
             name: "Execute with interpolation",
-            regex: Regex::new(
-                r#"\.execute\s*\(\s*`[^`]*\$\{[^}]+\}[^`]*`"#,
-            )
-            .expect("invalid regex"),
+            regex: Regex::new(r#"\.execute\s*\(\s*`[^`]*\$\{[^}]+\}[^`]*`"#)
+                .expect("invalid regex"),
             description: "SQL execute call with template literal interpolation",
         },
     ]
@@ -150,10 +143,9 @@ impl Detector for JsSqlInjectionDetector {
                             ),
                             evidence,
                             covered: false,
-                            suggestion:
-                                "Use parameterized queries (e.g., db.query(sql, [param])) \
+                            suggestion: "Use parameterized queries (e.g., db.query(sql, [param])) \
                                  instead of string interpolation."
-                                    .into(),
+                                .into(),
                             explanation: None,
                             fix: None,
                             cwe_ids: vec![89],
@@ -215,10 +207,7 @@ mod tests {
     #[tokio::test]
     async fn detects_knex_raw() {
         let mut files = HashMap::new();
-        files.insert(
-            PathBuf::from("src/db.js"),
-            "knex.raw(userQuery)\n".into(),
-        );
+        files.insert(PathBuf::from("src/db.js"), "knex.raw(userQuery)\n".into());
         let ctx = make_ctx(files, Language::JavaScript);
         let findings = JsSqlInjectionDetector.analyze(&ctx).await.unwrap();
         assert_eq!(findings.len(), 1);
@@ -257,7 +246,10 @@ mod tests {
         );
         let ctx = make_ctx(files, Language::JavaScript);
         let findings = JsSqlInjectionDetector.analyze(&ctx).await.unwrap();
-        assert!(findings.is_empty(), "parameterized query should not trigger");
+        assert!(
+            findings.is_empty(),
+            "parameterized query should not trigger"
+        );
     }
 
     #[tokio::test]

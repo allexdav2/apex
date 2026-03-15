@@ -367,9 +367,7 @@ limiter = Limiter(key_func=get_remote_address)
             .iter()
             .find(|e| e.category == StrideCategory::DenialOfService)
             .unwrap();
-        assert!(dos
-            .mitigations_found
-            .contains(&"Rate limiting".to_string()));
+        assert!(dos.mitigations_found.contains(&"Rate limiting".to_string()));
     }
 
     #[test]

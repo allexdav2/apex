@@ -146,12 +146,8 @@ mod tests {
 
     #[test]
     fn empty_baselines() {
-        let base = BenchBaseline {
-            benchmarks: vec![],
-        };
-        let cur = BenchBaseline {
-            benchmarks: vec![],
-        };
+        let base = BenchBaseline { benchmarks: vec![] };
+        let cur = BenchBaseline { benchmarks: vec![] };
         let r = diff_benchmarks(&base, &cur, 5.0);
         assert_eq!(r.changes.len(), 0);
     }

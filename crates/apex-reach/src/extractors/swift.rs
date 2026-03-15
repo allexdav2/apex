@@ -9,11 +9,11 @@ use std::sync::LazyLock;
 
 pub struct SwiftExtractor;
 
-static RE_FUNC: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"^\s*(?:(?:public|private|internal|open|fileprivate)\s+)?(?:static\s+)?(?:override\s+)?func\s+(\w+)\s*\(").unwrap());
+static RE_FUNC: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r"^\s*(?:(?:public|private|internal|open|fileprivate)\s+)?(?:static\s+)?(?:override\s+)?func\s+(\w+)\s*\(").unwrap()
+});
 
-static RE_CALL: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"(\w+)\s*\(").unwrap());
+static RE_CALL: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"(\w+)\s*\(").unwrap());
 
 static RE_METHOD_CALL: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"(\w+)\.(\w+)\s*\(").unwrap());
@@ -22,12 +22,49 @@ static RE_TEST_FUNC: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"func\s+(test\w+)\s*\(").unwrap());
 
 const SWIFT_KEYWORDS: &[&str] = &[
-    "if", "else", "for", "while", "switch", "case", "default", "guard", "return",
-    "break", "continue", "fallthrough", "func", "class", "struct", "enum",
-    "protocol", "extension", "import", "var", "let", "typealias", "init", "deinit",
-    "subscript", "where", "throw", "throws", "rethrows", "try", "catch", "defer",
-    "repeat", "in", "as", "is", "self", "super", "print", "debugPrint", "fatalError",
-    "precondition", "assert",
+    "if",
+    "else",
+    "for",
+    "while",
+    "switch",
+    "case",
+    "default",
+    "guard",
+    "return",
+    "break",
+    "continue",
+    "fallthrough",
+    "func",
+    "class",
+    "struct",
+    "enum",
+    "protocol",
+    "extension",
+    "import",
+    "var",
+    "let",
+    "typealias",
+    "init",
+    "deinit",
+    "subscript",
+    "where",
+    "throw",
+    "throws",
+    "rethrows",
+    "try",
+    "catch",
+    "defer",
+    "repeat",
+    "in",
+    "as",
+    "is",
+    "self",
+    "super",
+    "print",
+    "debugPrint",
+    "fatalError",
+    "precondition",
+    "assert",
 ];
 
 impl CallGraphExtractor for SwiftExtractor {
@@ -75,8 +112,7 @@ impl CallGraphExtractor for SwiftExtractor {
                         Some(EntryPointKind::Test)
                     } else if name == "main"
                         || has_ui_delegate
-                            && (name == "application"
-                                || name == "applicationDidFinishLaunching")
+                            && (name == "application" || name == "applicationDidFinishLaunching")
                     {
                         Some(EntryPointKind::Main)
                     } else {
@@ -225,10 +261,7 @@ mod tests {
             PathBuf::from("a.swift"),
             "func caller() {\n    helper()\n}\n".to_string(),
         );
-        sources.insert(
-            PathBuf::from("b.swift"),
-            "func helper() {\n}\n".to_string(),
-        );
+        sources.insert(PathBuf::from("b.swift"), "func helper() {\n}\n".to_string());
         let g = SwiftExtractor.extract(&sources);
         assert!(g.edge_count() >= 1);
     }

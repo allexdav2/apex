@@ -63,11 +63,7 @@ impl<R: CommandRunner> LanguageRunner for SwiftRunner<R> {
         Ok(())
     }
 
-    async fn run_tests(
-        &self,
-        target: &Path,
-        extra_args: &[String],
-    ) -> Result<TestRunOutput> {
+    async fn run_tests(&self, target: &Path, extra_args: &[String]) -> Result<TestRunOutput> {
         info!(target = %target.display(), "running Swift tests");
 
         let start = Instant::now();
@@ -116,8 +112,11 @@ mod tests {
     #[test]
     fn detect_with_package_swift() {
         let tmp = tempfile::tempdir().unwrap();
-        std::fs::write(tmp.path().join("Package.swift"), "// swift-tools-version:5.9")
-            .unwrap();
+        std::fs::write(
+            tmp.path().join("Package.swift"),
+            "// swift-tools-version:5.9",
+        )
+        .unwrap();
         let runner = SwiftRunner::new();
         assert!(runner.detect(tmp.path()));
     }
@@ -160,10 +159,7 @@ mod tests {
         let result = runner.install_deps(tmp.path()).await;
         assert!(result.is_err());
         let err = result.unwrap_err().to_string();
-        assert!(
-            err.contains("swift package resolve failed"),
-            "got: {err}"
-        );
+        assert!(err.contains("swift package resolve failed"), "got: {err}");
     }
 
     #[tokio::test]

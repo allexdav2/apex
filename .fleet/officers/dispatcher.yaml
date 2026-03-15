@@ -43,6 +43,9 @@ agent_build_rules:
   - Maximum 3 cargo test invocations per agent (fix-all → test → fix-failures → test → clippy)
   - Never run cargo test or cargo clippy after each individual fix
   - Use cargo check for intermediate validation (type-check only, no linking)
+  - If fleet-preflight reports shared_target_dir, export CARGO_TARGET_DIR before any cargo command
+  - First agent in wave should run `cargo check --workspace` to warm the shared cache
+  - Subsequent agents benefit from warm cache (rebuild only their changed crate)
 
 review_checklist:
   - Preflight script was run before dispatch

@@ -24,9 +24,8 @@ static DEPRECATED_CIPHER: LazyLock<Regex> = LazyLock::new(|| {
 });
 
 /// Matches Math.random() usage.
-static MATH_RANDOM: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r"Math\.random\s*\(\s*\)").expect("invalid Math.random regex")
-});
+static MATH_RANDOM: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"Math\.random\s*\(\s*\)").expect("invalid Math.random regex"));
 
 const SECURITY_KEYWORDS: &[&str] = &[
     "token", "key", "secret", "password", "salt", "nonce", "csrf", "auth",
@@ -68,10 +67,7 @@ impl Detector for JsCryptoFailureDetector {
                         category: FindingCategory::SecuritySmell,
                         file: path.clone(),
                         line: Some(line_1based),
-                        title: format!(
-                            "Weak hash algorithm at line {}",
-                            line_1based
-                        ),
+                        title: format!("Weak hash algorithm at line {}", line_1based),
                         description: format!(
                             "Weak hash algorithm (MD5 or SHA-1) used in {}:{}. \
                              These are cryptographically broken for security purposes.",
@@ -80,8 +76,7 @@ impl Detector for JsCryptoFailureDetector {
                         ),
                         evidence: vec![],
                         covered: false,
-                        suggestion: "Use SHA-256 or stronger: crypto.createHash('sha256')"
-                            .into(),
+                        suggestion: "Use SHA-256 or stronger: crypto.createHash('sha256')".into(),
                         explanation: None,
                         fix: None,
                         cwe_ids: vec![327, 328],
@@ -90,9 +85,7 @@ impl Detector for JsCryptoFailureDetector {
                 }
 
                 // Check for deprecated createCipher (not createCipheriv)
-                if DEPRECATED_CIPHER.is_match(trimmed)
-                    && !trimmed.contains("createCipheriv")
-                {
+                if DEPRECATED_CIPHER.is_match(trimmed) && !trimmed.contains("createCipheriv") {
                     findings.push(Finding {
                         id: Uuid::new_v4(),
                         detector: self.name().into(),
@@ -100,10 +93,7 @@ impl Detector for JsCryptoFailureDetector {
                         category: FindingCategory::SecuritySmell,
                         file: path.clone(),
                         line: Some(line_1based),
-                        title: format!(
-                            "Deprecated crypto.createCipher at line {}",
-                            line_1based
-                        ),
+                        title: format!("Deprecated crypto.createCipher at line {}", line_1based),
                         description: format!(
                             "Deprecated crypto.createCipher used in {}:{}. \
                              It derives the IV from the key, making it predictable.",
@@ -112,9 +102,7 @@ impl Detector for JsCryptoFailureDetector {
                         ),
                         evidence: vec![],
                         covered: false,
-                        suggestion:
-                            "Use crypto.createCipheriv with a random IV instead"
-                                .into(),
+                        suggestion: "Use crypto.createCipheriv with a random IV instead".into(),
                         explanation: None,
                         fix: None,
                         cwe_ids: vec![327, 328],
@@ -125,9 +113,7 @@ impl Detector for JsCryptoFailureDetector {
                 // Check for Math.random() near security keywords
                 if MATH_RANDOM.is_match(trimmed) {
                     let lower = trimmed.to_lowercase();
-                    let near_security = SECURITY_KEYWORDS
-                        .iter()
-                        .any(|kw| lower.contains(kw));
+                    let near_security = SECURITY_KEYWORDS.iter().any(|kw| lower.contains(kw));
                     if near_security {
                         findings.push(Finding {
                             id: Uuid::new_v4(),

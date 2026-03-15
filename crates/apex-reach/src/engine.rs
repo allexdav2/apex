@@ -353,10 +353,8 @@ mod tests {
         ];
         g.build_indices();
         let engine = ReversePathEngine::new(g);
-        let paths = engine.paths_to_entry(
-            &TargetRegion::Function("b".into()),
-            Granularity::Function,
-        );
+        let paths =
+            engine.paths_to_entry(&TargetRegion::Function("b".into()), Granularity::Function);
         assert!(!paths.is_empty());
     }
 

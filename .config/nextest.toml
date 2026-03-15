@@ -1,0 +1,12 @@
+[profile.default]
+# Run up to 12 tests in parallel (matches build.jobs)
+test-threads = 12
+# Fail fast — stop on first failure
+fail-fast = true
+# Timeout per test (catches hangs)
+slow-timeout = { period = "60s", terminate-after = 2 }
+
+[profile.ci]
+# CI: run all tests even on failure, produce JUnit XML
+fail-fast = false
+junit = { path = "target/nextest/ci/junit.xml" }

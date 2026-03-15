@@ -10,10 +10,7 @@ use tracing::{info, warn};
 /// Format:
 ///   mode: atomic
 ///   file:startLine.startCol,endLine.endCol numStmt count
-fn parse_go_coverage(
-    content: &str,
-    target_root: &Path,
-) -> (Vec<BranchId>, HashMap<u64, PathBuf>) {
+fn parse_go_coverage(content: &str, target_root: &Path) -> (Vec<BranchId>, HashMap<u64, PathBuf>) {
     let mut branches = Vec::new();
     let mut file_paths: HashMap<u64, PathBuf> = HashMap::new();
 
@@ -62,7 +59,12 @@ fn parse_go_coverage(
             .entry(file_id)
             .or_insert_with(|| PathBuf::from(&rel_path));
 
-        let branch = BranchId::new(file_id, start_line, start_col, if count > 0 { 0 } else { 1 });
+        let branch = BranchId::new(
+            file_id,
+            start_line,
+            start_col,
+            if count > 0 { 0 } else { 1 },
+        );
         branches.push(branch);
     }
 

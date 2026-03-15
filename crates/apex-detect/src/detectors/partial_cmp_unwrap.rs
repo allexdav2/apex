@@ -138,10 +138,7 @@ mod tests {
     #[tokio::test]
     async fn ignores_total_cmp() {
         let mut files = HashMap::new();
-        files.insert(
-            PathBuf::from("src/main.rs"),
-            "a.total_cmp(b)\n".into(),
-        );
+        files.insert(PathBuf::from("src/main.rs"), "a.total_cmp(b)\n".into());
         let ctx = make_ctx(files, Language::Rust);
         let findings = PartialCmpUnwrapDetector.analyze(&ctx).await.unwrap();
         assert!(findings.is_empty());

@@ -22,9 +22,8 @@ static CREATE_TABLE_RE: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r"(?is)CREATE\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?(\S+)\s*\((.*?)\);").unwrap()
 });
 
-static COLUMN_RE: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r"(?i)^\s*(\w+)\s+(\w+(?:\([^)]*\))?)\s*(.*)$").unwrap()
-});
+static COLUMN_RE: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"(?i)^\s*(\w+)\s+(\w+(?:\([^)]*\))?)\s*(.*)$").unwrap());
 
 pub fn parse_schema(sql: &str) -> Vec<Table> {
     let mut tables = Vec::new();
@@ -93,6 +92,7 @@ pub fn generate_inserts(tables: &[Table], rows: usize) -> String {
 
 fn gen_value(col_type: &str, col_name: &str, row: usize, nullable: bool) -> String {
     let name_lower = col_name.to_lowercase();
+    #[allow(unknown_lints, clippy::manual_is_multiple_of)]
     if nullable && row % 7 == 0 {
         return "NULL".into();
     }
@@ -111,14 +111,8 @@ fn gen_value(col_type: &str, col_name: &str, row: usize, nullable: bool) -> Stri
         t if t.contains("VARCHAR") || t.contains("TEXT") => {
             format!("'{}_{}'", col_name, row + 1)
         }
-        t if t.contains("BOOL") => {
-            if row % 2 == 0 {
-                "TRUE"
-            } else {
-                "FALSE"
-            }
-            .into()
-        }
+        #[allow(unknown_lints, clippy::manual_is_multiple_of)]
+        t if t.contains("BOOL") => if row % 2 == 0 { "TRUE" } else { "FALSE" }.into(),
         t if t.contains("TIMESTAMP") || t.contains("DATE") => {
             format!("'2026-01-{:02} 12:00:00'", (row % 28) + 1)
         }

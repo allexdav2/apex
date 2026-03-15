@@ -3,7 +3,12 @@
 //! Supports simple pattern expressions with metavariables (`$VAR`)
 //! for matching source code patterns.
 
+use std::cell::RefCell;
 use std::collections::HashMap;
+
+thread_local! {
+    static REGEX_CACHE: RefCell<HashMap<String, regex::Regex>> = RefCell::new(HashMap::new());
+}
 
 /// A pattern expression for matching source code.
 #[derive(Debug, Clone, PartialEq)]
@@ -31,7 +36,8 @@ pub type MatchBindings = HashMap<String, String>;
 pub fn parse_pattern(pattern: &str) -> PatternExpr {
     // Handle alternatives: {a | b | c}
     if let Some(inner) = pattern.strip_prefix('{').and_then(|s| s.strip_suffix('}')) {
-        let alternatives: Vec<PatternExpr> = inner.split('|').map(|s| parse_pattern(s.trim())).collect();
+        let alternatives: Vec<PatternExpr> =
+            inner.split('|').map(|s| parse_pattern(s.trim())).collect();
         return PatternExpr::Any(alternatives);
     }
 
@@ -115,15 +121,20 @@ pub fn match_pattern(pattern: &PatternExpr, source: &str) -> Option<MatchBinding
                     }
                 }
             }
-            let re = regex::Regex::new(&regex_str).ok()?;
-            let caps = re.captures(source)?;
-            let mut bindings = HashMap::new();
-            for name in &metavar_names {
-                if let Some(m) = caps.name(name) {
-                    bindings.insert(name.clone(), m.as_str().to_string());
+            REGEX_CACHE.with(|cache| {
+                let mut cache = cache.borrow_mut();
+                let re = cache
+                    .entry(regex_str.clone())
+                    .or_insert_with(|| regex::Regex::new(&regex_str).unwrap());
+                let caps = re.captures(source)?;
+                let mut bindings = HashMap::new();
+                for name in &metavar_names {
+                    if let Some(m) = caps.name(name) {
+                        bindings.insert(name.clone(), m.as_str().to_string());
+                    }
                 }
-            }
-            Some(bindings)
+                Some(bindings)
+            })
         }
         PatternExpr::Any(alternatives) => {
             for alt in alternatives {

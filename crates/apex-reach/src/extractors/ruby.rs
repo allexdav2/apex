@@ -12,15 +12,48 @@ pub struct RubyExtractor;
 static RE_DEF: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^\s*def\s+(\w+)").unwrap());
 static _RE_CLASS_DEF: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^\s*class\s+(\w+)").unwrap());
 static RE_CALL: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"(\w+)\s*\(").unwrap());
-static RE_DESCRIBE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^\s*(describe|context|it)\s").unwrap());
-static RE_ROUTE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r#"^\s*(get|post|put|patch|delete)\s+['"\/]"#).unwrap());
+static RE_DESCRIBE: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"^\s*(describe|context|it)\s").unwrap());
+static RE_ROUTE: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r#"^\s*(get|post|put|patch|delete)\s+['"\/]"#).unwrap());
 
 const RUBY_KEYWORDS: &[&str] = &[
-    "if", "else", "elsif", "unless", "while", "until", "for", "do", "begin",
-    "rescue", "ensure", "end", "def", "class", "module", "return", "yield",
-    "raise", "require", "include", "extend", "attr_reader", "attr_writer",
-    "attr_accessor", "puts", "print", "p", "pp", "nil", "true", "false",
-    "self", "super", "new", "lambda", "proc",
+    "if",
+    "else",
+    "elsif",
+    "unless",
+    "while",
+    "until",
+    "for",
+    "do",
+    "begin",
+    "rescue",
+    "ensure",
+    "end",
+    "def",
+    "class",
+    "module",
+    "return",
+    "yield",
+    "raise",
+    "require",
+    "include",
+    "extend",
+    "attr_reader",
+    "attr_writer",
+    "attr_accessor",
+    "puts",
+    "print",
+    "p",
+    "pp",
+    "nil",
+    "true",
+    "false",
+    "self",
+    "super",
+    "new",
+    "lambda",
+    "proc",
 ];
 
 fn indent_of(line: &str) -> usize {
@@ -33,7 +66,9 @@ fn is_test_file(path: &Path) -> bool {
 }
 
 impl CallGraphExtractor for RubyExtractor {
-    fn language(&self) -> Language { Language::Ruby }
+    fn language(&self) -> Language {
+        Language::Ruby
+    }
 
     fn extract(&self, sources: &HashMap<PathBuf, String>) -> CallGraph {
         let mut graph = CallGraph::default();
@@ -44,7 +79,8 @@ impl CallGraphExtractor for RubyExtractor {
         for (path, source) in sources {
             let lines: Vec<&str> = source.lines().collect();
             let is_sinatra = source.contains("Sinatra") || source.contains("sinatra");
-            let is_rails_controller = source.contains("< ApplicationController") || source.contains("< ActionController");
+            let is_rails_controller =
+                source.contains("< ApplicationController") || source.contains("< ActionController");
             let has_optparse = source.contains("OptionParser");
             let is_spec = is_test_file(path);
 
@@ -72,12 +108,20 @@ impl CallGraphExtractor for RubyExtractor {
 
                 // RSpec/describe/it blocks
                 if RE_DESCRIBE.is_match(trimmed) && is_spec {
-                    let name = trimmed.split_whitespace().nth(1).unwrap_or("test").trim_matches(|c: char| !c.is_alphanumeric()).to_string();
+                    let name = trimmed
+                        .split_whitespace()
+                        .nth(1)
+                        .unwrap_or("test")
+                        .trim_matches(|c: char| !c.is_alphanumeric())
+                        .to_string();
                     let id = FnId(next_id);
                     next_id += 1;
                     graph.nodes.push(FnNode {
-                        id, name: name.clone(), file: path.clone(),
-                        start_line: line_num, end_line: line_num,
+                        id,
+                        name: name.clone(),
+                        file: path.clone(),
+                        start_line: line_num,
+                        end_line: line_num,
                         entry_kind: Some(EntryPointKind::Test),
                     });
                     fn_index.entry(name).or_default().push(id);
@@ -87,13 +131,24 @@ impl CallGraphExtractor for RubyExtractor {
                 // Sinatra routes
                 if is_sinatra && RE_ROUTE.is_match(trimmed) {
                     let method = trimmed.split_whitespace().next().unwrap_or("get");
-                    let route_path = trimmed.split_whitespace().nth(1).unwrap_or("/").trim_matches(|c: char| c == '\'' || c == '"');
-                    let name = format!("{}_{}", method, route_path.replace('/', "_").trim_matches('_'));
+                    let route_path = trimmed
+                        .split_whitespace()
+                        .nth(1)
+                        .unwrap_or("/")
+                        .trim_matches(|c: char| c == '\'' || c == '"');
+                    let name = format!(
+                        "{}_{}",
+                        method,
+                        route_path.replace('/', "_").trim_matches('_')
+                    );
                     let id = FnId(next_id);
                     next_id += 1;
                     graph.nodes.push(FnNode {
-                        id, name: name.clone(), file: path.clone(),
-                        start_line: line_num, end_line: line_num,
+                        id,
+                        name: name.clone(),
+                        file: path.clone(),
+                        start_line: line_num,
+                        end_line: line_num,
                         entry_kind: Some(EntryPointKind::HttpHandler),
                     });
                     fn_index.entry(name).or_default().push(id);
@@ -117,8 +172,11 @@ impl CallGraphExtractor for RubyExtractor {
                     next_id += 1;
                     block_id = 0;
                     graph.nodes.push(FnNode {
-                        id, name: name.clone(), file: path.clone(),
-                        start_line: line_num, end_line: line_num,
+                        id,
+                        name: name.clone(),
+                        file: path.clone(),
+                        start_line: line_num,
+                        end_line: line_num,
                         entry_kind,
                     });
                     fn_index.entry(name).or_default().push(id);
@@ -128,7 +186,11 @@ impl CallGraphExtractor for RubyExtractor {
 
                 // Extract calls inside functions
                 if let Some((fn_id, _)) = &current_fn {
-                    if trimmed.starts_with("if ") || trimmed.starts_with("unless ") || trimmed.starts_with("while ") || trimmed.starts_with("case ") {
+                    if trimmed.starts_with("if ")
+                        || trimmed.starts_with("unless ")
+                        || trimmed.starts_with("while ")
+                        || trimmed.starts_with("case ")
+                    {
                         block_id += 1;
                     }
                     let block = if block_id > 0 { Some(block_id) } else { None };
@@ -149,8 +211,10 @@ impl CallGraphExtractor for RubyExtractor {
                 for &callee_id in ids {
                     if callee_id != caller_id {
                         graph.edges.push(CallEdge {
-                            caller: caller_id, callee: callee_id,
-                            call_site_line: line, call_site_block: block,
+                            caller: caller_id,
+                            callee: callee_id,
+                            call_site_line: line,
+                            call_site_block: block,
                         });
                     }
                 }
@@ -193,14 +257,20 @@ mod tests {
         let src = "describe 'Math' do\n  it 'adds' do\n    expect(1+1).to eq(2)\n  end\nend\n";
         let g = RubyExtractor.extract(&single_file("spec/math_spec.rb", src));
         assert!(!g.nodes.is_empty());
-        assert!(g.nodes.iter().any(|n| n.entry_kind == Some(EntryPointKind::Test)));
+        assert!(g
+            .nodes
+            .iter()
+            .any(|n| n.entry_kind == Some(EntryPointKind::Test)));
     }
 
     #[test]
     fn sinatra_routes() {
         let src = "require 'sinatra'\n\nget '/hello' do\n  'world'\nend\n\npost '/data' do\n  'ok'\nend\n";
         let g = RubyExtractor.extract(&single_file("app.rb", src));
-        assert!(g.nodes.iter().any(|n| n.entry_kind == Some(EntryPointKind::HttpHandler)));
+        assert!(g
+            .nodes
+            .iter()
+            .any(|n| n.entry_kind == Some(EntryPointKind::HttpHandler)));
     }
 
     #[test]
@@ -214,7 +284,10 @@ mod tests {
     #[test]
     fn cross_file_resolution() {
         let mut sources = HashMap::new();
-        sources.insert(PathBuf::from("a.rb"), "def caller_fn\n  helper()\nend\n".to_string());
+        sources.insert(
+            PathBuf::from("a.rb"),
+            "def caller_fn\n  helper()\nend\n".to_string(),
+        );
         sources.insert(PathBuf::from("b.rb"), "def helper\nend\n".to_string());
         let g = RubyExtractor.extract(&sources);
         assert!(g.edge_count() >= 1);

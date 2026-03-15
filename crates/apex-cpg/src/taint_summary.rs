@@ -106,9 +106,7 @@ pub fn summarize_function(cpg: &Cpg, method_node: NodeId) -> Option<TaintSummary
         .edges_from(method_node)
         .iter()
         .filter_map(|&&(_, to, ref kind)| {
-            if matches!(kind, EdgeKind::Ast)
-                && matches!(cpg.node(to)?, NodeKind::Return { .. })
-            {
+            if matches!(kind, EdgeKind::Ast) && matches!(cpg.node(to)?, NodeKind::Return { .. }) {
                 return Some(to);
             }
             None
@@ -128,10 +126,7 @@ pub fn summarize_function(cpg: &Cpg, method_node: NodeId) -> Option<TaintSummary
         while let Some(current) = queue.pop_front() {
             // Check if current is a sanitizer call
             if let Some(NodeKind::Call { name, .. }) = cpg.node(current) {
-                if SANITIZERS
-                    .iter()
-                    .any(|s| name.to_lowercase().contains(s))
-                {
+                if SANITIZERS.iter().any(|s| name.to_lowercase().contains(s)) {
                     found_sanitizer = true;
                 }
             }

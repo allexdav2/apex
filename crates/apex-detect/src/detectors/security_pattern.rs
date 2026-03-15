@@ -546,7 +546,11 @@ const CPP_SECURITY_PATTERNS: &[SecurityPattern] = &[
         base_severity: Severity::Low,
         user_input_indicators: &["return", "="],
         sanitization_indicators: &[
-            "unique_ptr", "shared_ptr", "make_unique", "make_shared", "delete",
+            "unique_ptr",
+            "shared_ptr",
+            "make_unique",
+            "make_shared",
+            "delete",
         ],
         cwe: &[401],
     },

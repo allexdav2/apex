@@ -14,7 +14,9 @@ pub struct RubyRunner<R: CommandRunner = RealCommandRunner> {
 
 impl RubyRunner {
     pub fn new() -> Self {
-        RubyRunner { runner: RealCommandRunner }
+        RubyRunner {
+            runner: RealCommandRunner,
+        }
     }
 }
 
@@ -27,53 +29,81 @@ impl<R: CommandRunner> RubyRunner<R> {
         if target.join("spec").exists() || target.join(".rspec").exists() {
             vec!["bundle".into(), "exec".into(), "rspec".into()]
         } else {
-            vec!["ruby".into(), "-Ilib".into(), "-Itest".into(), "-e".into(),
-                 "Dir.glob('test/**/test_*.rb').each{|f| require(File.expand_path(f))}".into()]
+            vec![
+                "ruby".into(),
+                "-Ilib".into(),
+                "-Itest".into(),
+                "-e".into(),
+                "Dir.glob('test/**/test_*.rb').each{|f| require(File.expand_path(f))}".into(),
+            ]
         }
     }
 }
 
 impl Default for RubyRunner {
-    fn default() -> Self { Self::new() }
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 #[async_trait]
 impl<R: CommandRunner> LanguageRunner for RubyRunner<R> {
-    fn language(&self) -> Language { Language::Ruby }
+    fn language(&self) -> Language {
+        Language::Ruby
+    }
 
     fn detect(&self, target: &Path) -> bool {
         target.join("Gemfile").exists()
             || target.join("Rakefile").exists()
-            || std::fs::read_dir(target).map(|entries| {
-                entries.flatten().any(|e| {
-                    e.path().extension().map(|ext| ext == "gemspec").unwrap_or(false)
+            || std::fs::read_dir(target)
+                .map(|entries| {
+                    entries.flatten().any(|e| {
+                        e.path()
+                            .extension()
+                            .map(|ext| ext == "gemspec")
+                            .unwrap_or(false)
+                    })
                 })
-            }).unwrap_or(false)
+                .unwrap_or(false)
     }
 
     async fn install_deps(&self, target: &Path) -> Result<()> {
         info!(target = %target.display(), "installing Ruby dependencies");
         if target.join("Gemfile").exists() {
             let spec = CommandSpec::new("bundle", target).args(["install"]);
-            let output = self.runner.run_command(&spec).await
+            let output = self
+                .runner
+                .run_command(&spec)
+                .await
                 .map_err(|e| ApexError::LanguageRunner(format!("bundle install: {e}")))?;
             if output.exit_code != 0 {
                 let stderr = String::from_utf8_lossy(&output.stderr).to_string();
-                return Err(ApexError::LanguageRunner(format!("bundle install failed: {stderr}")));
+                return Err(ApexError::LanguageRunner(format!(
+                    "bundle install failed: {stderr}"
+                )));
             }
         }
         // Ensure simplecov is available for coverage
         let check = CommandSpec::new("ruby", target).args(["-e", "require 'simplecov'"]);
-        let check_result = self.runner.run_command(&check).await
+        let check_result = self
+            .runner
+            .run_command(&check)
+            .await
             .map_err(|e| ApexError::LanguageRunner(e.to_string()))?;
         if check_result.exit_code != 0 {
             debug!("simplecov not found, installing");
-            let spec = CommandSpec::new("gem", target).args(["install", "simplecov", "simplecov-json"]);
-            let output = self.runner.run_command(&spec).await
+            let spec =
+                CommandSpec::new("gem", target).args(["install", "simplecov", "simplecov-json"]);
+            let output = self
+                .runner
+                .run_command(&spec)
+                .await
                 .map_err(|e| ApexError::LanguageRunner(e.to_string()))?;
             if output.exit_code != 0 {
                 let stderr = String::from_utf8_lossy(&output.stderr).to_string();
-                return Err(ApexError::LanguageRunner(format!("gem install simplecov failed: {stderr}")));
+                return Err(ApexError::LanguageRunner(format!(
+                    "gem install simplecov failed: {stderr}"
+                )));
             }
         }
         Ok(())
@@ -86,7 +116,10 @@ impl<R: CommandRunner> LanguageRunner for RubyRunner<R> {
         info!(target = %target.display(), cmd = ?cmd_parts, "running Ruby tests");
         let spec = CommandSpec::new(&cmd_parts[0], target).args(args);
         let start = Instant::now();
-        let output = self.runner.run_command(&spec).await
+        let output = self
+            .runner
+            .run_command(&spec)
+            .await
             .map_err(|e| ApexError::LanguageRunner(format!("run tests: {e}")))?;
         Ok(TestRunOutput {
             exit_code: output.exit_code,
@@ -112,7 +145,11 @@ mod tests {
     #[test]
     fn detect_gemfile() {
         let dir = tempfile::tempdir().unwrap();
-        std::fs::write(dir.path().join("Gemfile"), "source 'https://rubygems.org'\n").unwrap();
+        std::fs::write(
+            dir.path().join("Gemfile"),
+            "source 'https://rubygems.org'\n",
+        )
+        .unwrap();
         assert!(RubyRunner::new().detect(dir.path()));
     }
 

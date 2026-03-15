@@ -10,8 +10,11 @@ static RE_DEF: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^(\s*)def\s+(\w+)
 static RE_CLASS: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^(\s*)class\s+(\w+)").unwrap());
 static RE_CALL: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"(\w+)\s*\(").unwrap());
 static RE_SELF_CALL: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"self\.(\w+)\s*\(").unwrap());
-static RE_METHOD_CALL: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"(\w+)\.(\w+)\s*\(").unwrap());
-static RE_BLOCK: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^\s*(if|elif|else|for|while|try|except|finally|with)\b").unwrap());
+static RE_METHOD_CALL: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"(\w+)\.(\w+)\s*\(").unwrap());
+static RE_BLOCK: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r"^\s*(if|elif|else|for|while|try|except|finally|with)\b").unwrap()
+});
 use std::path::{Path, PathBuf};
 
 pub struct PythonExtractor;
@@ -82,10 +85,8 @@ fn parse_functions(source: &str) -> Vec<FnDef> {
             // Close pending function (overwritten by Some below, so just drop).
 
             // Determine qualified name.
-            let name = if let Some((_, ref cls)) = class_stack
-                .iter()
-                .rev()
-                .find(|(ci, _)| *ci < fn_indent)
+            let name = if let Some((_, ref cls)) =
+                class_stack.iter().rev().find(|(ci, _)| *ci < fn_indent)
             {
                 format!("{cls}.{raw_name}")
             } else {
@@ -187,10 +188,10 @@ fn extract_calls(body: &[(u32, String)]) -> Vec<(u32, String, Option<u32>)> {
 
     // Python keywords that look like function calls but are not.
     let keywords: &[&str] = &[
-        "if", "elif", "else", "for", "while", "try", "except", "with", "return", "yield",
-        "assert", "raise", "import", "from", "class", "def", "pass", "break", "continue",
-        "lambda", "and", "or", "not", "in", "is", "as", "del", "global", "nonlocal", "async",
-        "await", "finally", "print",
+        "if", "elif", "else", "for", "while", "try", "except", "with", "return", "yield", "assert",
+        "raise", "import", "from", "class", "def", "pass", "break", "continue", "lambda", "and",
+        "or", "not", "in", "is", "as", "del", "global", "nonlocal", "async", "await", "finally",
+        "print",
     ];
 
     // Block detection: simple counter for indentation-based blocks.
@@ -316,10 +317,7 @@ impl CallGraphExtractor for PythonExtractor {
                 name_to_ids.entry(f.name.clone()).or_default().push(id);
                 if let Some(short) = f.name.rsplit('.').next() {
                     if short != f.name {
-                        name_to_ids
-                            .entry(short.to_string())
-                            .or_default()
-                            .push(id);
+                        name_to_ids.entry(short.to_string()).or_default().push(id);
                     }
                 }
 

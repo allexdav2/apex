@@ -169,7 +169,9 @@ mod tests {
                 )))
             }
             fn set_logic(&mut self, _logic: SolverLogic) {}
-            fn name(&self) -> &str { "dummy" }
+            fn name(&self) -> &str {
+                "dummy"
+            }
         }
 
         let result = PathDecomposer::solve_decomposed(&[], &DummySolver).unwrap();
@@ -185,16 +187,17 @@ mod tests {
     /// their own partition since they share no variables.
     #[test]
     fn decompose_no_variable_constraints() {
-        let constraints = vec![
-            "(true)".to_string(),
-            "(false)".to_string(),
-        ];
+        let constraints = vec!["(true)".to_string(), "(false)".to_string()];
         let parts = PathDecomposer::decompose(&constraints);
         // "true" and "false" are keywords, so they have no extracted variables.
         // Two constraints with empty variable sets: are they in the same partition?
         // They are NOT disjoint (empty sets are not disjoint in Rust's definition:
         // is_disjoint returns true for two empty sets), so they should be separate.
-        assert_eq!(parts.len(), 2, "no-variable constraints should be in separate partitions");
+        assert_eq!(
+            parts.len(),
+            2,
+            "no-variable constraints should be in separate partitions"
+        );
     }
 
     /// Transitive variable sharing: a-b share x, b-c share y,
@@ -249,14 +252,13 @@ mod tests {
                 Ok(None) // always UNSAT
             }
             fn set_logic(&mut self, _logic: SolverLogic) {}
-            fn name(&self) -> &str { "counting" }
+            fn name(&self) -> &str {
+                "counting"
+            }
         }
 
         CALL_COUNT.store(0, Ordering::SeqCst);
-        let parts = vec![
-            vec!["(> x 0)".to_string()],
-            vec!["(> y 0)".to_string()],
-        ];
+        let parts = vec![vec!["(> x 0)".to_string()], vec!["(> y 0)".to_string()]];
         let result = PathDecomposer::solve_decomposed(&parts, &CountingSolver).unwrap();
         assert!(result.is_none());
         // Should have short-circuited after first UNSAT
@@ -292,13 +294,12 @@ mod tests {
                 )))
             }
             fn set_logic(&mut self, _logic: SolverLogic) {}
-            fn name(&self) -> &str { "fixed" }
+            fn name(&self) -> &str {
+                "fixed"
+            }
         }
 
-        let parts = vec![
-            vec!["(> x 0)".to_string()],
-            vec!["(> y 0)".to_string()],
-        ];
+        let parts = vec![vec!["(> x 0)".to_string()], vec!["(> y 0)".to_string()]];
         let result = PathDecomposer::solve_decomposed(&parts, &FixedSolver)
             .unwrap()
             .unwrap();
@@ -309,7 +310,7 @@ mod tests {
     #[test]
     fn decompose_result_sorted_by_size() {
         let constraints = vec![
-            "(> a 0)".to_string(),         // alone
+            "(> a 0)".to_string(), // alone
             "(> x 0)".to_string(),
             "(< x 10)".to_string(),
             "(and (> x 5) (< x 8))".to_string(), // 3 constraints share x

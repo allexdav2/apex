@@ -1,0 +1,10 @@
+# Build configuration for APEX workspace.
+# Machine-specific overrides (target-dir, linker) go in env vars or local config.
+
+[build]
+jobs = 12                        # 75% of 16 cores — leave headroom for system + agents
+
+# Uncomment when lld is installed (brew install llvm):
+# [target.aarch64-apple-darwin]
+# linker = "clang"
+# rustflags = ["-C", "link-arg=-fuse-ld=/opt/homebrew/opt/llvm/bin/ld64.lld"]

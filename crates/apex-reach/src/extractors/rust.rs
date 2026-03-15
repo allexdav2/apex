@@ -9,44 +9,71 @@ use crate::entry_points::EntryPointKind;
 use crate::graph::{CallEdge, CallGraph, FnId, FnNode};
 use apex_core::types::Language;
 
-static RE_FN_DEF: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r"(?:pub\s+)?(?:async\s+)?fn\s+(\w+)").unwrap()
-});
+static RE_FN_DEF: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"(?:pub\s+)?(?:async\s+)?fn\s+(\w+)").unwrap());
 
-static RE_IMPL_BLOCK: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r"impl(?:<[^>]*>)?\s+(?:(\w+)\s+for\s+)?(\w+)").unwrap()
-});
+static RE_IMPL_BLOCK: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"impl(?:<[^>]*>)?\s+(?:(\w+)\s+for\s+)?(\w+)").unwrap());
 
-static RE_CALL_SIMPLE: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r"(\w+)\s*\(").unwrap()
-});
+static RE_CALL_SIMPLE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"(\w+)\s*\(").unwrap());
 
-static RE_CALL_SELF: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r"self\.(\w+)\s*\(").unwrap()
-});
+static RE_CALL_SELF: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"self\.(\w+)\s*\(").unwrap());
 
-static RE_CALL_QUALIFIED: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r"(\w+)::(\w+)\s*\(").unwrap()
-});
+static RE_CALL_QUALIFIED: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"(\w+)::(\w+)\s*\(").unwrap());
 
-static RE_TEST_ATTR: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r"#\[(?:tokio::)?test").unwrap()
-});
+static RE_TEST_ATTR: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"#\[(?:tokio::)?test").unwrap());
 
-static RE_HTTP_ATTR: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r"#\[(get|post|put|delete)\(").unwrap()
-});
+static RE_HTTP_ATTR: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"#\[(get|post|put|delete)\(").unwrap());
 
-static RE_BLOCK_KEYWORD: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r"\b(if|else|for|while|match|loop)\b").unwrap()
-});
+static RE_BLOCK_KEYWORD: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"\b(if|else|for|while|match|loop)\b").unwrap());
 
 /// Keywords that should not be treated as function calls.
 const RUST_KEYWORDS: &[&str] = &[
-    "if", "else", "for", "while", "match", "loop", "return", "let", "mut", "const", "static",
-    "struct", "enum", "trait", "impl", "fn", "pub", "use", "mod", "crate", "self", "super",
-    "where", "type", "as", "in", "ref", "move", "async", "await", "unsafe", "extern", "dyn",
-    "box", "yield", "macro_rules", "cfg", "derive", "allow", "deny", "warn",
+    "if",
+    "else",
+    "for",
+    "while",
+    "match",
+    "loop",
+    "return",
+    "let",
+    "mut",
+    "const",
+    "static",
+    "struct",
+    "enum",
+    "trait",
+    "impl",
+    "fn",
+    "pub",
+    "use",
+    "mod",
+    "crate",
+    "self",
+    "super",
+    "where",
+    "type",
+    "as",
+    "in",
+    "ref",
+    "move",
+    "async",
+    "await",
+    "unsafe",
+    "extern",
+    "dyn",
+    "box",
+    "yield",
+    "macro_rules",
+    "cfg",
+    "derive",
+    "allow",
+    "deny",
+    "warn",
 ];
 
 pub struct RustExtractor;
@@ -81,8 +108,7 @@ impl CallGraphExtractor for RustExtractor {
         let clap_files: HashMap<&PathBuf, bool> = sources
             .iter()
             .map(|(path, src)| {
-                let has_clap =
-                    src.contains("clap::Parser") || src.contains("#[derive(Parser)]");
+                let has_clap = src.contains("clap::Parser") || src.contains("#[derive(Parser)]");
                 (path, has_clap)
             })
             .collect();
@@ -152,11 +178,7 @@ impl CallGraphExtractor for RustExtractor {
                             caller: *caller_id,
                             callee: callee_id,
                             call_site_line: line_num,
-                            call_site_block: if block_id > 0 {
-                                Some(block_id)
-                            } else {
-                                None
-                            },
+                            call_site_block: if block_id > 0 { Some(block_id) } else { None },
                         });
                     }
                 }
@@ -523,10 +545,14 @@ impl MyStruct {
 
         // process calls helper via self.helper().
         let process_edges = graph.callees_of.get(&process_ids[0]);
-        assert!(process_edges.is_some(), "process should have outgoing edges");
-        let has_helper_edge = process_edges.unwrap().iter().any(|&idx| {
-            graph.edges[idx].callee == helper_ids[0]
-        });
+        assert!(
+            process_edges.is_some(),
+            "process should have outgoing edges"
+        );
+        let has_helper_edge = process_edges
+            .unwrap()
+            .iter()
+            .any(|&idx| graph.edges[idx].callee == helper_ids[0]);
         assert!(has_helper_edge, "process should call helper");
     }
 
@@ -552,9 +578,10 @@ async fn process() {
         // fetch_data calls process.
         let edges = graph.callees_of.get(&fetch_ids[0]);
         assert!(edges.is_some());
-        let has_process_call = edges.unwrap().iter().any(|&idx| {
-            graph.edges[idx].callee == process_ids[0]
-        });
+        let has_process_call = edges
+            .unwrap()
+            .iter()
+            .any(|&idx| graph.edges[idx].callee == process_ids[0]);
         assert!(has_process_call);
     }
 
@@ -703,10 +730,14 @@ pub fn callee_fn() {
         // caller_fn should have an edge to callee_fn.
         let edges = graph.callees_of.get(&caller_ids[0]);
         assert!(edges.is_some(), "caller_fn should have outgoing edges");
-        let has_callee_edge = edges.unwrap().iter().any(|&idx| {
-            graph.edges[idx].callee == callee_ids[0]
-        });
-        assert!(has_callee_edge, "caller_fn should call callee_fn across files");
+        let has_callee_edge = edges
+            .unwrap()
+            .iter()
+            .any(|&idx| graph.edges[idx].callee == callee_ids[0]);
+        assert!(
+            has_callee_edge,
+            "caller_fn should call callee_fn across files"
+        );
     }
 
     #[test]
@@ -780,9 +811,7 @@ fn condition() -> bool { true }
         // branch_a and branch_b should have block IDs.
         let branch_a_ids = graph.fns_named("branch_a");
         if !branch_a_ids.is_empty() {
-            let branch_a_edge = complex_edges
-                .iter()
-                .find(|e| e.callee == branch_a_ids[0]);
+            let branch_a_edge = complex_edges.iter().find(|e| e.callee == branch_a_ids[0]);
             if let Some(edge) = branch_a_edge {
                 assert!(
                     edge.call_site_block.is_some(),
@@ -802,7 +831,8 @@ fn condition() -> bool { true }
 
     #[test]
     fn function_start_and_end_lines() {
-        let src = "fn first() {\n    let x = 1;\n    let y = 2;\n}\n\nfn second() {\n    let a = 3;\n}\n";
+        let src =
+            "fn first() {\n    let x = 1;\n    let y = 2;\n}\n\nfn second() {\n    let a = 3;\n}\n";
         let sources = make_sources(vec![("src/lib.rs", src)]);
         let graph = RustExtractor.extract(&sources);
 

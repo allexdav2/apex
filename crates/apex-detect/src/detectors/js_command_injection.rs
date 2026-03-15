@@ -187,10 +187,7 @@ mod tests {
     #[tokio::test]
     async fn detects_template_literal_in_exec() {
         let mut files = HashMap::new();
-        files.insert(
-            PathBuf::from("src/run.js"),
-            "exec(`ls ${dir}`)\n".into(),
-        );
+        files.insert(PathBuf::from("src/run.js"), "exec(`ls ${dir}`)\n".into());
         let ctx = make_ctx(files, Language::JavaScript);
         let findings = JsCommandInjectionDetector.analyze(&ctx).await.unwrap();
         assert_eq!(findings.len(), 1);
@@ -226,10 +223,7 @@ mod tests {
     #[tokio::test]
     async fn detects_shelljs_exec() {
         let mut files = HashMap::new();
-        files.insert(
-            PathBuf::from("src/run.js"),
-            "shelljs.exec(cmd)\n".into(),
-        );
+        files.insert(PathBuf::from("src/run.js"), "shelljs.exec(cmd)\n".into());
         let ctx = make_ctx(files, Language::JavaScript);
         let findings = JsCommandInjectionDetector.analyze(&ctx).await.unwrap();
         assert_eq!(findings.len(), 1);
@@ -238,10 +232,7 @@ mod tests {
     #[tokio::test]
     async fn skips_hardcoded_string_exec() {
         let mut files = HashMap::new();
-        files.insert(
-            PathBuf::from("src/run.js"),
-            "exec(\"ls -la\")\n".into(),
-        );
+        files.insert(PathBuf::from("src/run.js"), "exec(\"ls -la\")\n".into());
         let ctx = make_ctx(files, Language::JavaScript);
         let findings = JsCommandInjectionDetector.analyze(&ctx).await.unwrap();
         assert!(findings.is_empty(), "hardcoded string should not trigger");
@@ -262,10 +253,7 @@ mod tests {
     #[tokio::test]
     async fn skips_non_javascript_language() {
         let mut files = HashMap::new();
-        files.insert(
-            PathBuf::from("src/run.py"),
-            "exec(`ls ${dir}`)\n".into(),
-        );
+        files.insert(PathBuf::from("src/run.py"), "exec(`ls ${dir}`)\n".into());
         let ctx = make_ctx(files, Language::Python);
         let findings = JsCommandInjectionDetector.analyze(&ctx).await.unwrap();
         assert!(findings.is_empty(), "should not fire for Python");
@@ -286,10 +274,7 @@ mod tests {
     #[tokio::test]
     async fn skips_comments() {
         let mut files = HashMap::new();
-        files.insert(
-            PathBuf::from("src/run.js"),
-            "// exec(`ls ${dir}`)\n".into(),
-        );
+        files.insert(PathBuf::from("src/run.js"), "// exec(`ls ${dir}`)\n".into());
         let ctx = make_ctx(files, Language::JavaScript);
         let findings = JsCommandInjectionDetector.analyze(&ctx).await.unwrap();
         assert!(findings.is_empty());

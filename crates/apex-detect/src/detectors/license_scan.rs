@@ -277,8 +277,11 @@ fn normalize_spdx(expr: &str) -> String {
     // Normalize whitespace (tabs, multiple spaces → single space)
     s = s.split_whitespace().collect::<Vec<_>>().join(" ");
     // Normalize operator case (handle lowercase, title-case, and uppercase variants)
-    s = s.replace(" or ", " OR ").replace(" Or ", " OR ")
-         .replace(" and ", " AND ").replace(" And ", " AND ");
+    s = s
+        .replace(" or ", " OR ")
+        .replace(" Or ", " OR ")
+        .replace(" and ", " AND ")
+        .replace(" And ", " AND ");
     s
 }
 
@@ -751,10 +754,7 @@ license = "MIT"
     #[test]
     fn bug_spdx_with_exception_allowed() {
         // WITH clause adds exceptions (more permissive) — should match base license
-        let result = check_policy(
-            &LicensePolicy::Permissive,
-            "Apache-2.0 WITH LLVM-exception",
-        );
+        let result = check_policy(&LicensePolicy::Permissive, "Apache-2.0 WITH LLVM-exception");
         assert!(matches!(result, PolicyVerdict::Allowed));
     }
 
@@ -908,10 +908,7 @@ license = "MIT"
         // BUG: normalize_spdx_id uses to_uppercase().find(" WITH ") to find position,
         // then slices original string at that position. This works for ASCII.
         // But "with" in lowercase should also be handled.
-        let result = check_policy(
-            &LicensePolicy::Permissive,
-            "Apache-2.0 with LLVM-exception",
-        );
+        let result = check_policy(&LicensePolicy::Permissive, "Apache-2.0 with LLVM-exception");
         assert!(
             matches!(result, PolicyVerdict::Allowed),
             "Lowercase 'with' should be handled same as 'WITH'"
@@ -921,10 +918,7 @@ license = "MIT"
     #[test]
     fn spdx_or_all_denied_enterprise() {
         // "GPL-3.0-only OR AGPL-3.0-only" — both branches denied
-        let result = check_policy(
-            &LicensePolicy::Enterprise,
-            "GPL-3.0-only OR AGPL-3.0-only",
-        );
+        let result = check_policy(&LicensePolicy::Enterprise, "GPL-3.0-only OR AGPL-3.0-only");
         assert!(
             matches!(result, PolicyVerdict::Denied { .. }),
             "All-denied OR branches should be Denied"
@@ -972,15 +966,17 @@ license = "MIT"
     #[test]
     fn classifier_unknown_license_returns_last_segment() {
         // Unknown license classifiers fall back to last segment
-        let result =
-            extract_license_from_classifier("License :: OSI Approved :: Mozilla Public License 2.0");
+        let result = extract_license_from_classifier(
+            "License :: OSI Approved :: Mozilla Public License 2.0",
+        );
         assert_eq!(result, Some("Mozilla Public License 2.0".to_string()));
     }
 
     #[test]
     fn bug_windows_line_endings_in_cargo_toml() {
         // Windows-style \r\n line endings in Cargo.toml
-        let content = "[package]\r\nname = \"win-crate\"\r\nversion = \"0.1.0\"\r\nlicense = \"MIT\"\r\n";
+        let content =
+            "[package]\r\nname = \"win-crate\"\r\nversion = \"0.1.0\"\r\nlicense = \"MIT\"\r\n";
         let entries = parse_cargo_toml_licenses(content, &PathBuf::from("Cargo.toml"));
         assert_eq!(entries.len(), 1);
         assert_eq!(entries[0].license, "MIT");
@@ -1003,7 +999,8 @@ license = "MIT"
     #[test]
     fn bug_bom_in_cargo_toml() {
         // UTF-8 BOM prefix in Cargo.toml
-        let content = "\u{FEFF}[package]\nname = \"bom-crate\"\nversion = \"0.1.0\"\nlicense = \"MIT\"\n";
+        let content =
+            "\u{FEFF}[package]\nname = \"bom-crate\"\nversion = \"0.1.0\"\nlicense = \"MIT\"\n";
         let entries = parse_cargo_toml_licenses(content, &PathBuf::from("Cargo.toml"));
         assert_eq!(
             entries.len(),

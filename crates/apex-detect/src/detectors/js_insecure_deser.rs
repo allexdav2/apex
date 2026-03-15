@@ -30,7 +30,8 @@ const DESER_PATTERNS: &[DeserPattern] = &[
         name: "Unsafe yaml.load",
         regex: r"yaml\.load\s*\(",
         safe_indicators: &["yaml.safeLoad", "yaml.SAFE_SCHEMA", "safe_load"],
-        description: "yaml.load() without safe schema — use yaml.safeLoad or yaml.load with SAFE_SCHEMA",
+        description:
+            "yaml.load() without safe schema — use yaml.safeLoad or yaml.load with SAFE_SCHEMA",
     },
     DeserPattern {
         name: "eval(JSON.parse(...))",
@@ -242,10 +243,7 @@ mod tests {
     #[tokio::test]
     async fn skips_non_js_language() {
         let mut files = HashMap::new();
-        files.insert(
-            PathBuf::from("src/config.py"),
-            "yaml.load(data)\n".into(),
-        );
+        files.insert(PathBuf::from("src/config.py"), "yaml.load(data)\n".into());
         let ctx = make_ctx(files, Language::Python);
         let findings = JsInsecureDeserDetector.analyze(&ctx).await.unwrap();
         assert!(findings.is_empty());

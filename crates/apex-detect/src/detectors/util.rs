@@ -85,7 +85,11 @@ pub fn in_test_block(source: &str, target_line: usize) -> bool {
         // Detect start of test module
         if !in_cfg_test
             && (trimmed.contains("#[cfg(test)]")
-                || ((trimmed == "mod tests {" || trimmed.starts_with("mod tests {") || trimmed == "mod tests{" || trimmed.starts_with("mod tests{")) && trimmed.contains('{')))
+                || ((trimmed == "mod tests {"
+                    || trimmed.starts_with("mod tests {")
+                    || trimmed == "mod tests{"
+                    || trimmed.starts_with("mod tests{"))
+                    && trimmed.contains('{')))
         {
             in_cfg_test = true;
             cfg_test_start_depth = brace_depth;
@@ -134,7 +138,11 @@ pub fn strip_string_literals(line: &str) -> String {
 
 /// Returns true if the trimmed line is a comment in the given language.
 pub fn is_comment(trimmed: &str, lang: Language) -> bool {
-    if trimmed.starts_with("//") || trimmed.starts_with("/*") || trimmed.starts_with("* ") || trimmed == "*" {
+    if trimmed.starts_with("//")
+        || trimmed.starts_with("/*")
+        || trimmed.starts_with("* ")
+        || trimmed == "*"
+    {
         return true;
     }
     if (lang == Language::Python || lang == Language::Ruby) && trimmed.starts_with('#') {
@@ -412,10 +420,7 @@ mod tests {
     fn bug_strip_single_quotes() {
         // Bug 4: single-quoted strings should be stripped
         assert_eq!(strip_string_literals("let x = 'hello';"), "let x = '';");
-        assert_eq!(
-            strip_string_literals("f('a', 'b')"),
-            "f('', '')"
-        );
+        assert_eq!(strip_string_literals("f('a', 'b')"), "f('', '')");
     }
 
     #[test]

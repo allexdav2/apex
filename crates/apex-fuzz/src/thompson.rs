@@ -156,7 +156,7 @@ mod tests {
         ts.add_seed(b"a".to_vec());
         ts.reward(999, 10); // should not panic
         ts.penalize(999); // should not panic
-        // arm 0 should be unchanged
+                          // arm 0 should be unchanged
         assert_eq!(ts.arms[0].1, 1.0); // alpha
         assert_eq!(ts.arms[0].2, 1.0); // beta
     }

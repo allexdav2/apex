@@ -1,4 +1,4 @@
-# Phase 2 — Pipeline Upgrades: Synthesis, Fuzzing, Agent Composites, Security Detectors
+<!-- status: DONE --># Phase 2 — Pipeline Upgrades: Synthesis, Fuzzing, Agent Composites, Security Detectors
 
 > **For agentic workers:** REQUIRED: Use superpowers:subagent-driven-development to implement this plan. Steps use checkbox (`- [ ]`) syntax for tracking.
 

@@ -126,10 +126,19 @@ print(waves)
 ")
 fi
 
-# ── Shared target dir recommendation ─────────────────────────────
-# If multiple agents compile the same workspace, sharing target dir
-# saves disk and partial rebuild time — but causes lock contention
-# if two agents compile simultaneously. Pre-warming avoids this.
+# ── Shared build cache ──────────────────────────────────────────
+# Point all worktree agents at the main checkout's target dir.
+# Cargo file locks prevent metadata corruption. Third-party deps
+# are shared (warm cache). Workspace crates may thrash if agents
+# are on different branches — this is expected and still faster
+# than cold-building everything.
+WORKSPACE_ROOT="$(git -C "$(dirname "$0")/.." rev-parse --show-toplevel 2>/dev/null || echo "")"
+if [ -n "$WORKSPACE_ROOT" ] && [ -d "$WORKSPACE_ROOT/target" ]; then
+    SHARED_TARGET="$WORKSPACE_ROOT/target"
+else
+    SHARED_TARGET=""
+fi
+
 USE_SHARED_TARGET="false"
 PRE_WARM="false"
 if [ "$RECOMMENDED" -gt 1 ]; then
@@ -159,6 +168,10 @@ cat <<EOF
     "wave_sizes": $WAVE_SIZES,
     "shared_target_dir": $USE_SHARED_TARGET,
     "pre_warm_build": $PRE_WARM
+  },
+  "build_cache": {
+    "shared_target_dir": "$SHARED_TARGET",
+    "env_export": "export CARGO_TARGET_DIR=$SHARED_TARGET"
   },
   "agent_rules": {
     "batch_fixes_before_testing": true,

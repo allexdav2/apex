@@ -10,8 +10,10 @@ async fn main() -> Result<()> {
     let cfg = match &cli.config {
         Some(path) => apex_core::config::ApexConfig::from_file(path)
             .map_err(|e| color_eyre::eyre::eyre!("{e}"))?,
-        None => apex_core::config::ApexConfig::discover(&std::env::current_dir().unwrap_or_default())
-            .map_err(|e| color_eyre::eyre::eyre!("{e}"))?,
+        None => {
+            apex_core::config::ApexConfig::discover(&std::env::current_dir().unwrap_or_default())
+                .map_err(|e| color_eyre::eyre::eyre!("{e}"))?
+        }
     };
 
     // Init tracing (only here, never in lib — it panics if called twice).

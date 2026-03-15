@@ -1,4 +1,4 @@
-# Phase 5-6 Gap Closure Implementation Plan
+<!-- status: DONE --># Phase 5-6 Gap Closure Implementation Plan
 
 > **For agentic workers:** REQUIRED: Use superpowers:subagent-driven-development (if subagents available) or superpowers:executing-plans to implement this plan. Steps use checkbox (`- [ ]`) syntax for tracking.
 

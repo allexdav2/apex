@@ -17,19 +17,59 @@ static RE_METHOD: LazyLock<Regex> = LazyLock::new(|| {
     .unwrap()
 });
 
-static RE_CALL: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"(\w+)\s*\(").unwrap());
+static RE_CALL: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"(\w+)\s*\(").unwrap());
 
 static RE_METHOD_CALL: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"(\w+)\.(\w+)\s*\(").unwrap());
 
 const CSHARP_KEYWORDS: &[&str] = &[
-    "if", "else", "for", "foreach", "while", "switch", "case", "default", "return",
-    "break", "continue", "class", "struct", "interface", "enum", "namespace",
-    "using", "new", "this", "base", "throw", "try", "catch", "finally", "lock",
-    "typeof", "sizeof", "nameof", "await", "var", "void", "int", "string", "bool",
-    "float", "double", "decimal", "object", "byte", "char", "long", "short",
-    "where", "yield", "from", "select", "when",
+    "if",
+    "else",
+    "for",
+    "foreach",
+    "while",
+    "switch",
+    "case",
+    "default",
+    "return",
+    "break",
+    "continue",
+    "class",
+    "struct",
+    "interface",
+    "enum",
+    "namespace",
+    "using",
+    "new",
+    "this",
+    "base",
+    "throw",
+    "try",
+    "catch",
+    "finally",
+    "lock",
+    "typeof",
+    "sizeof",
+    "nameof",
+    "await",
+    "var",
+    "void",
+    "int",
+    "string",
+    "bool",
+    "float",
+    "double",
+    "decimal",
+    "object",
+    "byte",
+    "char",
+    "long",
+    "short",
+    "where",
+    "yield",
+    "from",
+    "select",
+    "when",
 ];
 
 impl CallGraphExtractor for CSharpExtractor {
@@ -100,9 +140,8 @@ impl CallGraphExtractor for CSharpExtractor {
                             || a.contains("[HttpDelete")
                             || a.contains("[Route")
                     });
-                    let is_main = name == "Main"
-                        && trimmed.contains("static")
-                        && trimmed.contains("void");
+                    let is_main =
+                        name == "Main" && trimmed.contains("static") && trimmed.contains("void");
 
                     let entry_kind = if has_test_attr {
                         Some(EntryPointKind::Test)
@@ -254,7 +293,8 @@ mod tests {
 
     #[test]
     fn http_handler_entry_point() {
-        let src = "class Controller {\n    [HttpGet]\n    public IActionResult GetItems() {\n    }\n}\n";
+        let src =
+            "class Controller {\n    [HttpGet]\n    public IActionResult GetItems() {\n    }\n}\n";
         let g = CSharpExtractor.extract(&single_file(src));
         let handler = g.nodes.iter().find(|n| n.name == "GetItems").unwrap();
         assert_eq!(handler.entry_kind, Some(EntryPointKind::HttpHandler));

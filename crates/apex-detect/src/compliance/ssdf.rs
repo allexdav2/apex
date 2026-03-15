@@ -65,7 +65,8 @@ pub fn ssdf_tasks_satisfied() -> Vec<SsdfTask> {
             practice: "Reuse Existing Well-Secured Software".into(),
             description: "Verify integrity of acquired software".into(),
             apex_satisfies: true,
-            evidence: "APEX SBOM generation and lockfile auditing verify component integrity".into(),
+            evidence: "APEX SBOM generation and lockfile auditing verify component integrity"
+                .into(),
         },
         SsdfTask {
             id: "PW.7.1".into(),
@@ -145,10 +146,7 @@ mod tests {
     #[test]
     fn ssdf_report_has_tasks() {
         let report = generate_ssdf_report();
-        assert!(
-            !report.tasks.is_empty(),
-            "SSDF report should contain tasks"
-        );
+        assert!(!report.tasks.is_empty(), "SSDF report should contain tasks");
     }
 
     #[test]

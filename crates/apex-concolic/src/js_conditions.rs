@@ -415,7 +415,7 @@ fn find_comparison_op_outside_parens(text: &str) -> Option<(&'static str, usize)
     for &op in OPS {
         if let Some(pos) = find_operator_outside_parens(text, op) {
             // Prefer the leftmost; on tie, the earlier-listed (longer) op wins
-            if best.map_or(true, |(_, prev)| pos < prev) {
+            if best.is_none_or(|(_, prev)| pos < prev) {
                 best = Some((op, pos));
             }
         }
@@ -806,6 +806,9 @@ mod tests {
     #[test]
     fn bug_strip_parens_with_close_paren_in_string() {
         let result = strip_outer_parens(r#"(x === ")")"#);
-        assert!(result.is_some(), "Should strip outer parens even with ) in string");
+        assert!(
+            result.is_some(),
+            "Should strip outer parens even with ) in string"
+        );
     }
 }

@@ -130,14 +130,8 @@ mod tests {
         let shrinker = BinaryShrinker::new(0);
         let input: Vec<u8> = (0..200).cycle().take(1000).collect();
         // Only the first 10 bytes matter (values 0..10).
-        let result = shrinker.shrink(&input, |data| {
-            (0u8..10).all(|b| data.contains(&b))
-        });
-        assert!(
-            result.len() <= 20,
-            "expected <=20, got {}",
-            result.len()
-        );
+        let result = shrinker.shrink(&input, |data| (0u8..10).all(|b| data.contains(&b)));
+        assert!(result.len() <= 20, "expected <=20, got {}", result.len());
         for b in 0u8..10 {
             assert!(result.contains(&b), "missing byte {b}");
         }

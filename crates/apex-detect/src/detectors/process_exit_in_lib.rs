@@ -22,15 +22,11 @@ static PY_EXIT: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"\b(sys\.exit|os\._exit|exit)\s*\(").unwrap());
 
 // JavaScript: `process.exit(`
-static JS_EXIT: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"\bprocess\.exit\s*\(").unwrap());
+static JS_EXIT: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\bprocess\.exit\s*\(").unwrap());
 
 /// Check whether a file is a "main" entry point for the given language.
 fn is_main_file(path: &Path, language: Language, source: &str) -> bool {
-    let name = path
-        .file_name()
-        .and_then(|n| n.to_str())
-        .unwrap_or("");
+    let name = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
     let path_str = path.to_string_lossy();
 
     match language {
@@ -98,10 +94,7 @@ impl Detector for ProcessExitInLibDetector {
                         category: FindingCategory::LogicBug,
                         file: path.clone(),
                         line: Some(line_1based),
-                        title: format!(
-                            "Process exit call in library code at line {}",
-                            line_1based
-                        ),
+                        title: format!("Process exit call in library code at line {}", line_1based),
                         description: format!(
                             "Line {} in {} calls process exit from library code. \
                              Libraries should return errors, not terminate the process.",
@@ -258,10 +251,7 @@ mod tests {
     #[tokio::test]
     async fn skips_js_main_js() {
         let mut files = HashMap::new();
-        files.insert(
-            PathBuf::from("main.js"),
-            "process.exit(0);\n".into(),
-        );
+        files.insert(PathBuf::from("main.js"), "process.exit(0);\n".into());
         let ctx = make_ctx(files, Language::JavaScript);
         let findings = ProcessExitInLibDetector.analyze(&ctx).await.unwrap();
         assert!(findings.is_empty());
@@ -270,10 +260,7 @@ mod tests {
     #[tokio::test]
     async fn skips_js_index_js() {
         let mut files = HashMap::new();
-        files.insert(
-            PathBuf::from("index.js"),
-            "process.exit(0);\n".into(),
-        );
+        files.insert(PathBuf::from("index.js"), "process.exit(0);\n".into());
         let ctx = make_ctx(files, Language::JavaScript);
         let findings = ProcessExitInLibDetector.analyze(&ctx).await.unwrap();
         assert!(findings.is_empty());
@@ -282,10 +269,7 @@ mod tests {
     #[tokio::test]
     async fn skips_js_server_js() {
         let mut files = HashMap::new();
-        files.insert(
-            PathBuf::from("server.js"),
-            "process.exit(0);\n".into(),
-        );
+        files.insert(PathBuf::from("server.js"), "process.exit(0);\n".into());
         let ctx = make_ctx(files, Language::JavaScript);
         let findings = ProcessExitInLibDetector.analyze(&ctx).await.unwrap();
         assert!(findings.is_empty());
@@ -294,10 +278,7 @@ mod tests {
     #[tokio::test]
     async fn skips_js_app_js() {
         let mut files = HashMap::new();
-        files.insert(
-            PathBuf::from("app.js"),
-            "process.exit(0);\n".into(),
-        );
+        files.insert(PathBuf::from("app.js"), "process.exit(0);\n".into());
         let ctx = make_ctx(files, Language::JavaScript);
         let findings = ProcessExitInLibDetector.analyze(&ctx).await.unwrap();
         assert!(findings.is_empty());
@@ -308,10 +289,7 @@ mod tests {
     #[tokio::test]
     async fn skips_unsupported_language() {
         let mut files = HashMap::new();
-        files.insert(
-            PathBuf::from("src/Main.java"),
-            "System.exit(0);\n".into(),
-        );
+        files.insert(PathBuf::from("src/Main.java"), "System.exit(0);\n".into());
         let ctx = make_ctx(files, Language::Java);
         let findings = ProcessExitInLibDetector.analyze(&ctx).await.unwrap();
         assert!(findings.is_empty());

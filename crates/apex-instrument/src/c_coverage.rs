@@ -92,10 +92,7 @@ pub fn parse_gcov_line(line: &str) -> Option<GcovLine> {
 
 /// Parse full gcov output for a single file.
 /// Returns (all_branches, executed_branches, file_id).
-pub fn parse_gcov_output(
-    file_path: &str,
-    gcov_text: &str,
-) -> (Vec<BranchId>, Vec<BranchId>, u64) {
+pub fn parse_gcov_output(file_path: &str, gcov_text: &str) -> (Vec<BranchId>, Vec<BranchId>, u64) {
     let file_id = fnv1a_hash(file_path);
     let mut all_branches = Vec::new();
     let mut executed_branches = Vec::new();
@@ -103,9 +100,7 @@ pub fn parse_gcov_output(
     for line in gcov_text.lines() {
         match parse_gcov_line(line) {
             Some(GcovLine::Executed {
-                count,
-                line_number,
-                ..
+                count, line_number, ..
             }) => {
                 let branch = BranchId::new(file_id, line_number, 0, 0);
                 all_branches.push(branch.clone());
@@ -187,10 +182,7 @@ mod tests {
         let result = parse_gcov_line("    #####:    5:    return -1;");
         assert!(matches!(
             result,
-            Some(GcovLine::Unexecuted {
-                line_number: 5,
-                ..
-            })
+            Some(GcovLine::Unexecuted { line_number: 5, .. })
         ));
     }
 

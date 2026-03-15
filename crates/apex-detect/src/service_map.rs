@@ -166,10 +166,7 @@ mod tests {
     #[test]
     fn detects_database() {
         let mut c = HashMap::new();
-        c.insert(
-            PathBuf::from("db.py"),
-            "engine = create_engine(url)".into(),
-        );
+        c.insert(PathBuf::from("db.py"), "engine = create_engine(url)".into());
         let m = analyze_service_map(&c);
         assert_eq!(m.db_count, 1);
     }

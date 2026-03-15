@@ -240,9 +240,8 @@ fn shannon_entropy(s: &str) -> f64 {
         .sum()
 }
 
-static ASSIGNMENT_RE: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r#"([a-zA-Z_][a-zA-Z0-9_]*)\s*=\s*["']([^"']+)["']"#).unwrap()
-});
+static ASSIGNMENT_RE: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r#"([a-zA-Z_][a-zA-Z0-9_]*)\s*=\s*["']([^"']+)["']"#).unwrap());
 
 /// Scan source code for hardcoded secrets using variable name + entropy heuristics.
 ///

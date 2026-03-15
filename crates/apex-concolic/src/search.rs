@@ -234,11 +234,7 @@ mod tests {
 
     #[test]
     fn random_path_is_deterministic_with_seed() {
-        let states = vec![
-            make_state(0, 1),
-            make_state(1, 5),
-            make_state(2, 10),
-        ];
+        let states = vec![make_state(0, 1), make_state(1, 5), make_state(2, 10)];
         let mut rp1 = RandomPath::new(42);
         let mut rp2 = RandomPath::new(42);
         let results1: Vec<usize> = (0..20).map(|_| rp1.select(&states)).collect();
@@ -297,10 +293,8 @@ mod tests {
     #[test]
     fn interleaved_rotates_strategies() {
         let states = vec![make_state(0, 1), make_state(1, 10)];
-        let mut interleaved = InterleavedSearch::new(
-            vec![Box::new(DepthFirst), Box::new(DepthFirst)],
-            2,
-        );
+        let mut interleaved =
+            InterleavedSearch::new(vec![Box::new(DepthFirst), Box::new(DepthFirst)], 2);
         // Should use strategy 0 for 2 rounds, then switch to strategy 1
         assert_eq!(interleaved.current, 0);
         interleaved.select(&states);

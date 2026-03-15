@@ -54,10 +54,7 @@ impl<R: CommandRunner> PythonRunner<R> {
     pub fn resolve_pip() -> &'static str {
         static PIP: OnceLock<&'static str> = OnceLock::new();
         PIP.get_or_init(|| {
-            if let Ok(output) = std::process::Command::new("pip3")
-                .arg("--version")
-                .output()
-            {
+            if let Ok(output) = std::process::Command::new("pip3").arg("--version").output() {
                 if output.status.success() {
                     return "pip3";
                 }
@@ -216,8 +213,8 @@ impl<R: CommandRunner> LanguageRunner for PythonRunner<R> {
             }
             PackageManager::Pip => {
                 if target.join("requirements.txt").exists() {
-                    let spec = CommandSpec::new(pip, target)
-                        .args(["install", "-r", "requirements.txt"]);
+                    let spec =
+                        CommandSpec::new(pip, target).args(["install", "-r", "requirements.txt"]);
                     let output = self
                         .runner
                         .run_command(&spec)
@@ -230,15 +227,13 @@ impl<R: CommandRunner> LanguageRunner for PythonRunner<R> {
                             "pip install failed: {stderr}"
                         )));
                     }
-                } else if target.join("pyproject.toml").exists()
-                    || target.join("setup.py").exists()
+                } else if target.join("pyproject.toml").exists() || target.join("setup.py").exists()
                 {
                     let spec = CommandSpec::new(pip, target).args(["install", "-e", "."]);
-                    let output = self
-                        .runner
-                        .run_command(&spec)
-                        .await
-                        .map_err(|e| ApexError::LanguageRunner(format!("pip install -e: {e}")))?;
+                    let output =
+                        self.runner.run_command(&spec).await.map_err(|e| {
+                            ApexError::LanguageRunner(format!("pip install -e: {e}"))
+                        })?;
 
                     if output.exit_code != 0 {
                         let stderr = String::from_utf8_lossy(&output.stderr).to_string();
@@ -393,7 +388,10 @@ mod tests {
         let mut mock = MockCmd::new();
         // pip3 install -r requirements.txt
         mock.expect_run_command()
-            .withf(|spec| spec.program == PythonRunner::<MockCmd>::resolve_pip() && spec.args.contains(&"-r".to_string()))
+            .withf(|spec| {
+                spec.program == PythonRunner::<MockCmd>::resolve_pip()
+                    && spec.args.contains(&"-r".to_string())
+            })
             .times(1)
             .returning(|_| Ok(CommandOutput::success(b"Successfully installed".to_vec())));
         // python3 -c "import coverage"
@@ -414,7 +412,10 @@ mod tests {
 
         let mut mock = MockCmd::new();
         mock.expect_run_command()
-            .withf(|spec| spec.program == PythonRunner::<MockCmd>::resolve_pip() && spec.args.contains(&"-r".to_string()))
+            .withf(|spec| {
+                spec.program == PythonRunner::<MockCmd>::resolve_pip()
+                    && spec.args.contains(&"-r".to_string())
+            })
             .times(1)
             .returning(|_| {
                 Ok(CommandOutput::failure(
@@ -442,7 +443,10 @@ mod tests {
         let mut mock = MockCmd::new();
         // pip3 install -e .
         mock.expect_run_command()
-            .withf(|spec| spec.program == PythonRunner::<MockCmd>::resolve_pip() && spec.args.contains(&"-e".to_string()))
+            .withf(|spec| {
+                spec.program == PythonRunner::<MockCmd>::resolve_pip()
+                    && spec.args.contains(&"-e".to_string())
+            })
             .times(1)
             .returning(|_| Ok(CommandOutput::success(b"".to_vec())));
         // python3 -c "import coverage" -- coverage already installed
@@ -470,7 +474,10 @@ mod tests {
             .returning(|_| Ok(CommandOutput::failure(1, b"ModuleNotFoundError".to_vec())));
         // pip3 install coverage pytest
         mock.expect_run_command()
-            .withf(|spec| spec.program == PythonRunner::<MockCmd>::resolve_pip() && spec.args.contains(&"coverage".to_string()))
+            .withf(|spec| {
+                spec.program == PythonRunner::<MockCmd>::resolve_pip()
+                    && spec.args.contains(&"coverage".to_string())
+            })
             .times(1)
             .returning(|_| Ok(CommandOutput::success(b"".to_vec())));
 
@@ -646,7 +653,10 @@ mod tests {
         let mut mock = MockCmd::new();
         // pip3 install -e .
         mock.expect_run_command()
-            .withf(|spec| spec.program == PythonRunner::<MockCmd>::resolve_pip() && spec.args.contains(&"-e".to_string()))
+            .withf(|spec| {
+                spec.program == PythonRunner::<MockCmd>::resolve_pip()
+                    && spec.args.contains(&"-e".to_string())
+            })
             .times(1)
             .returning(|_| Ok(CommandOutput::success(b"".to_vec())));
         // python3 -c "import coverage" — already installed
@@ -671,7 +681,10 @@ mod tests {
 
         let mut mock = MockCmd::new();
         mock.expect_run_command()
-            .withf(|spec| spec.program == PythonRunner::<MockCmd>::resolve_pip() && spec.args.contains(&"-e".to_string()))
+            .withf(|spec| {
+                spec.program == PythonRunner::<MockCmd>::resolve_pip()
+                    && spec.args.contains(&"-e".to_string())
+            })
             .times(1)
             .returning(|_| Ok(CommandOutput::failure(1, b"Permission denied".to_vec())));
 
@@ -689,7 +702,10 @@ mod tests {
 
         let mut mock = MockCmd::new();
         mock.expect_run_command()
-            .withf(|spec| spec.program == PythonRunner::<MockCmd>::resolve_pip() && spec.args.contains(&"-e".to_string()))
+            .withf(|spec| {
+                spec.program == PythonRunner::<MockCmd>::resolve_pip()
+                    && spec.args.contains(&"-e".to_string())
+            })
             .times(1)
             .returning(|_| Ok(CommandOutput::failure(1, b"build failed".to_vec())));
 
@@ -708,7 +724,10 @@ mod tests {
 
         let mut mock = MockCmd::new();
         mock.expect_run_command()
-            .withf(|spec| spec.program == PythonRunner::<MockCmd>::resolve_pip() && spec.args.contains(&"-r".to_string()))
+            .withf(|spec| {
+                spec.program == PythonRunner::<MockCmd>::resolve_pip()
+                    && spec.args.contains(&"-r".to_string())
+            })
             .times(1)
             .returning(|_| {
                 Err(ApexError::Subprocess {
@@ -732,7 +751,10 @@ mod tests {
 
         let mut mock = MockCmd::new();
         mock.expect_run_command()
-            .withf(|spec| spec.program == PythonRunner::<MockCmd>::resolve_pip() && spec.args.contains(&"-e".to_string()))
+            .withf(|spec| {
+                spec.program == PythonRunner::<MockCmd>::resolve_pip()
+                    && spec.args.contains(&"-e".to_string())
+            })
             .times(1)
             .returning(|_| {
                 Err(ApexError::Subprocess {
@@ -1005,11 +1027,7 @@ mod tests {
     #[test]
     fn detect_test_runner_pytest_ini() {
         let dir = tempfile::tempdir().unwrap();
-        std::fs::write(
-            dir.path().join("pytest.ini"),
-            "[pytest]\naddopts = -v\n",
-        )
-        .unwrap();
+        std::fs::write(dir.path().join("pytest.ini"), "[pytest]\naddopts = -v\n").unwrap();
         let cmd = PythonRunner::<RealCommandRunner>::detect_test_runner(dir.path());
         let python = PythonRunner::<RealCommandRunner>::resolve_python();
         assert_eq!(cmd, vec![python, "-m", "pytest", "-q"]);
@@ -1035,6 +1053,10 @@ mod tests {
         std::fs::create_dir_all(&venv_bin).unwrap();
         std::fs::write(venv_bin.join("python"), "").unwrap();
         let cmd = PythonRunner::<RealCommandRunner>::detect_test_runner(dir.path());
-        assert!(cmd[0].contains(".venv"), "expected venv python, got: {}", cmd[0]);
+        assert!(
+            cmd[0].contains(".venv"),
+            "expected venv python, got: {}",
+            cmd[0]
+        );
     }
 }

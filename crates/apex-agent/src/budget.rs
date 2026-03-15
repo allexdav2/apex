@@ -31,12 +31,18 @@ impl BudgetAllocator {
 
     /// Set the minimum share each strategy receives (0.0 to 1.0).
     pub fn set_minimum_share(&mut self, share: f64) {
+        if self.num_strategies == 0 {
+            return;
+        }
         self.minimum_share = share.clamp(0.0, 1.0 / self.num_strategies as f64);
     }
 
     /// Allocate budgets proportional to effectiveness.
     pub fn allocate(&self) -> Vec<u64> {
         let n = self.num_strategies;
+        if n == 0 {
+            return vec![];
+        }
         let total_eff: u64 = self.effectiveness.iter().sum();
 
         if total_eff == 0 {
@@ -115,5 +121,18 @@ mod tests {
         let allocator = BudgetAllocator::new(500, 1);
         let budgets = allocator.allocate();
         assert_eq!(budgets, vec![500]);
+    }
+
+    #[test]
+    fn allocate_zero_strategies_returns_empty() {
+        let allocator = BudgetAllocator::new(1000, 0);
+        assert!(allocator.allocate().is_empty());
+    }
+
+    #[test]
+    fn set_minimum_share_zero_strategies_noop() {
+        let mut allocator = BudgetAllocator::new(1000, 0);
+        allocator.set_minimum_share(0.5);
+        assert!(allocator.allocate().is_empty());
     }
 }

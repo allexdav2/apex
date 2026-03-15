@@ -1,0 +1,28 @@
+schema_version: 1
+name: mcp-integration
+domain: "MCP server, AI tool integration configs, protocol handling — the bridge between APEX and external AI coding assistants"
+
+paths:
+  - crates/apex-cli/src/mcp.rs
+  - integrations/**
+
+tech_stack:
+  - Rust
+  - rmcp (MCP SDK)
+  - JSON-RPC
+  - STDIO transport
+
+sdlc_concerns:
+  - architecture
+  - qa
+
+partners:
+  - platform
+  - intelligence
+  - security-detect
+
+notes: >
+  Owns the MCP protocol layer and per-tool integration configs.
+  Changes to MCP tool definitions affect what external AI assistants can do.
+  Coordinate with platform crew on CLI wiring and with intelligence/security
+  crews when their APIs change (tool inputs/outputs must stay in sync).

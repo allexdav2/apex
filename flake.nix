@@ -20,7 +20,7 @@
       {
         packages.default = pkgs.rustPlatform.buildRustPackage {
           pname = "apex";
-          version = "0.1.0";
+          version = "0.2.0";
           src = ./.;
           cargoLock.lockFile = ./Cargo.lock;
 

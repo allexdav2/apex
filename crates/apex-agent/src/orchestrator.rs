@@ -3424,6 +3424,7 @@ mod tests {
         let cluster = AgentCluster::new(oracle, sandbox, test_target())
             .with_driller_escalation(escalation);
         assert!(cluster.driller_escalation.is_some());
+    }
 
     // ==================================================================
     // Bug-hunting tests

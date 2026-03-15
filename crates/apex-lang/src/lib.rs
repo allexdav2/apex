@@ -3,6 +3,7 @@
 //! Each runner knows how to execute tests and collect results for its language.
 
 pub mod c;
+pub mod cpp;
 pub mod go;
 pub mod java;
 pub mod kotlin;
@@ -13,6 +14,7 @@ pub mod rust_lang;
 pub mod wasm;
 
 pub use c::CRunner;
+pub use cpp::CppRunner;
 pub use go::GoRunner;
 pub use kotlin::KotlinRunner;
 pub use java::JavaRunner;

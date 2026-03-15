@@ -1,3 +1,4 @@
+pub mod c_cpp;
 pub mod go;
 pub mod java;
 pub mod javascript;
@@ -23,6 +24,7 @@ pub fn build_call_graph(sources: &HashMap<PathBuf, String>, lang: Language) -> C
         Language::JavaScript => javascript::JsExtractor.extract(sources),
         Language::Java | Language::Kotlin => java::JavaExtractor.extract(sources),
         Language::Go => go::GoExtractor.extract(sources),
+        Language::C | Language::Cpp => c_cpp::CCppExtractor.extract(sources),
         _ => CallGraph::default(),
     }
 }

@@ -642,6 +642,7 @@ pub enum LangArg {
     Ruby,
     Kotlin,
     Go,
+    Cpp,
 }
 
 impl From<LangArg> for Language {
@@ -656,6 +657,7 @@ impl From<LangArg> for Language {
             LangArg::Ruby => Language::Ruby,
             LangArg::Kotlin => Language::Kotlin,
             LangArg::Go => Language::Go,
+            LangArg::Cpp => Language::Cpp,
         }
     }
 }
@@ -1108,6 +1110,10 @@ async fn install_deps(lang: Language, target: &std::path::Path) -> Result<()> {
             let runner = apex_lang::go::GoRunner::new();
             runner.install_deps(target).await?;
         }
+        Language::Cpp => {
+            let runner = apex_lang::cpp::CppRunner::new();
+            runner.install_deps(target).await?;
+        }
     }
     Ok(())
 }
@@ -1159,6 +1165,7 @@ async fn instrument(
             JavaInstrumentor::new().instrument(&target).await?
         }
         Language::Go => apex_instrument::go::GoInstrumentor::new().instrument(&target).await?,
+        Language::Cpp => apex_instrument::c_coverage::CCoverageInstrumentor::new().instrument(&target).await?,
     };
 
     oracle.register_branches(instrumented.branch_ids.iter().cloned());
@@ -1666,6 +1673,7 @@ fn build_source_cache(
         Language::Ruby => &["rb"],
         Language::Kotlin => &["kt", "kts"],
         Language::Go => &["go"],
+        Language::Cpp => &["cpp", "cxx", "cc", "hpp", "hxx", "h"],
     };
 
     let mut cache = std::collections::HashMap::new();

@@ -142,6 +142,7 @@ pub enum Language {
     Ruby,
     Kotlin,
     Go,
+    Cpp,
 }
 
 impl std::fmt::Display for Language {
@@ -156,6 +157,7 @@ impl std::fmt::Display for Language {
             Language::Ruby => "ruby",
             Language::Kotlin => "kt",
             Language::Go => "go",
+            Language::Cpp => "cpp",
         };
         write!(f, "{s}")
     }
@@ -174,6 +176,7 @@ impl std::str::FromStr for Language {
             "ruby" | "rb" => Ok(Language::Ruby),
             "kotlin" | "kt" => Ok(Language::Kotlin),
             "go" | "golang" => Ok(Language::Go),
+            "cpp" | "c++" | "cxx" => Ok(Language::Cpp),
             other => Err(format!("unknown language: {other}")),
         }
     }
@@ -329,6 +332,18 @@ impl Language {
                 feat("path-normalize", Missing, ""),
                 feat("concolic", Missing, ""),
                 feat("fuzz", Full, "go-fuzz"),
+                feat("sandbox", Full, "process"),
+            ],
+            Language::Cpp => vec![
+                feat("instrumentation", Full, "gcov/llvm-cov"),
+                feat("test-runner", Full, "ctest/gtest"),
+                feat("dep-install", Partial, "cmake"),
+                feat("dep-audit", Missing, ""),
+                feat("security-patterns", Full, "cpp-patterns"),
+                feat("unsafe-analysis", NotApplicable, ""),
+                feat("path-normalize", Missing, ""),
+                feat("concolic", Missing, ""),
+                feat("fuzz", Full, "libfuzzer"),
                 feat("sandbox", Full, "process"),
             ],
         }

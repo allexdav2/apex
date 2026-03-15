@@ -167,6 +167,7 @@ pub fn hash_source_files_with_omit(
         Language::Ruby => &["rb"],
         Language::Kotlin => &["kt", "kts"],
         Language::Go => &["go"],
+        Language::Cpp => &["cpp", "cxx", "cc", "hpp", "hxx"],
     };
 
     let mut paths: Vec<PathBuf> = Vec::new();

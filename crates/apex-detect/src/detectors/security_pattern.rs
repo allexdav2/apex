@@ -42,57 +42,6 @@ const RUST_SECURITY_PATTERNS: &[SecurityPattern] = &[
         sanitization_indicators: &["escape", "sanitize"],
         cwe: &[78],
     },
-    // Task 12: Command injection from format strings
-    SecurityPattern {
-        sink: "Command::new(format!(",
-        description: "Command from format string — command injection via string interpolation",
-        category: FindingCategory::Injection,
-        base_severity: Severity::Critical,
-        user_input_indicators: &["user", "input", "request", "query", "arg", "&str"],
-        sanitization_indicators: &["escape", "sanitize", "quote", "shell_escape"],
-        cwe: &[78],
-    },
-    SecurityPattern {
-        sink: ".arg(format!(",
-        description: "Command argument from format string — command injection via interpolated arg",
-        category: FindingCategory::Injection,
-        base_severity: Severity::High,
-        user_input_indicators: &["user", "input", "request", "query", "&str"],
-        sanitization_indicators: &["escape", "sanitize", "quote", "shell_escape"],
-        cwe: &[78],
-    },
-    // Task 13: SSRF / HTTP request patterns
-    SecurityPattern {
-        sink: "reqwest::get(",
-        description: "HTTP GET with potentially user-controlled URL — SSRF risk",
-        category: FindingCategory::Injection,
-        base_severity: Severity::High,
-        user_input_indicators: &[
-            "user", "input", "request", "query", "param", "format!", "&str",
-        ],
-        sanitization_indicators: &["allowlist", "whitelist", "ALLOWED", "starts_with"],
-        cwe: &[918],
-    },
-    SecurityPattern {
-        sink: "Client::new().get(format!(",
-        description: "HTTP GET with URL from format string — SSRF risk",
-        category: FindingCategory::Injection,
-        base_severity: Severity::High,
-        user_input_indicators: &["user", "input", "request", "query", "param", "&str"],
-        sanitization_indicators: &["allowlist", "whitelist", "ALLOWED", "starts_with"],
-        cwe: &[918],
-    },
-    SecurityPattern {
-        sink: "hyper::Uri::from_str(",
-        description: "URI from string — SSRF if string is user-controlled",
-        category: FindingCategory::Injection,
-        base_severity: Severity::Medium,
-        user_input_indicators: &[
-            "user", "input", "request", "query", "param", "format!", "&str",
-        ],
-        sanitization_indicators: &["allowlist", "whitelist", "ALLOWED", "starts_with", "parse"],
-        cwe: &[918],
-    },
 ];
 
 const PYTHON_SECURITY_PATTERNS: &[SecurityPattern] = &[
@@ -452,12 +401,12 @@ const RUBY_SECURITY_PATTERNS: &[SecurityPattern] = &[
 const C_SECURITY_PATTERNS: &[SecurityPattern] = &[
     SecurityPattern {
         sink: "gets(",
-        description: "gets() — unbounded read, guaranteed buffer overflow",
+        description: "gets() — banned function, unbounded read, guaranteed buffer overflow",
         category: FindingCategory::MemorySafety,
         base_severity: Severity::Critical,
         user_input_indicators: &[], // always dangerous
         sanitization_indicators: &[],
-        cwe: &[120],
+        cwe: &[242],
     },
     SecurityPattern {
         sink: "strcpy(",
@@ -492,6 +441,121 @@ const C_SECURITY_PATTERNS: &[SecurityPattern] = &[
         category: FindingCategory::Injection,
         base_severity: Severity::Critical,
         user_input_indicators: &["argv", "stdin", "fgets", "recv", "getenv", "sprintf"],
+        sanitization_indicators: &["escape", "sanitize"],
+        cwe: &[78],
+    },
+    SecurityPattern {
+        sink: "printf(",
+        description: "printf() with non-literal format string — format string vulnerability",
+        category: FindingCategory::Injection,
+        base_severity: Severity::High,
+        user_input_indicators: &["argv", "stdin", "fgets", "recv", "getenv", "buf"],
+        sanitization_indicators: &["\"", "snprintf"],
+        cwe: &[134],
+    },
+    SecurityPattern {
+        sink: "malloc(",
+        description: "malloc() — integer overflow in size calculation may cause heap overflow",
+        category: FindingCategory::MemorySafety,
+        base_severity: Severity::Medium,
+        user_input_indicators: &["*", "argv", "atoi", "strtol", "recv", "read("],
+        sanitization_indicators: &["SIZE_MAX", "check", "limit", "max_size", "overflow"],
+        cwe: &[190],
+    },
+];
+
+const CPP_SECURITY_PATTERNS: &[SecurityPattern] = &[
+    // Include all C patterns for C++ as well
+    SecurityPattern {
+        sink: "gets(",
+        description: "gets() — banned function, unbounded read, guaranteed buffer overflow",
+        category: FindingCategory::MemorySafety,
+        base_severity: Severity::Critical,
+        user_input_indicators: &[],
+        sanitization_indicators: &[],
+        cwe: &[242],
+    },
+    SecurityPattern {
+        sink: "strcpy(",
+        description: "strcpy() — no bounds checking, use strncpy or strlcpy",
+        category: FindingCategory::MemorySafety,
+        base_severity: Severity::High,
+        user_input_indicators: &["argv", "stdin", "fgets", "recv", "read(", "getenv"],
+        sanitization_indicators: &["strlen", "sizeof", "strlcpy", "strncpy"],
+        cwe: &[120],
+    },
+    SecurityPattern {
+        sink: "sprintf(",
+        description: "sprintf() — no bounds checking, use snprintf",
+        category: FindingCategory::MemorySafety,
+        base_severity: Severity::High,
+        user_input_indicators: &["argv", "stdin", "fgets", "recv", "getenv", "%s"],
+        sanitization_indicators: &["snprintf"],
+        cwe: &[120],
+    },
+    SecurityPattern {
+        sink: "strcat(",
+        description: "strcat() — no bounds checking, use strncat or strlcat",
+        category: FindingCategory::MemorySafety,
+        base_severity: Severity::High,
+        user_input_indicators: &["argv", "stdin", "fgets", "recv", "getenv"],
+        sanitization_indicators: &["strncat", "strlcat", "strlen"],
+        cwe: &[120],
+    },
+    SecurityPattern {
+        sink: "system(",
+        description: "system() — command injection if argument contains user input",
+        category: FindingCategory::Injection,
+        base_severity: Severity::Critical,
+        user_input_indicators: &["argv", "stdin", "fgets", "recv", "getenv", "sprintf"],
+        sanitization_indicators: &["escape", "sanitize"],
+        cwe: &[78],
+    },
+    SecurityPattern {
+        sink: "printf(",
+        description: "printf() with non-literal format string — format string vulnerability",
+        category: FindingCategory::Injection,
+        base_severity: Severity::High,
+        user_input_indicators: &["argv", "stdin", "fgets", "recv", "getenv", "buf"],
+        sanitization_indicators: &["\"", "snprintf"],
+        cwe: &[134],
+    },
+    SecurityPattern {
+        sink: "malloc(",
+        description: "malloc() — integer overflow in size calculation may cause heap overflow",
+        category: FindingCategory::MemorySafety,
+        base_severity: Severity::Medium,
+        user_input_indicators: &["*", "argv", "atoi", "strtol", "recv", "read("],
+        sanitization_indicators: &["SIZE_MAX", "check", "limit", "max_size", "overflow"],
+        cwe: &[190],
+    },
+    // C++-specific patterns
+    SecurityPattern {
+        sink: "reinterpret_cast<",
+        description: "reinterpret_cast — unsafe type cast, may violate type safety",
+        category: FindingCategory::MemorySafety,
+        base_severity: Severity::Medium,
+        user_input_indicators: &["void*", "char*", "uint8_t*"],
+        sanitization_indicators: &["static_cast", "dynamic_cast"],
+        cwe: &[704],
+    },
+    SecurityPattern {
+        sink: "new ",
+        description: "raw new without smart pointer — potential memory leak",
+        category: FindingCategory::MemorySafety,
+        base_severity: Severity::Low,
+        user_input_indicators: &["return", "="],
+        sanitization_indicators: &[
+            "unique_ptr", "shared_ptr", "make_unique", "make_shared", "delete",
+        ],
+        cwe: &[401],
+    },
+    SecurityPattern {
+        sink: "std::system(",
+        description: "std::system() — command injection via C++ standard library",
+        category: FindingCategory::Injection,
+        base_severity: Severity::Critical,
+        user_input_indicators: &["argv", "cin", "getline", "getenv", "string"],
         sanitization_indicators: &["escape", "sanitize"],
         cwe: &[78],
     },
@@ -581,54 +645,6 @@ const JAVA_SECURITY_PATTERNS: &[SecurityPattern] = &[
     },
 ];
 
-const KOTLIN_SECURITY_PATTERNS: &[SecurityPattern] = &[
-    SecurityPattern {
-        sink: "Runtime.getRuntime().exec(",
-        description: "Runtime.exec — command injection",
-        category: FindingCategory::Injection,
-        base_severity: Severity::Critical,
-        user_input_indicators: &["request", "getParameter", "input", "args"],
-        sanitization_indicators: &[],
-        cwe: &[78],
-    },
-    SecurityPattern {
-        sink: "ProcessBuilder(",
-        description: "ProcessBuilder — potential command injection",
-        category: FindingCategory::Injection,
-        base_severity: Severity::High,
-        user_input_indicators: &["request", "getParameter", "input", "args"],
-        sanitization_indicators: &[],
-        cwe: &[78],
-    },
-    SecurityPattern {
-        sink: "executeQuery(",
-        description: "executeQuery — potential SQL injection",
-        category: FindingCategory::Injection,
-        base_severity: Severity::High,
-        user_input_indicators: &["$", "+", "format", "request", "getParameter", "concat"],
-        sanitization_indicators: &["PreparedStatement", "parameterized", "?"],
-        cwe: &[89],
-    },
-    SecurityPattern {
-        sink: "readObject(",
-        description: "readObject — unsafe deserialization",
-        category: FindingCategory::Injection,
-        base_severity: Severity::Critical,
-        user_input_indicators: &["socket", "request", "upload", "input", "InputStream"],
-        sanitization_indicators: &["ObjectInputFilter", "ValidatingObjectInputStream"],
-        cwe: &[502],
-    },
-    SecurityPattern {
-        sink: "URL(",
-        description: "URL() — potential SSRF",
-        category: FindingCategory::Injection,
-        base_severity: Severity::Medium,
-        user_input_indicators: &["request", "getParameter", "input", "param"],
-        sanitization_indicators: &["allowlist", "whitelist", "ALLOWED"],
-        cwe: &[918],
-    },
-];
-
 const CONTEXT_WINDOW: usize = 3;
 
 /// Indicators that are code patterns (not input sources). These should be
@@ -715,8 +731,8 @@ fn patterns_for_language(lang: Language) -> &'static [SecurityPattern] {
         Language::JavaScript => JS_SECURITY_PATTERNS,
         Language::Ruby => RUBY_SECURITY_PATTERNS,
         Language::C => C_SECURITY_PATTERNS,
+        Language::Cpp => CPP_SECURITY_PATTERNS,
         Language::Java => JAVA_SECURITY_PATTERNS,
-        Language::Kotlin => KOTLIN_SECURITY_PATTERNS,
         _ => &[],
     }
 }

@@ -7,6 +7,7 @@ use apex_core::error::Result;
 use apex_core::types::Language;
 use async_trait::async_trait;
 use regex::Regex;
+use std::sync::LazyLock;
 use uuid::Uuid;
 
 use super::util::{is_comment, is_test_file};
@@ -168,22 +169,20 @@ struct CompiledRule {
     suppressor_re: Option<Regex>,
 }
 
-pub struct BanditRuleDetector;
+static COMPILED_BANDIT_RULES: LazyLock<Vec<CompiledRule>> = LazyLock::new(|| {
+    BANDIT_RULES
+        .iter()
+        .map(|rule| CompiledRule {
+            rule,
+            regex: Regex::new(rule.pattern).expect("invalid bandit rule regex"),
+            suppressor_re: rule
+                .suppressor
+                .map(|s| Regex::new(s).expect("invalid suppressor regex")),
+        })
+        .collect()
+});
 
-impl BanditRuleDetector {
-    fn compile_rules() -> Vec<CompiledRule> {
-        BANDIT_RULES
-            .iter()
-            .map(|rule| CompiledRule {
-                rule,
-                regex: Regex::new(rule.pattern).expect("invalid bandit rule regex"),
-                suppressor_re: rule
-                    .suppressor
-                    .map(|s| Regex::new(s).expect("invalid suppressor regex")),
-            })
-            .collect()
-    }
-}
+pub struct BanditRuleDetector;
 
 #[async_trait]
 impl Detector for BanditRuleDetector {
@@ -197,7 +196,7 @@ impl Detector for BanditRuleDetector {
             return Ok(Vec::new());
         }
 
-        let compiled = Self::compile_rules();
+        let compiled = COMPILED_BANDIT_RULES.as_slice();
         let mut findings = Vec::new();
 
         for (path, source) in &ctx.source_cache {
@@ -212,7 +211,7 @@ impl Detector for BanditRuleDetector {
                     continue;
                 }
 
-                for cr in &compiled {
+                for cr in compiled {
                     if !cr.regex.is_match(trimmed) {
                         continue;
                     }

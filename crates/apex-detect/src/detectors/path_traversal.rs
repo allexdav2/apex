@@ -3,30 +3,35 @@
 use crate::finding::{Finding, FindingCategory, Severity};
 use regex::Regex;
 use std::path::PathBuf;
+use std::sync::LazyLock;
 use uuid::Uuid;
+
+// Pattern: open() with a variable (not a string literal).
+static OPEN_VAR_RE: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r#"open\(\s*([a-zA-Z_][a-zA-Z0-9_.]*)\s*[,)]"#).unwrap());
+// Pattern: Path() with a variable.
+static PATH_VAR_RE: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r#"Path\(\s*([a-zA-Z_][a-zA-Z0-9_.]*)\s*\)"#).unwrap());
+// Pattern: os.path.join with variable.
+static PATH_JOIN_RE: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r#"os\.path\.join\([^)]*[a-zA-Z_][a-zA-Z0-9_.]*[^)]*\)"#).unwrap()
+});
+static OPEN_LITERAL_RE: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r#"open\(\s*(?:f["']|["'])"#).unwrap());
 
 /// Scan source code for path traversal vulnerabilities.
 pub fn scan_path_traversal(source: &str, file_path: &str) -> Vec<Finding> {
     let mut findings = Vec::new();
 
-    // Pattern: open() with a variable (not a string literal).
-    let open_var = Regex::new(r#"open\(\s*([a-zA-Z_][a-zA-Z0-9_.]*)\s*[,)]"#).unwrap();
-    // Pattern: Path() with a variable.
-    let path_var = Regex::new(r#"Path\(\s*([a-zA-Z_][a-zA-Z0-9_.]*)\s*\)"#).unwrap();
-    // Pattern: os.path.join with variable.
-    let path_join = Regex::new(r#"os\.path\.join\([^)]*[a-zA-Z_][a-zA-Z0-9_.]*[^)]*\)"#).unwrap();
-
-    let has_open_literal = Regex::new(r#"open\(\s*(?:f["']|["'])"#).unwrap();
-
     for (line_num, line) in source.lines().enumerate() {
         let line_1based = (line_num + 1) as u32;
         let trimmed = line.trim();
         let is_string_only =
-            has_open_literal.is_match(trimmed) && !trimmed.contains('+') && !trimmed.contains('{');
+            OPEN_LITERAL_RE.is_match(trimmed) && !trimmed.contains('+') && !trimmed.contains('{');
 
         let mut is_vuln = false;
 
-        if let Some(cap) = open_var.captures(trimmed) {
+        if let Some(cap) = OPEN_VAR_RE.captures(trimmed) {
             let arg = cap.get(1).map(|m| m.as_str()).unwrap_or("");
             // Skip if the argument looks like a string literal (starts with quote).
             if !arg.starts_with('\'') && !arg.starts_with('"') && !is_string_only {
@@ -34,11 +39,11 @@ pub fn scan_path_traversal(source: &str, file_path: &str) -> Vec<Finding> {
             }
         }
 
-        if path_var.is_match(trimmed) {
+        if PATH_VAR_RE.is_match(trimmed) {
             is_vuln = true;
         }
 
-        if path_join.is_match(trimmed) {
+        if PATH_JOIN_RE.is_match(trimmed) {
             is_vuln = true;
         }
 

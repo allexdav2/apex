@@ -29,12 +29,35 @@ use serde::Deserialize;
 use std::{
     collections::HashMap,
     path::PathBuf,
-    sync::{Arc, Mutex},
+    sync::{Arc, LazyLock, Mutex},
 };
 use tracing::{debug, info, warn};
 
 /// Embedded tracer script — extracted to a temp file at runtime.
 const TRACER_PY: &str = include_str!("scripts/apex_tracer.py");
+
+// ---------------------------------------------------------------------------
+// Pre-compiled regexes for boundary_seeds() — avoids per-call compilation
+// ---------------------------------------------------------------------------
+static RE_CMP: LazyLock<regex_lite::Regex> = LazyLock::new(|| {
+    regex_lite::Regex::new(
+        r#"^(\w[\w.]*)\s*(>|>=|<|<=|==|!=)\s*(-?\d+(?:\.\d+)?|None|True|False|'[^']*'|"[^"]*")$"#,
+    )
+    .unwrap()
+});
+static RE_STR_METHOD: LazyLock<regex_lite::Regex> = LazyLock::new(|| {
+    regex_lite::Regex::new(r#"^(\w+)\.(startswith|endswith)\(['\"](.+?)['\"]\)$"#).unwrap()
+});
+static RE_IN_LIST: LazyLock<regex_lite::Regex> =
+    LazyLock::new(|| regex_lite::Regex::new(r#"^(\w+)\s+in\s+\[(.+)\]$"#).unwrap());
+static RE_ISINSTANCE: LazyLock<regex_lite::Regex> =
+    LazyLock::new(|| regex_lite::Regex::new(r#"^isinstance\((\w+),\s*(\w+)\)$"#).unwrap());
+static RE_SUBSTR: LazyLock<regex_lite::Regex> =
+    LazyLock::new(|| regex_lite::Regex::new(r#"^['\"](.+?)['\"]\s+in\s+(\w+)$"#).unwrap());
+static RE_LEN: LazyLock<regex_lite::Regex> =
+    LazyLock::new(|| regex_lite::Regex::new(r#"^len\((\w+)\)\s*(>|>=|==|<|<=)\s*(\d+)$"#).unwrap());
+static RE_IS: LazyLock<regex_lite::Regex> =
+    LazyLock::new(|| regex_lite::Regex::new(r#"^(\w+)\s+is\s+(not None|None)$"#).unwrap());
 
 // ---------------------------------------------------------------------------
 // Tracer output types
@@ -159,12 +182,8 @@ impl PythonConcolicStrategy {
         let mut assignments: Vec<Vec<(String, serde_json::Value)>> = Vec::new();
 
         // Look for patterns: <name> <op> <literal>
-        let re_cmp = regex_lite::Regex::new(
-            r#"^(\w[\w.]*)\s*(>|>=|<|<=|==|!=)\s*(-?\d+(?:\.\d+)?|None|True|False|'[^']*'|"[^"]*")$"#
-        ).ok();
-
-        if let Some(re) = re_cmp {
-            if let Some(caps) = re.captures(condition.trim()) {
+        {
+            if let Some(caps) = RE_CMP.captures(condition.trim()) {
                 let name = caps[1].to_string();
                 let op = &caps[2];
                 let lit = &caps[3];
@@ -192,149 +211,119 @@ impl PythonConcolicStrategy {
 
         // --- String method patterns (startswith/endswith) ---
         if assignments.is_empty() {
-            let re_str_method = regex_lite::Regex::new(
-                r#"^(\w+)\.(startswith|endswith)\(['\"](.+?)['\"]\)$"#
-            ).ok();
-            if let Some(re) = re_str_method {
-                if let Some(caps) = re.captures(condition.trim()) {
-                    let name = caps[1].to_string();
-                    let method = caps[2].to_string();
-                    let affix = caps[3].to_string();
-                    match (method.as_str(), target_direction) {
-                        ("startswith", 0) => {
-                            assignments.push(vec![(name.clone(), serde_json::json!(format!("{affix}suffix")))]);
-                        }
-                        ("startswith", _) => {
-                            assignments.push(vec![(name.clone(), serde_json::json!("__no_match__"))]);
-                        }
-                        ("endswith", 0) => {
-                            assignments.push(vec![(name.clone(), serde_json::json!(format!("prefix{affix}")))]);
-                        }
-                        ("endswith", _) => {
-                            assignments.push(vec![(name.clone(), serde_json::json!("__no_match__"))]);
-                        }
-                        _ => {}
+            if let Some(caps) = RE_STR_METHOD.captures(condition.trim()) {
+                let name = caps[1].to_string();
+                let method = caps[2].to_string();
+                let affix = caps[3].to_string();
+                match (method.as_str(), target_direction) {
+                    ("startswith", 0) => {
+                        assignments.push(vec![(name.clone(), serde_json::json!(format!("{affix}suffix")))]);
                     }
+                    ("startswith", _) => {
+                        assignments.push(vec![(name.clone(), serde_json::json!("__no_match__"))]);
+                    }
+                    ("endswith", 0) => {
+                        assignments.push(vec![(name.clone(), serde_json::json!(format!("prefix{affix}")))]);
+                    }
+                    ("endswith", _) => {
+                        assignments.push(vec![(name.clone(), serde_json::json!("__no_match__"))]);
+                    }
+                    _ => {}
                 }
             }
         }
 
         // --- Membership: x in [list] ---
         if assignments.is_empty() {
-            let re_in_list = regex_lite::Regex::new(
-                r#"^(\w+)\s+in\s+\[(.+)\]$"#
-            ).ok();
-            if let Some(re) = re_in_list {
-                if let Some(caps) = re.captures(condition.trim()) {
-                    let name = caps[1].to_string();
-                    let items_str = caps[2].to_string();
-                    let items: Vec<String> = items_str.split(',')
-                        .map(|s| s.trim().trim_matches(|c: char| c == '\'' || c == '"').to_string())
-                        .collect();
-                    if target_direction == 0 {
-                        for item in items.iter().take(3) {
-                            assignments.push(vec![(name.clone(), serde_json::json!(item))]);
-                        }
-                    } else {
-                        assignments.push(vec![(name.clone(), serde_json::json!("__NOT_IN_LIST__"))]);
+            if let Some(caps) = RE_IN_LIST.captures(condition.trim()) {
+                let name = caps[1].to_string();
+                let items_str = caps[2].to_string();
+                let items: Vec<String> = items_str.split(',')
+                    .map(|s| s.trim().trim_matches(|c: char| c == '\'' || c == '"').to_string())
+                    .collect();
+                if target_direction == 0 {
+                    for item in items.iter().take(3) {
+                        assignments.push(vec![(name.clone(), serde_json::json!(item))]);
                     }
+                } else {
+                    assignments.push(vec![(name.clone(), serde_json::json!("__NOT_IN_LIST__"))]);
                 }
             }
         }
 
         // --- isinstance check ---
         if assignments.is_empty() {
-            let re_isinstance = regex_lite::Regex::new(
-                r#"^isinstance\((\w+),\s*(\w+)\)$"#
-            ).ok();
-            if let Some(re) = re_isinstance {
-                if let Some(caps) = re.captures(condition.trim()) {
-                    let name = caps[1].to_string();
-                    let type_name = caps[2].to_string();
-                    if target_direction == 0 {
-                        let val = match type_name.as_str() {
-                            "str" => serde_json::json!(""),
-                            "int" => serde_json::json!(0),
-                            "float" => serde_json::json!(0.0),
-                            "bool" => serde_json::json!(true),
-                            "list" => serde_json::json!([]),
-                            "dict" => serde_json::json!({}),
-                            _ => serde_json::json!(""),
-                        };
-                        assignments.push(vec![(name.clone(), val)]);
-                    } else {
-                        let val = match type_name.as_str() {
-                            "str" => serde_json::json!(0),
-                            "int" | "float" => serde_json::json!("not_a_number"),
-                            _ => serde_json::json!(null),
-                        };
-                        assignments.push(vec![(name.clone(), val)]);
-                    }
+            if let Some(caps) = RE_ISINSTANCE.captures(condition.trim()) {
+                let name = caps[1].to_string();
+                let type_name = caps[2].to_string();
+                if target_direction == 0 {
+                    let val = match type_name.as_str() {
+                        "str" => serde_json::json!(""),
+                        "int" => serde_json::json!(0),
+                        "float" => serde_json::json!(0.0),
+                        "bool" => serde_json::json!(true),
+                        "list" => serde_json::json!([]),
+                        "dict" => serde_json::json!({}),
+                        _ => serde_json::json!(""),
+                    };
+                    assignments.push(vec![(name.clone(), val)]);
+                } else {
+                    let val = match type_name.as_str() {
+                        "str" => serde_json::json!(0),
+                        "int" | "float" => serde_json::json!("not_a_number"),
+                        _ => serde_json::json!(null),
+                    };
+                    assignments.push(vec![(name.clone(), val)]);
                 }
             }
         }
 
         // --- Substring contains: "://" in x ---
         if assignments.is_empty() {
-            let re_substr = regex_lite::Regex::new(
-                r#"^['\"](.+?)['\"]\s+in\s+(\w+)$"#
-            ).ok();
-            if let Some(re) = re_substr {
-                if let Some(caps) = re.captures(condition.trim()) {
-                    let substring = caps[1].to_string();
-                    let name = caps[2].to_string();
-                    if target_direction == 0 {
-                        assignments.push(vec![(name.clone(), serde_json::json!(format!("prefix{substring}suffix")))]);
-                    } else {
-                        assignments.push(vec![(name.clone(), serde_json::json!("no_match_here"))]);
-                    }
+            if let Some(caps) = RE_SUBSTR.captures(condition.trim()) {
+                let substring = caps[1].to_string();
+                let name = caps[2].to_string();
+                if target_direction == 0 {
+                    assignments.push(vec![(name.clone(), serde_json::json!(format!("prefix{substring}suffix")))]);
+                } else {
+                    assignments.push(vec![(name.clone(), serde_json::json!("no_match_here"))]);
                 }
             }
         }
 
         // --- len check: len(x) > N ---
         if assignments.is_empty() {
-            let re_len = regex_lite::Regex::new(
-                r#"^len\((\w+)\)\s*(>|>=|==|<|<=)\s*(\d+)$"#
-            ).ok();
-            if let Some(re) = re_len {
-                if let Some(caps) = re.captures(condition.trim()) {
-                    let name = caps[1].to_string();
-                    let op = caps[2].to_string();
-                    let n: usize = caps[3].parse().unwrap_or(0);
-                    let target_len = match (op.as_str(), target_direction) {
-                        (">", 0) | (">=", 0) => n + 1,
-                        (">", _) | (">=", _) => if n > 0 { n - 1 } else { 0 },
-                        ("<", 0) | ("<=", 0) => if n > 0 { n - 1 } else { 0 },
-                        ("<", _) | ("<=", _) => n + 1,
-                        ("==", 0) => n,
-                        ("==", _) => n + 1,
-                        _ => 1,
-                    };
-                    let val = "a".repeat(target_len);
-                    assignments.push(vec![(name.clone(), serde_json::json!(val))]);
-                }
+            if let Some(caps) = RE_LEN.captures(condition.trim()) {
+                let name = caps[1].to_string();
+                let op = caps[2].to_string();
+                let n: usize = caps[3].parse().unwrap_or(0);
+                let target_len = match (op.as_str(), target_direction) {
+                    (">", 0) | (">=", 0) => n + 1,
+                    (">", _) | (">=", _) => if n > 0 { n - 1 } else { 0 },
+                    ("<", 0) | ("<=", 0) => if n > 0 { n - 1 } else { 0 },
+                    ("<", _) | ("<=", _) => n + 1,
+                    ("==", 0) => n,
+                    ("==", _) => n + 1,
+                    _ => 1,
+                };
+                let val = "a".repeat(target_len);
+                assignments.push(vec![(name.clone(), serde_json::json!(val))]);
             }
         }
 
         // --- None/is check ---
         if assignments.is_empty() {
-            let re_is = regex_lite::Regex::new(
-                r#"^(\w+)\s+is\s+(not None|None)$"#
-            ).ok();
-            if let Some(re) = re_is {
-                if let Some(caps) = re.captures(condition.trim()) {
-                    let name = caps[1].to_string();
-                    let check = caps[2].to_string();
-                    match (check.as_str(), target_direction) {
-                        ("None", 0) | ("not None", 1) => {
-                            // Want True for "is None" or False for "is not None" -> use None
-                            assignments.push(vec![(name.clone(), serde_json::json!(null))]);
-                        }
-                        _ => {
-                            // Want a non-None value
-                            assignments.push(vec![(name.clone(), serde_json::json!(0))]);
-                        }
+            if let Some(caps) = RE_IS.captures(condition.trim()) {
+                let name = caps[1].to_string();
+                let check = caps[2].to_string();
+                match (check.as_str(), target_direction) {
+                    ("None", 0) | ("not None", 1) => {
+                        // Want True for "is None" or False for "is not None" -> use None
+                        assignments.push(vec![(name.clone(), serde_json::json!(null))]);
+                    }
+                    _ => {
+                        // Want a non-None value
+                        assignments.push(vec![(name.clone(), serde_json::json!(0))]);
                     }
                 }
             }
@@ -985,6 +974,7 @@ mod tests {
             duration_ms: 0,
             stdout: String::new(),
             stderr: String::new(),
+            input: None,
         };
         s.observe(&result).await.unwrap();
     }
@@ -2375,6 +2365,7 @@ mod tests {
             duration_ms: 100,
             stdout: "output".to_string(),
             stderr: "error".to_string(),
+            input: None,
         };
         s.observe(&result).await.unwrap();
     }
@@ -2390,6 +2381,7 @@ mod tests {
             duration_ms: 5000,
             stdout: String::new(),
             stderr: String::new(),
+            input: None,
         };
         s.observe(&result).await.unwrap();
     }

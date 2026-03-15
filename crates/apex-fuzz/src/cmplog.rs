@@ -73,20 +73,24 @@ impl Default for CmpLog {
 pub fn parse_cmp_hints_from_output(output: &str) -> Vec<CmpEntry> {
     let mut hints = Vec::new();
 
-    // Pattern: "expected <X> but got <Y>" or "expected <X>, got <Y>"
-    let expected_re_str = r"expected\s+(\S+?)[\s,]+(?:but\s+)?got\s+(\S+)";
-    // Pattern: "left=`<X>`, right=`<Y>`" (Rust assert_eq)
-    let left_right_re_str = r"left=`([^`]+)`.*right=`([^`]+)`";
+    use std::sync::LazyLock;
 
-    for pattern in [expected_re_str, left_right_re_str] {
-        if let Ok(re) = regex::Regex::new(pattern) {
-            for caps in re.captures_iter(output) {
-                if let (Some(a), Some(b)) = (caps.get(1), caps.get(2)) {
-                    hints.push(CmpEntry::new(
-                        a.as_str().as_bytes().to_vec(),
-                        b.as_str().as_bytes().to_vec(),
-                    ));
-                }
+    // Pattern: "expected <X> but got <Y>" or "expected <X>, got <Y>"
+    static EXPECTED_RE: LazyLock<regex::Regex> = LazyLock::new(|| {
+        regex::Regex::new(r"expected\s+(\S+?)[\s,]+(?:but\s+)?got\s+(\S+)").unwrap()
+    });
+    // Pattern: "left=`<X>`, right=`<Y>`" (Rust assert_eq)
+    static LEFT_RIGHT_RE: LazyLock<regex::Regex> = LazyLock::new(|| {
+        regex::Regex::new(r"left=`([^`]+)`.*right=`([^`]+)`").unwrap()
+    });
+
+    for re in [&*EXPECTED_RE, &*LEFT_RIGHT_RE] {
+        for caps in re.captures_iter(output) {
+            if let (Some(a), Some(b)) = (caps.get(1), caps.get(2)) {
+                hints.push(CmpEntry::new(
+                    a.as_str().as_bytes().to_vec(),
+                    b.as_str().as_bytes().to_vec(),
+                ));
             }
         }
     }

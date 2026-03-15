@@ -7,6 +7,7 @@
 use crate::finding::{Finding, FindingCategory, Severity};
 use regex::Regex;
 use std::path::PathBuf;
+use std::sync::LazyLock;
 use uuid::Uuid;
 
 /// SQL execution function patterns.
@@ -20,21 +21,24 @@ const SQL_EXEC_PATTERNS: &[&str] = &[
     "session.execute(",
 ];
 
+// Pattern 1: f-string with SQL keywords
+static FSTRING_SQL_RE: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r#"f["'](?i)(SELECT|INSERT|UPDATE|DELETE|DROP)\s.*\{[^}]+\}.*["']"#).unwrap()
+});
+
+// Pattern 2: % formatting with SQL keywords
+static PERCENT_SQL_RE: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r#"["'](?i)(SELECT|INSERT|UPDATE|DELETE|DROP)\s.*%[sd].*["']\s*%"#).unwrap()
+});
+
+// Pattern 3: String concatenation with SQL keywords
+static CONCAT_SQL_RE: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r#"["'](?i)(SELECT|INSERT|UPDATE|DELETE|DROP)\s.*["']\s*\+"#).unwrap()
+});
+
 /// Scan source code for SQL injection vulnerabilities.
 pub fn scan_sql_injection(source: &str, file_path: &str) -> Vec<Finding> {
     let mut findings = Vec::new();
-
-    // Pattern 1: f-string with SQL keywords
-    let fstring_sql =
-        Regex::new(r#"f["'](?i)(SELECT|INSERT|UPDATE|DELETE|DROP)\s.*\{[^}]+\}.*["']"#).unwrap();
-
-    // Pattern 2: % formatting with SQL keywords
-    let percent_sql =
-        Regex::new(r#"["'](?i)(SELECT|INSERT|UPDATE|DELETE|DROP)\s.*%[sd].*["']\s*%"#).unwrap();
-
-    // Pattern 3: String concatenation with SQL keywords
-    let concat_sql =
-        Regex::new(r#"["'](?i)(SELECT|INSERT|UPDATE|DELETE|DROP)\s.*["']\s*\+"#).unwrap();
 
     for (line_num, line) in source.lines().enumerate() {
         let line_1based = (line_num + 1) as u32;
@@ -50,9 +54,9 @@ pub fn scan_sql_injection(source: &str, file_path: &str) -> Vec<Finding> {
             continue;
         }
 
-        let is_vuln = fstring_sql.is_match(trimmed)
-            || percent_sql.is_match(trimmed)
-            || concat_sql.is_match(trimmed);
+        let is_vuln = FSTRING_SQL_RE.is_match(trimmed)
+            || PERCENT_SQL_RE.is_match(trimmed)
+            || CONCAT_SQL_RE.is_match(trimmed);
 
         if is_vuln {
             findings.push(Finding {

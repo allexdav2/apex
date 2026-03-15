@@ -142,10 +142,16 @@ fn intersect(
 ) -> NodeId {
     while a != b {
         while order.get(&a) > order.get(&b) {
-            a = *idom.get(&a).unwrap_or(&a);
+            match idom.get(&a) {
+                Some(&parent) if parent != a => a = parent,
+                _ => return a,
+            }
         }
         while order.get(&b) > order.get(&a) {
-            b = *idom.get(&b).unwrap_or(&b);
+            match idom.get(&b) {
+                Some(&parent) if parent != b => b = parent,
+                _ => return b,
+            }
         }
     }
     a
@@ -767,6 +773,18 @@ mod tests {
         assert!(reached.contains(&b));
         assert!(reached.contains(&c));
         assert!(!reached.contains(&d), "d should be unreachable");
+    }
+
+    #[test]
+    fn intersect_missing_idom_terminates() {
+        let mut idom = HashMap::new();
+        let mut order = HashMap::new();
+        order.insert(0 as NodeId, 0usize);
+        order.insert(1 as NodeId, 1usize);
+        order.insert(2 as NodeId, 2usize);
+        idom.insert(0 as NodeId, 0 as NodeId);
+        let result = intersect(&idom, 2, 1, &order);
+        assert!(result == 1 || result == 2);
     }
 
     #[test]

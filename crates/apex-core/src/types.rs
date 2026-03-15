@@ -143,6 +143,8 @@ pub enum Language {
     Kotlin,
     Go,
     Cpp,
+    Swift,
+    CSharp,
 }
 
 impl std::fmt::Display for Language {
@@ -158,6 +160,8 @@ impl std::fmt::Display for Language {
             Language::Kotlin => "kt",
             Language::Go => "go",
             Language::Cpp => "cpp",
+            Language::Swift => "swift",
+            Language::CSharp => "csharp",
         };
         write!(f, "{s}")
     }
@@ -177,6 +181,8 @@ impl std::str::FromStr for Language {
             "kotlin" | "kt" => Ok(Language::Kotlin),
             "go" | "golang" => Ok(Language::Go),
             "cpp" | "c++" | "cxx" => Ok(Language::Cpp),
+            "swift" => Ok(Language::Swift),
+            "csharp" | "c#" | "cs" | "dotnet" => Ok(Language::CSharp),
             other => Err(format!("unknown language: {other}")),
         }
     }

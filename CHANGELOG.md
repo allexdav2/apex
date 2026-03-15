@@ -4,6 +4,10 @@ All notable changes to APEX will be documented in this file.
 
 ## [Unreleased]
 
+### Added
+- C/C++ coverage index with gcov and llvm-cov JSON parsing
+- Ruby branch-level coverage support in SimpleCov parser
+
 ## [0.2.0] — 2026-03-16
 
 ### Added

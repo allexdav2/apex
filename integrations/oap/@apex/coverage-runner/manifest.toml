@@ -1,0 +1,39 @@
+[oap]
+spec_version = "0.1.0"
+
+[agent]
+name = "apex-coverage-runner"
+version = "0.1.0"
+description = "Multi-round coverage improvement agent — analyzes gaps, writes tests, re-measures, iterates until target reached"
+license = "MIT"
+authors = ["allexdav2"]
+namespace = "@apex"
+keywords = ["coverage", "testing", "test-generation", "multi-round"]
+
+[capabilities]
+required = [
+    "cap:file/read",
+    "cap:file/write",
+    "cap:file/edit",
+    "cap:file/search",
+    "cap:code/search",
+    "cap:shell/exec:apex*",
+    "cap:shell/exec:cargo*",
+    "cap:shell/exec:python*",
+    "cap:shell/exec:go*",
+    "cap:shell/exec:npm*",
+]
+
+[effects]
+declares = [
+    "effect:file/write",
+    "effect:shell/exec",
+]
+
+[hints]
+model_tier = "high"
+autonomy = "read-write"
+max_turns = 50
+
+[distribution]
+registry = "https://github.com/oap-project/oap-market"

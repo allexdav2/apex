@@ -415,7 +415,7 @@ fn find_comparison_op_outside_parens(text: &str) -> Option<(&'static str, usize)
     for &op in OPS {
         if let Some(pos) = find_operator_outside_parens(text, op) {
             // Prefer the leftmost; on tie, the earlier-listed (longer) op wins
-            if best.is_none() || pos < best.unwrap().1 {
+            if best.map_or(true, |(_, prev)| pos < prev) {
                 best = Some((op, pos));
             }
         }

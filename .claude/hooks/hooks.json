@@ -2,12 +2,43 @@
   "hooks": {
     "SubagentStop": [
       {
+        "description": "Ralph — auto-continue crew agents that stop with questions instead of results",
+        "matcher": "apex-crew",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "${CLAUDE_PLUGIN_ROOT}/hooks/ralph-hook.sh"
+          }
+        ]
+      },
+      {
+        "description": "Auto-dispatch officers when crew agents complete implementation work matching SDLC concerns",
+        "matcher": "apex-crew",
+        "hooks": [
+          {
+            "type": "prompt",
+            "prompt": "Determine if the crew agent performed implementation work (code changes). Look for evidence in its response: file paths it wrote/edited, commit messages, branch names, FLEET_NOTIFICATION blocks, or statements like 'created/modified/updated/refactored/fixed/implemented'. Mentions of 'reviewed', 'acknowledged', 'no action needed', or pure Q&A responses do NOT count as implementation work.\n\nIf NO implementation work was performed, do nothing — say nothing.\n\nIf implementation work WAS performed:\n1. Identify the crew name from the response (look for crew name in branch names like fleet/crew/<name>/... or agent self-identification).\n2. Read .fleet/crews/<crew-name>.yaml to get the sdlc_concerns list.\n3. If sdlc_concerns is empty or missing, do nothing — say nothing.\n4. Read all .fleet/officers/*.yaml files.\n5. For each officer, check if ANY of the officer's triggers list items match ANY of the crew's sdlc_concerns items (exact string match).\n6. For each matching officer, dispatch it via the Agent tool with this prompt:\n   'You are the <officer title> (<officer name>).\n   Your config:\n   <full officer YAML contents>\n   ---\n   Auto-dispatched after <crew-name>-crew completed implementation work.\n   Crew config: <crew YAML contents>\n   Changes summary: <extract from crew response: what files were changed and what was done>\n   ---\n   Review the crew\\'s changes against your review_checklist and expertise. Return structured findings with severity (critical/warning/info) and recommendations. Focus only on your domain. Be concise.'\n7. After dispatching, briefly confirm: 'Fleet: auto-dispatched officer review — <officer-names> reviewing <crew-name>-crew changes.'\n\nIf .fleet/ directory does not exist, do nothing."
+          }
+        ]
+      },
+      {
         "description": "Persist crew notification logs when a crew agent reports partner-impacting changes",
         "matcher": "apex-crew",
         "hooks": [
           {
             "type": "prompt",
             "prompt": "Check the crew agent's response for FLEET_NOTIFICATION blocks (HTML comments starting with <!-- FLEET_NOTIFICATION). If none are found, do nothing — say nothing. If one or more are found: 1) Ensure .fleet/changes/ directory exists (create it if not). 2) For each notification block, extract: crew, affected_partners, severity, summary, detail. 3) Write a changelog entry to .fleet/changes/YYYY-MM-DD-<crew>-<short-slug>.md with this format:\n---\ndate: YYYY-MM-DD\ncrew: <crew>\naffected_partners: [<partners>]\nseverity: <severity>\nacknowledged_by: []\n---\n\n<detail text>\n\n4) After writing, briefly confirm: 'Fleet: logged <severity> notification from <crew>-crew affecting <partners>.' 5) If severity is breaking or major, dispatch each affected partner's crew agent with: 'You are the <partner>-crew agent. --- Notification from <crew>-crew [<severity>]: <summary>. <detail> --- Review this notification. If action is needed on your owned paths, describe what should change. If no action needed, acknowledge the change.' For minor/info severity, skip dispatch — the changelog entry is sufficient."
+          }
+        ]
+      }
+    ],
+    "SessionStart": [
+      {
+        "description": "Load fleet context, surface unacknowledged changes, and detect pending bridge work",
+        "hooks": [
+          {
+            "type": "prompt",
+            "prompt": "If .fleet/bridge.yaml does not exist, say nothing. Otherwise:\n\n1. Silently read .fleet/bridge.yaml and all .fleet/crews/*.yaml to understand the fleet structure.\n\n2. Check .fleet/changes/ for entries from the last 24 hours where affected_partners contains crews not yet in acknowledged_by.\n\n3. Run: git branch --list 'fleet/crew/*' 'fleet/review/*' 2>/dev/null — to find pending crew branches.\n\n4. Build a Fleet status block with only the items that apply (skip items with nothing to report):\n   - If unacknowledged changes: 'X unacknowledged change(s) — [crew: summary]. Run /fleet changelog.'\n   - If crew/review branches exist: 'N branch(es) pending merge — [branch list]. Run /fleet bridge release.'\n   - If .fleet/officers/ directory is empty or missing while crews have sdlc_concerns: 'No officers defined — crew changes won\\'t get SDLC review. Run /fleet officer create.'\n\n5. If any items found, output them prefixed with 'Fleet:' on separate lines. If nothing to report, say nothing.\n\nBe brief — one line per item, no extra formatting."
           }
         ]
       }

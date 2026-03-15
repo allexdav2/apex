@@ -1652,4 +1652,205 @@ mod tests {
         };
         assert_eq!(unique_count, 5);
     }
+
+    // -- Bug-exposing tests from Round 2 agents ----------------------------------
+
+    /// BUG: proto_to_core_branch silently truncates col values > u16::MAX.
+    #[tokio::test]
+    async fn bug_proto_to_core_branch_truncates_col_overflow() {
+        let proto = ProtoBranchId {
+            file_id: 1,
+            line: 1,
+            col: 70000,
+            direction: 0,
+        };
+        let core = proto_to_core_branch(&proto);
+        assert_eq!(core.col, 4464, "BUG: col 70000 silently truncated via `as u16`");
+        assert_ne!(core.col as u32, 70000, "col=70000 NOT preserved — data loss");
+    }
+
+    /// BUG: proto_to_core_branch silently truncates direction > u8::MAX.
+    #[tokio::test]
+    async fn bug_proto_to_core_branch_truncates_direction_overflow() {
+        let proto = ProtoBranchId {
+            file_id: 1,
+            line: 1,
+            col: 0,
+            direction: 256,
+        };
+        let core = proto_to_core_branch(&proto);
+        assert_eq!(core.direction, 0, "BUG: direction 256 truncated via `as u8`");
+    }
+
+    /// BUG: Two proto branches with same low bits of col collide after conversion.
+    #[tokio::test]
+    async fn bug_col_truncation_causes_branch_collision() {
+        let proto_a = ProtoBranchId { file_id: 1, line: 1, col: 100, direction: 0 };
+        let proto_b = ProtoBranchId { file_id: 1, line: 1, col: 65636, direction: 0 };
+        let core_a = proto_to_core_branch(&proto_a);
+        let core_b = proto_to_core_branch(&proto_b);
+        assert_eq!(core_a.col, core_b.col, "BUG: col=100 and col=65636 collide");
+    }
+
+    /// BUG: Empty oracle reports 100% coverage instead of 0%.
+    #[tokio::test]
+    async fn bug_empty_oracle_reports_100_percent_coverage() {
+        let oracle = Arc::new(CoverageOracle::new());
+        let service = CoordinatorService::new(oracle);
+        let snap = service
+            .get_coverage(Request::new(Empty {}))
+            .await
+            .unwrap()
+            .into_inner();
+        assert_eq!(snap.total_branches, 0);
+        assert_eq!(snap.covered_branches, 0);
+        assert!(
+            (snap.coverage_percent - 100.0).abs() < 0.01,
+            "BUG: empty oracle reports {}% (semantically wrong)",
+            snap.coverage_percent
+        );
+    }
+
+    /// BUG: submit_results ignores proto seed_id, creates new SeedId::new().
+    #[tokio::test]
+    async fn bug_submit_results_ignores_proto_seed_id() {
+        let oracle = make_oracle();
+        let service = CoordinatorService::new(oracle.clone());
+        let resp = service
+            .submit_results(Request::new(ResultBatch {
+                worker_id: "w1".into(),
+                results: vec![ProtoResult {
+                    seed_id: "my-specific-seed-42".into(),
+                    status: "pass".into(),
+                    new_branches: vec![ProtoBranchId { file_id: 1, line: 1, col: 0, direction: 0 }],
+                    duration_ms: 10,
+                    stdout: String::new(),
+                    stderr: String::new(),
+                }],
+            }))
+            .await
+            .unwrap()
+            .into_inner();
+        assert_eq!(resp.new_coverage_count, 1);
+        assert_eq!(oracle.covered_count(), 1);
+    }
+
+    /// BUG: Duplicate registration accepted with different session IDs.
+    #[tokio::test]
+    async fn bug_duplicate_registration_accepted() {
+        let oracle = make_oracle();
+        let service = CoordinatorService::new(oracle);
+        let r1 = service
+            .register(Request::new(WorkerInfo { worker_id: "w1".into(), language: "python".into(), capacity: 4 }))
+            .await.unwrap().into_inner();
+        let r2 = service
+            .register(Request::new(WorkerInfo { worker_id: "w1".into(), language: "python".into(), capacity: 4 }))
+            .await.unwrap().into_inner();
+        assert!(r1.accepted);
+        assert!(r2.accepted);
+        assert_ne!(r1.session_id, r2.session_id);
+    }
+
+    /// BUG: Heartbeat from unregistered worker returns ok=true.
+    #[tokio::test]
+    async fn bug_heartbeat_from_unregistered_worker_accepted() {
+        let oracle = make_oracle();
+        let service = CoordinatorService::new(oracle);
+        let resp = service
+            .send_heartbeat(Request::new(Heartbeat { worker_id: "never-registered".into(), active_seeds: 42 }))
+            .await.unwrap().into_inner();
+        assert!(resp.ok);
+    }
+
+    /// BUG: submit_results from unregistered worker is accepted.
+    #[tokio::test]
+    async fn bug_submit_from_unregistered_worker_accepted() {
+        let oracle = make_oracle();
+        let service = CoordinatorService::new(oracle.clone());
+        let resp = service
+            .submit_results(Request::new(ResultBatch {
+                worker_id: "ghost".into(),
+                results: vec![ProtoResult {
+                    seed_id: "s1".into(),
+                    status: "pass".into(),
+                    new_branches: vec![ProtoBranchId { file_id: 1, line: 1, col: 0, direction: 0 }],
+                    duration_ms: 10,
+                    stdout: String::new(),
+                    stderr: String::new(),
+                }],
+            }))
+            .await.unwrap().into_inner();
+        assert_eq!(resp.new_coverage_count, 1);
+    }
+
+    /// BUG: get_seeds from unregistered worker succeeds.
+    #[tokio::test]
+    async fn bug_get_seeds_from_unregistered_worker_accepted() {
+        let oracle = make_oracle();
+        let service = CoordinatorService::new(oracle);
+        service.enqueue_seeds(vec![InputSeed { id: "s1".into(), data: vec![1], origin: "test".into() }]).await;
+        let resp = service
+            .get_seeds(Request::new(SeedRequest { worker_id: "unauthorized".into(), max_seeds: 10 }))
+            .await.unwrap().into_inner();
+        assert_eq!(resp.seeds.len(), 1);
+    }
+
+    /// Concurrent seed enqueue: verify no seeds lost.
+    #[tokio::test]
+    async fn test_concurrent_enqueue_and_drain() {
+        let oracle = make_oracle();
+        let service = Arc::new(CoordinatorService::new(oracle));
+        let mut handles = vec![];
+        for batch in 0..10u8 {
+            let svc = service.clone();
+            handles.push(tokio::spawn(async move {
+                svc.enqueue_seeds(vec![InputSeed {
+                    id: format!("batch-{batch}"),
+                    data: vec![batch],
+                    origin: "concurrent".into(),
+                }]).await;
+            }));
+        }
+        for h in handles { h.await.unwrap(); }
+        let resp = service.get_seeds(Request::new(SeedRequest { worker_id: "w1".into(), max_seeds: 100 }))
+            .await.unwrap().into_inner();
+        assert_eq!(resp.seeds.len(), 10);
+    }
+
+    /// Concurrent submit same branch: only one reports new coverage.
+    #[tokio::test]
+    async fn test_concurrent_submit_same_branch() {
+        let oracle = make_oracle();
+        let service = Arc::new(CoordinatorService::new(oracle.clone()));
+        let mut handles = vec![];
+        for i in 0..10u32 {
+            let svc = service.clone();
+            handles.push(tokio::spawn(async move {
+                svc.submit_results(Request::new(ResultBatch {
+                    worker_id: format!("w{i}"),
+                    results: vec![ProtoResult {
+                        seed_id: format!("s{i}"),
+                        status: "pass".into(),
+                        new_branches: vec![ProtoBranchId { file_id: 1, line: 1, col: 0, direction: 0 }],
+                        duration_ms: 10,
+                        stdout: String::new(),
+                        stderr: String::new(),
+                    }],
+                })).await.unwrap().into_inner().new_coverage_count
+            }));
+        }
+        let mut total_new: u64 = 0;
+        for h in handles { total_new += h.await.unwrap(); }
+        assert_eq!(total_new, 1, "Only one submit should report new coverage");
+    }
+
+    /// Roundtrip lossy for large col values.
+    #[tokio::test]
+    async fn bug_roundtrip_lossy_for_large_col() {
+        let proto_orig = ProtoBranchId { file_id: 1, line: 1, col: 80000, direction: 300 };
+        let core = proto_to_core_branch(&proto_orig);
+        let proto_back = core_to_proto_branch(&core);
+        assert_ne!(proto_orig.col, proto_back.col, "BUG: col data lost in roundtrip");
+        assert_ne!(proto_orig.direction, proto_back.direction, "BUG: direction data lost");
+    }
 }

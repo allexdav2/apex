@@ -4,12 +4,23 @@ All notable changes to APEX will be documented in this file.
 
 ## [Unreleased]
 
+## [0.2.1] — 2026-03-16
+
 ### Fixed
 - **CWE-88 argument injection** — validate git refs in `apex diff --base` to reject flag-like values starting with `-` or containing `..`
 - **Path traversal in MCP handlers** — canonicalize `params.target` in all MCP tool endpoints before subprocess dispatch
 - **Output path validation** — canonicalize `--output` paths in `audit`, `docs`, and `compliance` subcommands
 - **Secret-scan false positives** — suppress high-entropy string matches in instrumentation templates, detector source files, and `const` string declarations
 - **Dependency-audit graceful fallback** — return info-level finding instead of error when `cargo-audit`/`pip-audit`/`npm audit` are not installed
+
+### Added
+- **+132 hunt tests** across 5 crates (apex-detect, apex-index, apex-instrument, apex-agent, apex-cli) raising line coverage 92.7% → 93.0%
+
+### Bugs Found
+- `schema_check.rs` — `safe_count` field permanently 0 (dead field, never populated)
+- `dep_graph.rs` — DFS cycle detection misses cycles via previously-visited nodes
+- `csharp.rs` indexer — compact/minified XML silently drops all branches
+- `csharp.rs` instrumenter — class context leak on same-line `</class>` tags
 
 ## [0.2.0] — 2026-03-16
 

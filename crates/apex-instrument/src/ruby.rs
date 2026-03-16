@@ -204,4 +204,124 @@ mod tests {
         let (a2, _, _) = parse_simplecov_json(json);
         assert_eq!(a1[0].file_id, a2[0].file_id);
     }
+
+    // --- New tests targeting uncovered regions ---
+
+    // Target: FileCoverage::Detailed variant — serde_json untagged enum deserialization
+    // The existing tests use {"lines": [...]} which matches both variants (untagged).
+    // DetailedCoverage would be exercised when the JSON has additional fields.
+    // Since both variants have the same fields, we verify the Detailed path
+    // by checking that extra fields do not cause a parse error.
+    #[test]
+    fn parse_simplecov_detailed_coverage_variant() {
+        // Extra "branches" key causes serde to pick the second untagged variant (Detailed)
+        // if the untagged resolver tries them in order and the first one fails.
+        // Even if both match, the result should be correct.
+        let json = r#"{"coverage":{"lib/foo.rb":{"lines":[null,2,0,null,1],"branches":{}}}}"#;
+        let (all, exec, files) = parse_simplecov_json(json);
+        // 3 executable lines (non-null)
+        assert_eq!(all.len(), 3);
+        // 2 executed (count > 0: 2 and 1)
+        assert_eq!(exec.len(), 2);
+        assert_eq!(files.len(), 1);
+    }
+
+    // Target: parse_simplecov_json — line count exactly 0 produces no entry in executed
+    #[test]
+    fn parse_simplecov_zero_count_not_executed() {
+        let json = r#"{"coverage":{"x.rb":{"lines":[0]}}}"#;
+        let (all, exec, _) = parse_simplecov_json(json);
+        assert_eq!(all.len(), 1);
+        assert!(exec.is_empty());
+    }
+
+    // Target: parse_simplecov_json — line count of exactly 1 is executed
+    #[test]
+    fn parse_simplecov_count_one_is_executed() {
+        let json = r#"{"coverage":{"x.rb":{"lines":[1]}}}"#;
+        let (all, exec, _) = parse_simplecov_json(json);
+        assert_eq!(all.len(), 1);
+        assert_eq!(exec.len(), 1);
+    }
+
+    // Target: parse_simplecov_json — large u64 line count treated as executed
+    #[test]
+    fn parse_simplecov_large_count_executed() {
+        let json = r#"{"coverage":{"x.rb":{"lines":[9999999999]}}}"#;
+        let (all, exec, _) = parse_simplecov_json(json);
+        assert_eq!(all.len(), 1);
+        assert_eq!(exec.len(), 1);
+        assert_eq!(exec[0].direction, 0);
+    }
+
+    // Target: parse_simplecov_json — empty lines array produces no branches
+    #[test]
+    fn parse_simplecov_empty_lines_array() {
+        let json = r#"{"coverage":{"x.rb":{"lines":[]}}}"#;
+        let (all, exec, files) = parse_simplecov_json(json);
+        assert!(all.is_empty());
+        assert!(exec.is_empty());
+        assert_eq!(files.len(), 1);
+    }
+
+    // Target: parse_simplecov_json — unicode file path is stored correctly
+    #[test]
+    fn parse_simplecov_unicode_file_path() {
+        let json = "{\"coverage\":{\"\u{4e2d}\u{6587}/\u{6a21}\u{578b}.rb\":{\"lines\":[1,null,2]}}}";
+        let (all, exec, files) = parse_simplecov_json(json);
+        assert_eq!(all.len(), 2);
+        assert_eq!(exec.len(), 2);
+        assert_eq!(files.len(), 1);
+        let path_str = files.values().next().unwrap().to_string_lossy();
+        assert!(path_str.contains('\u{4e2d}'));
+    }
+
+    // Target: parse_simplecov_json — line number is 1-indexed (first line = line 1)
+    #[test]
+    fn parse_simplecov_line_numbers_one_indexed() {
+        let json = r#"{"coverage":{"x.rb":{"lines":[null,null,5]}}}"#;
+        let (all, _, _) = parse_simplecov_json(json);
+        assert_eq!(all.len(), 1);
+        // Third element (index 2) -> line 3
+        assert_eq!(all[0].line, 3);
+    }
+
+    // Target: parse_simplecov_json — all lines executed (all positive counts)
+    #[test]
+    fn parse_simplecov_all_executed() {
+        let json = r#"{"coverage":{"x.rb":{"lines":[3,1,7]}}}"#;
+        let (all, exec, _) = parse_simplecov_json(json);
+        assert_eq!(all.len(), 3);
+        assert_eq!(exec.len(), 3);
+    }
+
+    // Target: parse_simplecov_json — mixed null and zero with executed
+    #[test]
+    fn parse_simplecov_mixed_null_zero_executed() {
+        let json = r#"{"coverage":{"x.rb":{"lines":[null,0,1,null,0,2]}}}"#;
+        let (all, exec, _) = parse_simplecov_json(json);
+        // 4 non-null = 4 executable
+        assert_eq!(all.len(), 4);
+        // 2 executed (count > 0: 1 and 2)
+        assert_eq!(exec.len(), 2);
+    }
+
+    // Target: with_runner constructor
+    #[test]
+    fn ruby_instrumentor_with_runner_constructs() {
+        use apex_core::command::RealCommandRunner;
+        let runner = Arc::new(RealCommandRunner);
+        let inst = RubyInstrumentor::with_runner(runner);
+        // Verify branch_ids() works on constructed instance
+        assert_eq!(inst.branch_ids().len(), 0);
+    }
+
+    // Target: parse_simplecov_json — multiple files have distinct file_ids
+    #[test]
+    fn parse_simplecov_multiple_files_distinct_ids() {
+        let json = r#"{"coverage":{"a.rb":{"lines":[1]},"b.rb":{"lines":[2]}}}"#;
+        let (all, _, _) = parse_simplecov_json(json);
+        assert_eq!(all.len(), 2);
+        assert_ne!(all[0].file_id, all[1].file_id);
+    }
 }

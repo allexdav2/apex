@@ -282,4 +282,276 @@ mod tests {
         );
         assert_eq!(extract_xml_attr(tag, "missing"), None);
     }
+
+    // Target: lines 41-50 — missing/malformed XML attribute error paths
+    // These are the `continue` branches when number/hits are absent or non-numeric.
+    #[test]
+    fn bug_parse_csharp_coverage_line_missing_number_attr() {
+        // <line> tag with no "number" attribute — should be skipped (line 41-42)
+        let xml = r#"<coverage><packages><package><classes>
+<class filename="A.cs"><lines>
+<line hits="5" />
+<line number="10" hits="1" />
+</lines></class>
+</classes></package></packages></coverage>"#;
+        let tmp = tempfile::tempdir().unwrap();
+        let (branches, _) = parse_csharp_coverage(xml, tmp.path());
+        // Only the well-formed line should be parsed
+        assert_eq!(branches.len(), 1, "line missing 'number' attr must be skipped");
+        assert_eq!(branches[0].line, 10);
+    }
+
+    // Target: lines 43-44 — missing hits attribute
+    #[test]
+    fn bug_parse_csharp_coverage_line_missing_hits_attr() {
+        // <line> tag with no "hits" attribute — should be skipped (line 43-44)
+        let xml = r#"<coverage><packages><package><classes>
+<class filename="B.cs"><lines>
+<line number="5" />
+<line number="7" hits="2" />
+</lines></class>
+</classes></package></packages></coverage>"#;
+        let tmp = tempfile::tempdir().unwrap();
+        let (branches, _) = parse_csharp_coverage(xml, tmp.path());
+        assert_eq!(branches.len(), 1, "line missing 'hits' attr must be skipped");
+        assert_eq!(branches[0].line, 7);
+    }
+
+    // Target: lines 46-48 — non-numeric line number
+    #[test]
+    fn bug_parse_csharp_coverage_line_nonnumeric_number() {
+        // "number" attribute has non-numeric value — should be skipped (line 46-48)
+        let xml = r#"<coverage><packages><package><classes>
+<class filename="C.cs"><lines>
+<line number="abc" hits="1" />
+<line number="10" hits="1" />
+</lines></class>
+</classes></package></packages></coverage>"#;
+        let tmp = tempfile::tempdir().unwrap();
+        let (branches, _) = parse_csharp_coverage(xml, tmp.path());
+        assert_eq!(branches.len(), 1, "non-numeric line number must be skipped");
+        assert_eq!(branches[0].line, 10);
+    }
+
+    // Target: lines 49-50 — non-numeric hits value
+    #[test]
+    fn bug_parse_csharp_coverage_line_nonnumeric_hits() {
+        // "hits" attribute has non-numeric value — should be skipped (line 49-50)
+        let xml = r#"<coverage><packages><package><classes>
+<class filename="D.cs"><lines>
+<line number="3" hits="N/A" />
+<line number="4" hits="0" />
+</lines></class>
+</classes></package></packages></coverage>"#;
+        let tmp = tempfile::tempdir().unwrap();
+        let (branches, _) = parse_csharp_coverage(xml, tmp.path());
+        assert_eq!(branches.len(), 1, "non-numeric hits must be skipped");
+        assert_eq!(branches[0].line, 4);
+        assert_eq!(branches[0].direction, 1); // hits=0
+    }
+
+    // Target: lines 41-50 — lines outside any <class> block are ignored
+    #[test]
+    fn bug_parse_csharp_coverage_line_outside_class_ignored() {
+        // <line> elements outside a <class> tag must not be indexed
+        let xml = r#"<coverage>
+<line number="99" hits="5" />
+<packages><package><classes>
+<class filename="E.cs"><lines>
+<line number="1" hits="1" />
+</lines></class>
+</classes></package></packages></coverage>"#;
+        let tmp = tempfile::tempdir().unwrap();
+        let (branches, _) = parse_csharp_coverage(xml, tmp.path());
+        assert_eq!(branches.len(), 1, "lines outside <class> must be ignored");
+        assert_eq!(branches[0].line, 1);
+    }
+
+    // Target: lines 164-199 — find_coverage_xml returns error when TestResults absent
+    #[test]
+    fn bug_find_coverage_xml_no_test_results_dir() {
+        let tmp = tempfile::tempdir().unwrap();
+        // No TestResults directory exists
+        let result = find_coverage_xml(tmp.path());
+        assert!(result.is_err());
+        let msg = result.unwrap_err().to_string();
+        assert!(
+            msg.contains("TestResults"),
+            "error should mention TestResults, got: {msg}"
+        );
+    }
+
+    // Target: lines 176-198 — TestResults exists but contains no coverage XML
+    #[test]
+    fn bug_find_coverage_xml_empty_test_results() {
+        let tmp = tempfile::tempdir().unwrap();
+        std::fs::create_dir(tmp.path().join("TestResults")).unwrap();
+        let result = find_coverage_xml(tmp.path());
+        assert!(result.is_err());
+        let msg = result.unwrap_err().to_string();
+        assert!(
+            msg.contains("coverage.cobertura.xml"),
+            "error should mention coverage file, got: {msg}"
+        );
+    }
+
+    // Target: lines 178-193 — TestResults with subdirs but no coverage XML in them
+    #[test]
+    fn bug_find_coverage_xml_subdir_without_xml() {
+        let tmp = tempfile::tempdir().unwrap();
+        let test_results = tmp.path().join("TestResults");
+        std::fs::create_dir(&test_results).unwrap();
+        // A subdirectory exists but contains no coverage.cobertura.xml
+        let run_dir = test_results.join("run-guid-abc123");
+        std::fs::create_dir(&run_dir).unwrap();
+        std::fs::write(run_dir.join("other.xml"), "<other/>").unwrap();
+
+        let result = find_coverage_xml(tmp.path());
+        assert!(result.is_err());
+    }
+
+    // Target: lines 178-193 — TestResults with a valid coverage.cobertura.xml
+    #[test]
+    fn bug_find_coverage_xml_finds_xml() {
+        let tmp = tempfile::tempdir().unwrap();
+        let test_results = tmp.path().join("TestResults");
+        std::fs::create_dir(&test_results).unwrap();
+        let run_dir = test_results.join("run-guid-abc123");
+        std::fs::create_dir(&run_dir).unwrap();
+        let xml_path = run_dir.join("coverage.cobertura.xml");
+        std::fs::write(&xml_path, "<coverage/>").unwrap();
+
+        let result = find_coverage_xml(tmp.path());
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), xml_path);
+    }
+
+    // Target: lines 184-192 — newest XML wins when multiple runs exist
+    #[test]
+    fn bug_find_coverage_xml_picks_newest() {
+        let tmp = tempfile::tempdir().unwrap();
+        let test_results = tmp.path().join("TestResults");
+        std::fs::create_dir(&test_results).unwrap();
+
+        let run1 = test_results.join("run-001");
+        std::fs::create_dir(&run1).unwrap();
+        let xml1 = run1.join("coverage.cobertura.xml");
+        std::fs::write(&xml1, "<coverage version='1'/>").unwrap();
+
+        // Small sleep to ensure different mtime
+        std::thread::sleep(std::time::Duration::from_millis(10));
+
+        let run2 = test_results.join("run-002");
+        std::fs::create_dir(&run2).unwrap();
+        let xml2 = run2.join("coverage.cobertura.xml");
+        std::fs::write(&xml2, "<coverage version='2'/>").unwrap();
+
+        let result = find_coverage_xml(tmp.path()).unwrap();
+        assert_eq!(result, xml2, "newest coverage XML should be returned");
+    }
+
+    // Target: lines 71-77 — derive_relative_path strips target_root prefix
+    #[test]
+    fn derive_relative_path_strips_prefix() {
+        let tmp = tempfile::tempdir().unwrap();
+        let full = tmp.path().join("src/Program.cs");
+        let rel = derive_relative_path(full.to_str().unwrap(), tmp.path());
+        assert_eq!(rel, "src/Program.cs");
+    }
+
+    // Target: derive_relative_path returns path as-is when no prefix match
+    #[test]
+    fn derive_relative_path_no_match_returns_original() {
+        let rel = derive_relative_path("unrelated/path.cs", std::path::Path::new("/other/root"));
+        assert_eq!(rel, "unrelated/path.cs");
+    }
+
+    // Target: build_traces_from_output with no matching lines
+    #[test]
+    fn build_traces_empty_output() {
+        let branches = vec![BranchId::new(1, 1, 0, 0)];
+        let traces = build_traces_from_output("  Running test suite...\n  Build succeeded.\n", &branches);
+        assert!(traces.is_empty());
+    }
+
+    // Target: build_traces_from_output with empty branches slice
+    #[test]
+    fn build_traces_empty_branches() {
+        let stdout = "  Passed SomeTest\n";
+        let traces = build_traces_from_output(stdout, &[]);
+        assert_eq!(traces.len(), 1);
+        assert!(traces[0].branches.is_empty());
+    }
+
+    // Target: lines 108-158 — parse_csharp_coverage with absolute path matching target_root
+    #[test]
+    fn parse_csharp_coverage_absolute_path_stripped() {
+        let tmp = tempfile::tempdir().unwrap();
+        let abs_path = tmp.path().join("src/Foo.cs").to_string_lossy().to_string();
+        let xml = format!(
+            r#"<coverage><packages><package><classes>
+<class filename="{abs_path}"><lines>
+<line number="1" hits="1" />
+</lines></class>
+</classes></package></packages></coverage>"#
+        );
+        let (branches, file_paths) = parse_csharp_coverage(&xml, tmp.path());
+        assert_eq!(branches.len(), 1);
+        // Path should be stored as relative
+        let stored = file_paths.values().next().unwrap();
+        assert!(!stored.to_string_lossy().starts_with('/'), "path should be relative, got: {stored:?}");
+    }
+
+    // Target: multiple classes, same file registered only once
+    // NOTE: The parser is line-based; each element must be on its own line.
+    // Elements crammed on one line are not parsed — this is by design (Cobertura
+    // from dotnet always emits one element per line).
+    #[test]
+    fn parse_csharp_coverage_duplicate_file_deduplicated() {
+        let xml = r#"<coverage><packages><package><classes>
+<class filename="Dup.cs">
+  <lines>
+    <line number="1" hits="1" />
+  </lines>
+</class>
+<class filename="Dup.cs">
+  <lines>
+    <line number="2" hits="0" />
+  </lines>
+</class>
+</classes></package></packages></coverage>"#;
+        let tmp = tempfile::tempdir().unwrap();
+        let (branches, file_paths) = parse_csharp_coverage(xml, tmp.path());
+        assert_eq!(branches.len(), 2);
+        assert_eq!(file_paths.len(), 1, "same file should appear once in file_paths");
+    }
+
+    // WRONG: The line-based parser cannot handle elements crammed on one line.
+    // When <class ...><lines><line .../></lines></class> is all on one line,
+    // the <line> element is never seen and branches are silently dropped.
+    // Cobertura from `dotnet test` always emits one element per line, but
+    // compact/minimised XML (e.g. from third-party tools) will be mis-parsed.
+    #[test]
+    fn bug_parse_csharp_coverage_inline_elements_silently_dropped() {
+        // All on one line — parser sees only the <class> open tag, not the <line>
+        let xml = "<coverage><packages><package><classes><class filename=\"Inline.cs\"><lines><line number=\"1\" hits=\"1\" /></lines></class></classes></package></packages></coverage>";
+        let tmp = tempfile::tempdir().unwrap();
+        let (branches, _) = parse_csharp_coverage(xml, tmp.path());
+        // WRONG: branches is empty, but should be 1 for compact XML
+        // This documents the known limitation of the line-based parser.
+        assert_eq!(branches.len(), 0, "documented limitation: inline XML elements are silently dropped");
+    }
+
+    // Target: <class> without filename attribute — should not crash, just skips
+    #[test]
+    fn bug_parse_csharp_coverage_class_missing_filename() {
+        let xml = r#"<coverage><packages><package><classes>
+<class name="NoFilename"><lines><line number="1" hits="1" /></lines></class>
+</classes></package></packages></coverage>"#;
+        let tmp = tempfile::tempdir().unwrap();
+        let (branches, file_paths) = parse_csharp_coverage(xml, tmp.path());
+        // No filename -> no branches indexed, no crash
+        assert!(branches.is_empty());
+        assert!(file_paths.is_empty());
+    }
 }

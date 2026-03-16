@@ -295,4 +295,162 @@ example.com/foo/handler.go:10.14,12.2 1 0
         let result = derive_relative_path("example.com/foo/bar.go", tmp.path());
         assert_eq!(result, "foo/bar.go");
     }
+
+    // --- New tests targeting uncovered regions ---
+
+    // Target: derive_relative_path — path traversal in coverage output is rejected
+    // The guard `candidate.starts_with(target_root)` blocks `../../etc/passwd`.
+    #[test]
+    fn derive_relative_path_blocks_traversal() {
+        let tmp = tempfile::tempdir().unwrap();
+        // Build a path that, when suffixed, would escape target_root
+        let result = derive_relative_path("a/../../etc/passwd", tmp.path());
+        // No real file exists there; the fallback returns the original string
+        assert_eq!(result, "a/../../etc/passwd");
+    }
+
+    // Target: derive_relative_path — empty string input
+    #[test]
+    fn derive_relative_path_empty_string() {
+        let tmp = tempfile::tempdir().unwrap();
+        // Empty path: split('/') yields [""], parts.len() == 1, loop doesn't run
+        let result = derive_relative_path("", tmp.path());
+        assert_eq!(result, "");
+    }
+
+    // Target: derive_relative_path — direct relative file found at root
+    #[test]
+    fn derive_relative_path_direct_relative() {
+        let tmp = tempfile::tempdir().unwrap();
+        std::fs::write(tmp.path().join("main.go"), "package main").unwrap();
+        let result = derive_relative_path("main.go", tmp.path());
+        // Exists directly under target_root
+        assert_eq!(result, "main.go");
+    }
+
+    // Target: parse_coverage_out — completely blank input (no mode line)
+    #[test]
+    fn parse_coverage_out_completely_blank() {
+        let tmp = tempfile::tempdir().unwrap();
+        let (all, executed, file_paths) = parse_coverage_out("", tmp.path());
+        assert!(all.is_empty());
+        assert!(executed.is_empty());
+        assert!(file_paths.is_empty());
+    }
+
+    // Target: parse_coverage_out — whitespace-only lines are skipped
+    #[test]
+    fn parse_coverage_out_whitespace_lines_skipped() {
+        let input = "mode: atomic\n   \n\t\npkg/foo.go:1.1,2.1 1 1\n";
+        let tmp = tempfile::tempdir().unwrap();
+        let (all, _, _) = parse_coverage_out(input, tmp.path());
+        assert_eq!(all.len(), 2);
+    }
+
+    // Target: parse_coverage_out — line with only one space token (missing count) is skipped
+    #[test]
+    fn parse_coverage_out_missing_count_token_skipped() {
+        let input = "mode: atomic\npkg/foo.go:1.1,2.1 1\n";
+        let tmp = tempfile::tempdir().unwrap();
+        let (all, _, _) = parse_coverage_out(input, tmp.path());
+        // rsplit_once(' ') yields ("pkg/foo.go:1.1,2.1", "1") then second rsplit_once fails
+        assert!(all.is_empty());
+    }
+
+    // Target: parse_coverage_out — non-numeric count is skipped
+    #[test]
+    fn parse_coverage_out_non_numeric_count_skipped() {
+        let input = "mode: atomic\npkg/foo.go:1.1,2.1 1 abc\n";
+        let tmp = tempfile::tempdir().unwrap();
+        let (all, _, _) = parse_coverage_out(input, tmp.path());
+        assert!(all.is_empty());
+    }
+
+    // Target: parse_coverage_out — no colon in file_range is skipped
+    #[test]
+    fn parse_coverage_out_no_colon_in_file_range_skipped() {
+        let input = "mode: atomic\nnocolon 1 3\n";
+        let tmp = tempfile::tempdir().unwrap();
+        let (all, _, _) = parse_coverage_out(input, tmp.path());
+        assert!(all.is_empty());
+    }
+
+    // Target: parse_coverage_out — no comma in range_part is skipped
+    #[test]
+    fn parse_coverage_out_no_comma_in_range_skipped() {
+        let input = "mode: atomic\npkg/foo.go:1.1-2.1 1 3\n";
+        let tmp = tempfile::tempdir().unwrap();
+        let (all, _, _) = parse_coverage_out(input, tmp.path());
+        assert!(all.is_empty());
+    }
+
+    // Target: parse_coverage_out — no dot in start_part is skipped
+    #[test]
+    fn parse_coverage_out_no_dot_in_start_skipped() {
+        let input = "mode: atomic\npkg/foo.go:12,15.3 1 3\n";
+        let tmp = tempfile::tempdir().unwrap();
+        let (all, _, _) = parse_coverage_out(input, tmp.path());
+        assert!(all.is_empty());
+    }
+
+    // Target: parse_coverage_out — non-numeric start line is skipped
+    #[test]
+    fn parse_coverage_out_non_numeric_start_line_skipped() {
+        let input = "mode: atomic\npkg/foo.go:xx.1,2.1 1 3\n";
+        let tmp = tempfile::tempdir().unwrap();
+        let (all, _, _) = parse_coverage_out(input, tmp.path());
+        assert!(all.is_empty());
+    }
+
+    // Target: parse_coverage_out — non-numeric start col is skipped
+    #[test]
+    fn parse_coverage_out_non_numeric_start_col_skipped() {
+        let input = "mode: atomic\npkg/foo.go:1.yy,2.1 1 3\n";
+        let tmp = tempfile::tempdir().unwrap();
+        let (all, _, _) = parse_coverage_out(input, tmp.path());
+        assert!(all.is_empty());
+    }
+
+    // Target: parse_coverage_out — count=0 produces direction=1
+    #[test]
+    fn parse_coverage_out_zero_count_direction_one() {
+        let input = "mode: atomic\npkg/foo.go:5.1,6.1 1 0\n";
+        let tmp = tempfile::tempdir().unwrap();
+        let (_, executed, _) = parse_coverage_out(input, tmp.path());
+        assert_eq!(executed.len(), 1);
+        assert_eq!(executed[0].direction, 1);
+    }
+
+    // Target: parse_coverage_out — same file referenced in multiple lines shares file_id
+    #[test]
+    fn parse_coverage_out_same_file_deduplicates_in_file_paths() {
+        let input = "mode: atomic\npkg/foo.go:1.1,2.1 1 1\npkg/foo.go:3.1,4.1 1 0\n";
+        let tmp = tempfile::tempdir().unwrap();
+        let (all, _, file_paths) = parse_coverage_out(input, tmp.path());
+        assert_eq!(all.len(), 4);
+        // Only one file_id despite two lines
+        assert_eq!(file_paths.len(), 1);
+        // Both branches share same file_id
+        assert_eq!(all[0].file_id, all[2].file_id);
+    }
+
+    // Target: parse_coverage_out — max u32 count is treated as covered
+    #[test]
+    fn parse_coverage_out_max_count_is_covered() {
+        let input = format!("mode: atomic\npkg/foo.go:1.1,2.1 1 {}\n", u32::MAX);
+        let tmp = tempfile::tempdir().unwrap();
+        let (_, executed, _) = parse_coverage_out(&input, tmp.path());
+        assert_eq!(executed.len(), 1);
+        assert_eq!(executed[0].direction, 0);
+    }
+
+    // Target: parse_coverage_out — unicode path in coverage output
+    #[test]
+    fn parse_coverage_out_unicode_path() {
+        let input = "mode: atomic\nexample.com/\u{4e2d}\u{6587}/foo.go:1.1,2.1 1 1\n";
+        let tmp = tempfile::tempdir().unwrap();
+        let (all, _, file_paths) = parse_coverage_out(input, tmp.path());
+        assert_eq!(all.len(), 2);
+        assert_eq!(file_paths.len(), 1);
+    }
 }

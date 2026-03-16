@@ -296,4 +296,192 @@ mod tests {
     fn parse_seconds_parens_invalid() {
         assert_eq!(parse_seconds_parens("no parens"), 0);
     }
+
+    // Target: parse_swift_coverage — invalid JSON input (line 21-23)
+    #[test]
+    fn bug_parse_swift_coverage_invalid_json() {
+        let tmp = tempfile::tempdir().unwrap();
+        let (branches, file_paths) = parse_swift_coverage("not json at all {{{{", tmp.path());
+        assert!(branches.is_empty());
+        assert!(file_paths.is_empty());
+    }
+
+    // Target: parse_swift_coverage — missing "data" key (line 25-27)
+    #[test]
+    fn bug_parse_swift_coverage_missing_data_key() {
+        let tmp = tempfile::tempdir().unwrap();
+        let (branches, file_paths) = parse_swift_coverage(r#"{"other": []}"#, tmp.path());
+        assert!(branches.is_empty());
+        assert!(file_paths.is_empty());
+    }
+
+    // Target: parse_swift_coverage — entry with no "files" key (line 30-32)
+    #[test]
+    fn bug_parse_swift_coverage_entry_missing_files() {
+        let tmp = tempfile::tempdir().unwrap();
+        let json = r#"{"data": [{"functions": []}]}"#;
+        let (branches, file_paths) = parse_swift_coverage(json, tmp.path());
+        assert!(branches.is_empty());
+        assert!(file_paths.is_empty());
+    }
+
+    // Target: parse_swift_coverage — file entry with no "filename" (line 35-37)
+    #[test]
+    fn bug_parse_swift_coverage_file_missing_filename() {
+        let tmp = tempfile::tempdir().unwrap();
+        let json = r#"{"data": [{"files": [{"segments": [[1,1,1,true,true]]}]}]}"#;
+        let (branches, file_paths) = parse_swift_coverage(json, tmp.path());
+        assert!(branches.is_empty());
+        assert!(file_paths.is_empty());
+    }
+
+    // Target: parse_swift_coverage — file entry with no "segments" (line 38-40)
+    #[test]
+    fn bug_parse_swift_coverage_file_missing_segments() {
+        let tmp = tempfile::tempdir().unwrap();
+        let json = r#"{"data": [{"files": [{"filename": "a.swift"}]}]}"#;
+        let (branches, file_paths) = parse_swift_coverage(json, tmp.path());
+        assert!(branches.is_empty());
+        // file has filename, but no segments so no branches; file_path not inserted either
+        // (file_paths is inserted before segment loop — check that too)
+        assert!(file_paths.is_empty());
+    }
+
+    // Target: parse_swift_coverage — segment is not an array (line 49-51)
+    #[test]
+    fn bug_parse_swift_coverage_segment_not_array() {
+        let tmp = tempfile::tempdir().unwrap();
+        let json = r#"{"data": [{"files": [{"filename": "a.swift", "segments": [42, "bad"]}]}]}"#;
+        let (branches, _) = parse_swift_coverage(json, tmp.path());
+        assert!(branches.is_empty(), "non-array segments must be skipped");
+    }
+
+    // Target: parse_swift_coverage — segment array too short (line 52-54)
+    #[test]
+    fn bug_parse_swift_coverage_segment_too_short() {
+        let tmp = tempfile::tempdir().unwrap();
+        let json = r#"{"data": [{"files": [{"filename": "a.swift", "segments": [[1,2]]}]}]}"#;
+        let (branches, _) = parse_swift_coverage(json, tmp.path());
+        assert!(branches.is_empty(), "segment with < 3 elements must be skipped");
+    }
+
+    // Target: parse_swift_coverage — segment with non-integer line/col/count (lines 56-64)
+    #[test]
+    fn bug_parse_swift_coverage_segment_non_integer_line() {
+        let tmp = tempfile::tempdir().unwrap();
+        let json = r#"{"data": [{"files": [{"filename": "a.swift", "segments": [["bad",1,1,true,true],[5,2,3,true,true]]}]}]}"#;
+        let (branches, _) = parse_swift_coverage(json, tmp.path());
+        assert_eq!(branches.len(), 1, "only the valid segment should be indexed");
+        assert_eq!(branches[0].line, 5);
+    }
+
+    // Target: parse_swift_coverage — segment with non-integer count, valid line/col
+    #[test]
+    fn bug_parse_swift_coverage_segment_non_integer_count() {
+        let tmp = tempfile::tempdir().unwrap();
+        let json = r#"{"data": [{"files": [{"filename": "a.swift", "segments": [[10,1,"x",true,true],[11,1,0,true,true]]}]}]}"#;
+        let (branches, _) = parse_swift_coverage(json, tmp.path());
+        assert_eq!(branches.len(), 1, "segment with bad count must be skipped");
+        assert_eq!(branches[0].line, 11);
+        assert_eq!(branches[0].direction, 1); // count=0
+    }
+
+    // Target: multiple files in one data entry — both indexed
+    #[test]
+    fn parse_swift_coverage_multiple_files() {
+        let json = r#"{"data": [{"files": [
+            {"filename": "/a.swift", "segments": [[1,1,1,true,true]]},
+            {"filename": "/b.swift", "segments": [[2,1,0,true,true]]}
+        ]}]}"#;
+        let tmp = tempfile::tempdir().unwrap();
+        let (branches, file_paths) = parse_swift_coverage(json, tmp.path());
+        assert_eq!(branches.len(), 2);
+        assert_eq!(file_paths.len(), 2);
+        // Different file IDs
+        assert_ne!(branches[0].file_id, branches[1].file_id);
+    }
+
+    // Target: multiple data entries
+    #[test]
+    fn parse_swift_coverage_multiple_data_entries() {
+        let json = r#"{"data": [
+            {"files": [{"filename": "/c.swift", "segments": [[1,1,5,true,true]]}]},
+            {"files": [{"filename": "/d.swift", "segments": [[3,1,0,true,true]]}]}
+        ]}"#;
+        let tmp = tempfile::tempdir().unwrap();
+        let (branches, file_paths) = parse_swift_coverage(json, tmp.path());
+        assert_eq!(branches.len(), 2);
+        assert_eq!(file_paths.len(), 2);
+    }
+
+    // Target: derive_relative_path with prefix match
+    #[test]
+    fn derive_relative_path_strips_prefix() {
+        let tmp = tempfile::tempdir().unwrap();
+        let full = tmp.path().join("Sources/App.swift");
+        let rel = derive_relative_path(full.to_str().unwrap(), tmp.path());
+        assert_eq!(rel, "Sources/App.swift");
+    }
+
+    // Target: derive_relative_path with no match returns original
+    #[test]
+    fn derive_relative_path_no_match_returns_original() {
+        let rel = derive_relative_path("/unrelated/path.swift", std::path::Path::new("/other/root"));
+        assert_eq!(rel, "/unrelated/path.swift");
+    }
+
+    // Target: build_traces_from_output — no matching lines
+    #[test]
+    fn build_traces_from_output_no_matches() {
+        let stdout = "Build succeeded.\nLinking...\n";
+        let traces = build_traces_from_output(stdout, &[]);
+        assert!(traces.is_empty());
+    }
+
+    // Target: build_traces_from_output — line without closing quote-space pattern (line 99-101)
+    #[test]
+    fn bug_build_traces_from_output_malformed_test_case_line() {
+        // "Test Case '" prefix present but no "' " separator — must be skipped
+        let stdout = "Test Case 'missingclose passed (0.001 seconds).\n";
+        let traces = build_traces_from_output(stdout, &[]);
+        assert!(traces.is_empty(), "malformed Test Case line must be skipped");
+    }
+
+    // Target: build_traces_from_output — status part is neither "passed" nor "failed" (line 112-114)
+    #[test]
+    fn bug_build_traces_from_output_unknown_status() {
+        // "skipped" status — neither passed nor failed, must be skipped
+        let stdout = "Test Case '-[MyTests.Foo testBar]' skipped (0.000 seconds).\n";
+        let traces = build_traces_from_output(stdout, &[]);
+        assert!(traces.is_empty(), "unknown status (skipped) must produce no trace");
+    }
+
+    // Target: parse_seconds_parens — open paren but no " seconds" substring (line 134-136)
+    #[test]
+    fn bug_parse_seconds_parens_open_but_no_seconds() {
+        // Has '(' but no " seconds" — should return 0
+        assert_eq!(parse_seconds_parens("passed (0.001 ms)."), 0);
+    }
+
+    // Target: parse_seconds_parens — non-numeric content between parens (line 138-141)
+    #[test]
+    fn bug_parse_seconds_parens_nonnumeric_content() {
+        assert_eq!(parse_seconds_parens("passed (N/A seconds)."), 0);
+    }
+
+    // Target: parse_seconds_parens — 2-second case (large float)
+    #[test]
+    fn parse_seconds_parens_large_value() {
+        assert_eq!(parse_seconds_parens("passed (2.000 seconds)."), 2000);
+    }
+
+    // Target: build_traces duration_ms propagated correctly for "failed"
+    #[test]
+    fn build_traces_from_output_fail_duration_parsed() {
+        let stdout = "Test Case '-[Suite.Tests testFail]' failed (0.050 seconds).\n";
+        let traces = build_traces_from_output(stdout, &[]);
+        assert_eq!(traces.len(), 1);
+        assert_eq!(traces[0].duration_ms, 50);
+        assert_eq!(traces[0].status, ExecutionStatus::Fail);
+    }
 }

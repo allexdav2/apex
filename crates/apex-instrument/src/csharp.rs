@@ -311,4 +311,207 @@ mod tests {
         // Same file -> same file_id
         assert_eq!(all[0].file_id, all[2].file_id);
     }
+
+    // --- New tests targeting uncovered regions ---
+
+    // Target: derive_relative_path — strip_prefix succeeds path
+    #[test]
+    fn derive_relative_path_strips_prefix() {
+        let root = Path::new("/project/src");
+        let result = derive_relative_path("/project/src/Foo.cs", root);
+        assert_eq!(result, "Foo.cs");
+    }
+
+    // Target: derive_relative_path — no prefix match, returns original
+    #[test]
+    fn derive_relative_path_no_match_returns_original() {
+        let root = Path::new("/project/src");
+        let result = derive_relative_path("Program.cs", root);
+        assert_eq!(result, "Program.cs");
+    }
+
+    // Target: derive_relative_path — absolute path that does not share prefix
+    #[test]
+    fn derive_relative_path_unrelated_absolute() {
+        let root = Path::new("/project/src");
+        let result = derive_relative_path("/other/path/Foo.cs", root);
+        assert_eq!(result, "/other/path/Foo.cs");
+    }
+
+    // Target: extract_xml_attr — attribute with empty value
+    #[test]
+    fn extract_xml_attr_empty_value() {
+        let tag = r#"<line number="" hits="0" />"#;
+        assert_eq!(extract_xml_attr(tag, "number"), Some(String::new()));
+    }
+
+    // Target: extract_xml_attr — attribute is last in tag with no trailing space
+    #[test]
+    fn extract_xml_attr_last_attribute() {
+        let tag = r#"<class filename="X.cs" name="X">"#;
+        assert_eq!(extract_xml_attr(tag, "name"), Some("X".to_string()));
+    }
+
+    // Target: parse_cobertura_xml — line tag outside any class context is ignored
+    #[test]
+    fn parse_cobertura_line_outside_class_ignored() {
+        let xml = r#"<coverage>
+<line number="1" hits="5" />
+<packages><package><classes>
+<class filename="A.cs"><lines>
+<line number="2" hits="1" />
+</lines></class>
+</classes></package></packages></coverage>"#;
+        let tmp = tempfile::tempdir().unwrap();
+        let (all, _, _) = parse_cobertura_xml(xml, tmp.path());
+        // Only the line inside the class should be counted
+        assert_eq!(all.len(), 2);
+        assert_eq!(all[0].line, 2);
+    }
+
+    // Target: parse_cobertura_xml — </class> resets current_file;
+    // lines emitted after </class> and before next <class> are ignored.
+    // Note: </class> must appear on its own line for the line-based parser to detect it.
+    #[test]
+    fn parse_cobertura_lines_after_class_close_ignored() {
+        let xml = "<coverage><packages><package><classes>\n\
+<class filename=\"A.cs\"><lines>\n\
+<line number=\"1\" hits=\"1\" />\n\
+</lines>\n\
+</class>\n\
+<line number=\"99\" hits=\"1\" />\n\
+<class filename=\"B.cs\"><lines>\n\
+<line number=\"2\" hits=\"0\" />\n\
+</lines>\n\
+</class>\n\
+</classes></package></packages></coverage>";
+        let tmp = tempfile::tempdir().unwrap();
+        let (all, _, file_paths) = parse_cobertura_xml(xml, tmp.path());
+        // 2 valid lines (one per class), orphan line between classes is ignored
+        assert_eq!(all.len(), 4);
+        assert_eq!(file_paths.len(), 2);
+    }
+
+    // Target: parse_cobertura_xml — malformed line number (not a u32) is skipped
+    #[test]
+    fn parse_cobertura_skips_malformed_line_number() {
+        let xml = r#"<coverage><packages><package><classes>
+<class filename="A.cs"><lines>
+<line number="abc" hits="1" />
+<line number="5" hits="2" />
+</lines></class>
+</classes></package></packages></coverage>"#;
+        let tmp = tempfile::tempdir().unwrap();
+        let (all, _, _) = parse_cobertura_xml(xml, tmp.path());
+        // Only line 5 is valid
+        assert_eq!(all.len(), 2);
+        assert_eq!(all[0].line, 5);
+    }
+
+    // Target: parse_cobertura_xml — malformed hits (not a u32) is skipped
+    #[test]
+    fn parse_cobertura_skips_malformed_hits() {
+        let xml = r#"<coverage><packages><package><classes>
+<class filename="A.cs"><lines>
+<line number="3" hits="NaN" />
+<line number="4" hits="1" />
+</lines></class>
+</classes></package></packages></coverage>"#;
+        let tmp = tempfile::tempdir().unwrap();
+        let (all, _, _) = parse_cobertura_xml(xml, tmp.path());
+        // Only line 4 is valid
+        assert_eq!(all.len(), 2);
+        assert_eq!(all[0].line, 4);
+    }
+
+    // Target: parse_cobertura_xml — <line> with missing number attribute is skipped
+    #[test]
+    fn parse_cobertura_skips_missing_number_attr() {
+        let xml = r#"<coverage><packages><package><classes>
+<class filename="A.cs"><lines>
+<line hits="1" />
+<line number="7" hits="1" />
+</lines></class>
+</classes></package></packages></coverage>"#;
+        let tmp = tempfile::tempdir().unwrap();
+        let (all, _, _) = parse_cobertura_xml(xml, tmp.path());
+        assert_eq!(all.len(), 2);
+        assert_eq!(all[0].line, 7);
+    }
+
+    // Target: parse_cobertura_xml — <line> with missing hits attribute is skipped
+    #[test]
+    fn parse_cobertura_skips_missing_hits_attr() {
+        let xml = r#"<coverage><packages><package><classes>
+<class filename="A.cs"><lines>
+<line number="3" />
+<line number="4" hits="0" />
+</lines></class>
+</classes></package></packages></coverage>"#;
+        let tmp = tempfile::tempdir().unwrap();
+        let (all, _, _) = parse_cobertura_xml(xml, tmp.path());
+        assert_eq!(all.len(), 2);
+        assert_eq!(all[0].line, 4);
+    }
+
+    // Target: parse_cobertura_xml — same filename in two class entries shares file_id
+    #[test]
+    fn parse_cobertura_duplicate_filename_same_file_id() {
+        let xml = r#"<coverage><packages><package><classes>
+<class filename="Shared.cs"><lines>
+<line number="1" hits="1" />
+</lines></class>
+<class filename="Shared.cs"><lines>
+<line number="2" hits="0" />
+</lines></class>
+</classes></package></packages></coverage>"#;
+        let tmp = tempfile::tempdir().unwrap();
+        let (all, _, file_paths) = parse_cobertura_xml(xml, tmp.path());
+        // Both branches belong to the same file_id
+        assert_eq!(all[0].file_id, all[2].file_id);
+        // file_paths deduplication: only one entry
+        assert_eq!(file_paths.len(), 1);
+    }
+
+    // Target: parse_cobertura_xml — hits=0 produces direction=1 in executed
+    #[test]
+    fn parse_cobertura_zero_hits_direction_one() {
+        let xml = r#"<coverage><packages><package><classes>
+<class filename="X.cs"><lines>
+<line number="1" hits="0" />
+</lines></class>
+</classes></package></packages></coverage>"#;
+        let tmp = tempfile::tempdir().unwrap();
+        let (_, executed, _) = parse_cobertura_xml(xml, tmp.path());
+        assert_eq!(executed.len(), 1);
+        assert_eq!(executed[0].direction, 1);
+    }
+
+    // Target: parse_cobertura_xml — pure whitespace/blank input
+    #[test]
+    fn parse_cobertura_blank_input() {
+        let tmp = tempfile::tempdir().unwrap();
+        let (all, executed, file_paths) = parse_cobertura_xml("   \n\t\n  ", tmp.path());
+        assert!(all.is_empty());
+        assert!(executed.is_empty());
+        assert!(file_paths.is_empty());
+    }
+
+    // Target: parse_cobertura_xml — unicode filename
+    #[test]
+    fn parse_cobertura_unicode_filename() {
+        let xml = "<coverage><packages><package><classes>\n<class filename=\"\u{4e2d}\u{6587}/\u{6587}\u{4ef6}.cs\"><lines>\n<line number=\"1\" hits=\"1\" />\n</lines></class>\n</classes></package></packages></coverage>";
+        let tmp = tempfile::tempdir().unwrap();
+        let (all, _, file_paths) = parse_cobertura_xml(xml, tmp.path());
+        assert_eq!(all.len(), 2);
+        assert_eq!(file_paths.len(), 1);
+    }
+
+    // Target: extract_xml_attr — no space before attribute name returns None
+    #[test]
+    fn extract_xml_attr_no_leading_space_returns_none() {
+        // The attribute search requires a leading space
+        let tag = r#"<linefilename="no-space.cs">"#;
+        assert_eq!(extract_xml_attr(tag, "filename"), None);
+    }
 }

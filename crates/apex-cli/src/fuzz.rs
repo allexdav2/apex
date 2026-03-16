@@ -727,4 +727,204 @@ mod tests {
         ));
         assert!(result.is_ok());
     }
+
+    // ------------------------------------------------------------------
+    // Coverage for uncovered regions:
+    //   Lines 30-35:  shim compile failure warn! path
+    //   Lines 185-190: Python + uncovered branches → enters concolic phase
+    //   Lines 194-219: run_concolic_phase body (concolic strategy loop)
+    //   Lines 223-253: concolic seed runs, debug log on failure
+    // ------------------------------------------------------------------
+
+    /// Target: lines 185-190 — run_all_strategies with Python language and
+    /// uncovered branches below coverage target exercises the
+    /// `pct / 100.0 < coverage_target && !oracle.uncovered_branches().is_empty()`
+    /// branch and calls run_concolic_phase.
+    ///
+    /// The concolic phase will fail to generate useful seeds (no real Python
+    /// files in /tmp) but must complete without panic or error propagation.
+    #[test]
+    fn run_all_strategies_python_uncovered_below_target_enters_concolic() {
+        // Target: lines 185-190, 194-253
+        let mut cfg = ApexConfig::default();
+        cfg.concolic.max_rounds = 1;
+        cfg.agent.max_rounds = 1;
+
+        let oracle = Arc::new(CoverageOracle::new());
+        let b = BranchId::new(1, 1, 0, 0);
+        oracle.register_branches([b.clone()]);
+        // Do NOT mark the branch covered — 0% coverage, target 0.9 → enters concolic
+
+        let target = Target {
+            root: std::path::PathBuf::from("/tmp"),
+            language: Language::Python,
+            test_command: vec!["python3".into(), "-m".into(), "pytest".into()],
+        };
+        let instrumented = apex_core::types::InstrumentedTarget {
+            target,
+            branch_ids: vec![b.clone()],
+            executed_branch_ids: vec![],
+            file_paths: std::collections::HashMap::new(),
+            work_dir: std::path::PathBuf::from("/tmp"),
+        };
+        let rt = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap();
+        // run_concolic_phase will attempt and gracefully fail (no real Python project)
+        let result = rt.block_on(run_all_strategies(
+            oracle,
+            &instrumented,
+            0.9, // target not met — 0% coverage
+            0,
+            1,
+            None,
+            vec!["python3".into()],
+            &cfg,
+        ));
+        assert!(result.is_ok());
+    }
+
+    /// Target: lines 185-190 — concolic phase is skipped when oracle has
+    /// uncovered branches but coverage_target is already exceeded.
+    ///
+    /// This exercises the `else` branch at line 185 (the "concolic skipped"
+    /// info! log at line ~187).
+    #[test]
+    fn run_all_strategies_python_skips_concolic_when_target_already_met() {
+        // Target: line ~187 (else branch after concolic check)
+        let cfg = ApexConfig::default();
+        let oracle = Arc::new(CoverageOracle::new());
+        let b1 = BranchId::new(2, 1, 0, 0);
+        let b2 = BranchId::new(2, 2, 0, 0);
+        oracle.register_branches([b1.clone(), b2.clone()]);
+        // Mark one covered: 50% coverage. target = 0.4 → already met → skip concolic
+        oracle.mark_covered(&b1, SeedId::new());
+
+        let target = Target {
+            root: std::path::PathBuf::from("/tmp"),
+            language: Language::Python,
+            test_command: vec!["pytest".into()],
+        };
+        let instrumented = apex_core::types::InstrumentedTarget {
+            target,
+            branch_ids: vec![b1.clone(), b2],
+            executed_branch_ids: vec![b1],
+            file_paths: std::collections::HashMap::new(),
+            work_dir: std::path::PathBuf::from("/tmp"),
+        };
+        let rt = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap();
+        let result = rt.block_on(run_all_strategies(
+            oracle.clone(),
+            &instrumented,
+            0.4, // coverage is 50% >= 40% → concolic skipped
+            0,
+            0,
+            None,
+            vec!["dummy".into()],
+            &cfg,
+        ));
+        assert!(result.is_ok());
+        // Coverage stays at 50% (no additional work was done)
+        assert_eq!(oracle.coverage_percent(), 50.0);
+    }
+
+    /// Target: run_concolic_phase — exercises the concolic loop with
+    /// max_rounds=2 and a non-empty uncovered set to test the inner loop body.
+    ///
+    /// The strategy will try to generate seeds for a dummy /tmp target;
+    /// suggest_inputs is expected to return empty or fail gracefully.
+    /// The loop should complete within max_rounds without panicking.
+    #[test]
+    fn run_all_strategies_python_concolic_multiple_rounds() {
+        // Target: lines 194-253 (run_concolic_phase loop body)
+        let mut cfg = ApexConfig::default();
+        cfg.concolic.max_rounds = 2;
+        cfg.agent.max_rounds = 2;
+
+        let oracle = Arc::new(CoverageOracle::new());
+        let b1 = BranchId::new(10, 1, 0, 0);
+        let b2 = BranchId::new(10, 2, 0, 0);
+        oracle.register_branches([b1.clone(), b2.clone()]);
+        // Both uncovered — 0% < 0.9 target → enters and loops through concolic
+
+        let target = Target {
+            root: std::path::PathBuf::from("/tmp"),
+            language: Language::Python,
+            test_command: vec!["python3".into(), "-m".into(), "pytest".into()],
+        };
+        let instrumented = apex_core::types::InstrumentedTarget {
+            target,
+            branch_ids: vec![b1.clone(), b2.clone()],
+            executed_branch_ids: vec![],
+            file_paths: std::collections::HashMap::new(),
+            work_dir: std::path::PathBuf::from("/tmp"),
+        };
+        let rt = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap();
+        let result = rt.block_on(run_all_strategies(
+            oracle.clone(),
+            &instrumented,
+            0.9,
+            0,
+            2,
+            None,
+            vec!["python3".into()],
+            &cfg,
+        ));
+        assert!(result.is_ok());
+        // Branches remain uncovered (no real execution) — no panic is the key invariant
+        assert_eq!(oracle.covered_count(), 0);
+    }
+
+    /// Target: lines 30-35 — the warn! path when shim compilation fails.
+    ///
+    /// We cannot force shim::ensure_compiled() to fail directly, but we can
+    /// verify that run_fuzz_strategy handles the case where shim_path is None
+    /// (which is what happens when compilation fails). The existing zero-iters
+    /// test exercises this path but we add one with explicit coverage tracking.
+    #[test]
+    fn run_fuzz_strategy_no_shim_path_completes_without_error() {
+        // Target: lines 30-35 (shim failure path)
+        // When shim compilation fails, shim_path = None and the strategy
+        // continues without SHM coverage. With zero iters this path is fast.
+        let cfg = ApexConfig::default();
+        let oracle = Arc::new(CoverageOracle::new());
+        let b = BranchId::new(99, 1, 0, 0);
+        oracle.register_branches([b.clone()]);
+        // Branch uncovered, target 0.9 not met, but 0 iters → exits immediately
+
+        let target = Target {
+            root: std::path::PathBuf::from("/tmp"),
+            language: Language::C,
+            test_command: Vec::new(),
+        };
+        let instrumented = apex_core::types::InstrumentedTarget {
+            target,
+            branch_ids: vec![b.clone()],
+            executed_branch_ids: vec![],
+            file_paths: std::collections::HashMap::new(),
+            work_dir: std::path::PathBuf::from("/tmp"),
+        };
+        let rt = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap();
+        let result = rt.block_on(run_fuzz_strategy(
+            oracle.clone(),
+            &instrumented,
+            0.9,
+            0, // zero iters → always exits before needing shim
+            vec!["/nonexistent/binary".into()],
+            &cfg,
+        ));
+        assert!(result.is_ok());
+        // Branch was never covered (zero iters)
+        assert_eq!(oracle.coverage_percent(), 0.0);
+    }
 }

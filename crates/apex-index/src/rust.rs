@@ -1088,6 +1088,315 @@ mod tests {
         );
     }
 
+    // -----------------------------------------------------------------------
+    // discover_test_binaries — filesystem paths (no subprocess needed for errors)
+    // -----------------------------------------------------------------------
+
+    /// Target: lines 287-290 — discover_test_binaries returns Err when deps dir missing.
+    #[tokio::test]
+    async fn discover_test_binaries_missing_deps_dir_errors() {
+        let tmp = tempfile::tempdir().unwrap();
+        // We have a target_dir, but no debug/deps subdir inside it
+        let result = discover_test_binaries(tmp.path()).await;
+        assert!(
+            result.is_err(),
+            "discover_test_binaries should error when debug/deps does not exist"
+        );
+        let msg = format!("{}", result.err().unwrap());
+        assert!(
+            msg.contains("deps directory not found"),
+            "error message should mention deps directory: {msg}"
+        );
+    }
+
+    /// Target: lines 287-349 — discover_test_binaries with empty deps dir returns empty vec.
+    #[tokio::test]
+    async fn discover_test_binaries_empty_deps_dir_returns_empty() {
+        let tmp = tempfile::tempdir().unwrap();
+        let deps = tmp.path().join("debug/deps");
+        std::fs::create_dir_all(&deps).unwrap();
+
+        let result = discover_test_binaries(tmp.path()).await.unwrap();
+        assert!(
+            result.is_empty(),
+            "empty deps dir should produce no test binaries"
+        );
+    }
+
+    /// Target: lines 295-309 — discover_test_binaries skips files with known extensions.
+    #[tokio::test]
+    async fn discover_test_binaries_skips_non_binary_extensions() {
+        let tmp = tempfile::tempdir().unwrap();
+        let deps = tmp.path().join("debug/deps");
+        std::fs::create_dir_all(&deps).unwrap();
+
+        // Create files with skipped extensions
+        for ext in &["d", "rmeta", "rlib", "o", "a"] {
+            std::fs::write(deps.join(format!("libfoo.{ext}")), b"fake").unwrap();
+        }
+
+        let result = discover_test_binaries(tmp.path()).await.unwrap();
+        assert!(
+            result.is_empty(),
+            "files with known non-binary extensions should be skipped"
+        );
+    }
+
+    // -----------------------------------------------------------------------
+    // RustIndexBuilder — additional mock scenarios
+    // -----------------------------------------------------------------------
+
+    /// Target: lines 40-52 — enumerate_tests filters only `: test` lines, ignores noise.
+    #[tokio::test]
+    async fn builder_enumerate_tests_filters_non_test_lines() {
+        let runner = FakeRunner {
+            stdout: b"running tests\ntest_one: bench\nreal_test: test\n: test\n".to_vec(),
+        };
+        let builder = RustIndexBuilder::new(runner);
+        let tests = builder.enumerate_tests(Path::new("/fake")).await.unwrap();
+        // "real_test: test" → "real_test" matches
+        // ": test" → "" matches (trim_end_matches strips ": test")
+        assert!(tests.contains(&"real_test".to_string()));
+        // bench and info lines must not be included
+        assert!(!tests.iter().any(|t| t.contains("running") || t.contains("bench")));
+    }
+
+    /// Target: lines 46-50 — enumerate_tests with only noise returns empty.
+    #[tokio::test]
+    async fn builder_enumerate_tests_only_noise_returns_empty() {
+        let runner = FakeRunner {
+            stdout: b"running 0 tests\ntest result: ok\n".to_vec(),
+        };
+        let builder = RustIndexBuilder::new(runner);
+        let tests = builder.enumerate_tests(Path::new("/fake")).await.unwrap();
+        assert!(tests.is_empty());
+    }
+
+    /// Target: lines 40-52 — enumerate_tests with single test returns one entry.
+    #[tokio::test]
+    async fn builder_enumerate_tests_single_entry() {
+        let runner = FakeRunner {
+            stdout: b"crate::module::my_test: test\n".to_vec(),
+        };
+        let builder = RustIndexBuilder::new(runner);
+        let tests = builder.enumerate_tests(Path::new("/")).await.unwrap();
+        assert_eq!(tests, vec!["crate::module::my_test"]);
+    }
+
+    // -----------------------------------------------------------------------
+    // parse_coverage_stats — multiple data entries
+    // -----------------------------------------------------------------------
+
+    /// Target: lines 495-527 — multiple LlvmCovData entries in json.data are all processed.
+    #[test]
+    fn parse_coverage_stats_multiple_data_entries() {
+        let json = LlvmCovJson {
+            data: vec![
+                LlvmCovData {
+                    files: vec![LlvmCovFile {
+                        filename: "/proj/a.rs".to_string(),
+                        segments: vec![vec![
+                            serde_json::json!(1),
+                            serde_json::json!(1),
+                            serde_json::json!(1), // count=1 → covered
+                            serde_json::json!(true),
+                            serde_json::json!(true),
+                            serde_json::json!(false),
+                        ]],
+                    }],
+                },
+                LlvmCovData {
+                    files: vec![LlvmCovFile {
+                        filename: "/proj/b.rs".to_string(),
+                        segments: vec![vec![
+                            serde_json::json!(5),
+                            serde_json::json!(1),
+                            serde_json::json!(0), // count=0 → total but not covered
+                            serde_json::json!(true),
+                            serde_json::json!(true),
+                            serde_json::json!(false),
+                        ]],
+                    }],
+                },
+            ],
+        };
+        let (paths, total, covered) = parse_coverage_stats(&json, "/proj");
+        assert_eq!(paths.len(), 2, "both data entries' files should be in file_paths");
+        assert_eq!(total, 2, "both segments counted");
+        assert_eq!(covered, 1, "only first segment has count > 0");
+    }
+
+    /// Target: lines 495-527 — extract_covered_branches processes multiple data entries.
+    #[test]
+    fn extract_covered_branches_multiple_data_entries() {
+        let json = LlvmCovJson {
+            data: vec![
+                LlvmCovData {
+                    files: vec![LlvmCovFile {
+                        filename: "/proj/a.rs".to_string(),
+                        segments: vec![vec![
+                            serde_json::json!(10),
+                            serde_json::json!(1),
+                            serde_json::json!(3),
+                            serde_json::json!(true),
+                            serde_json::json!(true),
+                            serde_json::json!(false),
+                        ]],
+                    }],
+                },
+                LlvmCovData {
+                    files: vec![LlvmCovFile {
+                        filename: "/proj/b.rs".to_string(),
+                        segments: vec![vec![
+                            serde_json::json!(20),
+                            serde_json::json!(2),
+                            serde_json::json!(7),
+                            serde_json::json!(true),
+                            serde_json::json!(true),
+                            serde_json::json!(false),
+                        ]],
+                    }],
+                },
+            ],
+        };
+        let branches = extract_covered_branches(&json, "/proj");
+        assert_eq!(branches.len(), 2);
+        let lines: Vec<u32> = branches.iter().map(|b| b.line).collect();
+        assert!(lines.contains(&10));
+        assert!(lines.contains(&20));
+    }
+
+    // -----------------------------------------------------------------------
+    // make_relative — result.is_empty() guard (line 553-554)
+    // -----------------------------------------------------------------------
+
+    /// Target: line 553-554 — when strip_prefix produces empty string, return ".".
+    /// This happens when path == prefix exactly (path ends with "/" + same as target+/).
+    #[test]
+    fn make_relative_path_is_prefix_with_slash_returns_dot() {
+        // path = "/repo/" which after stripping "/repo/" gives "" → should return "."
+        let result = make_relative("/repo/", "/repo");
+        assert_eq!(result, ".", "empty strip result should return '.'");
+    }
+
+    // -----------------------------------------------------------------------
+    // extract_covered_branches — has_count/is_entry/is_gap as integers
+    // -----------------------------------------------------------------------
+
+    /// Target: lines 458-469 — has_count/is_entry as integer 0 (falsy) skips segment.
+    #[test]
+    fn extract_branches_has_count_zero_int_skips() {
+        let json = LlvmCovJson {
+            data: vec![LlvmCovData {
+                files: vec![LlvmCovFile {
+                    filename: "/proj/src/lib.rs".to_string(),
+                    segments: vec![vec![
+                        serde_json::json!(10),
+                        serde_json::json!(1),
+                        serde_json::json!(5),
+                        serde_json::json!(0), // has_count = 0 (falsy int)
+                        serde_json::json!(true),
+                        serde_json::json!(false),
+                    ]],
+                }],
+            }],
+        };
+        let branches = extract_covered_branches(&json, "/proj");
+        assert!(
+            branches.is_empty(),
+            "has_count=0 (integer) should skip segment"
+        );
+    }
+
+    /// Target: lines 463-465 — is_entry as integer 0 skips segment.
+    #[test]
+    fn extract_branches_is_entry_zero_int_skips() {
+        let json = LlvmCovJson {
+            data: vec![LlvmCovData {
+                files: vec![LlvmCovFile {
+                    filename: "/proj/src/lib.rs".to_string(),
+                    segments: vec![vec![
+                        serde_json::json!(10),
+                        serde_json::json!(1),
+                        serde_json::json!(5),
+                        serde_json::json!(true),
+                        serde_json::json!(0), // is_entry = 0 (falsy int)
+                        serde_json::json!(false),
+                    ]],
+                }],
+            }],
+        };
+        let branches = extract_covered_branches(&json, "/proj");
+        assert!(
+            branches.is_empty(),
+            "is_entry=0 (integer) should skip segment"
+        );
+    }
+
+    /// Target: lines 466-469 — is_gap as integer 1 skips segment.
+    #[test]
+    fn extract_branches_is_gap_one_int_skips() {
+        let json = LlvmCovJson {
+            data: vec![LlvmCovData {
+                files: vec![LlvmCovFile {
+                    filename: "/proj/src/lib.rs".to_string(),
+                    segments: vec![vec![
+                        serde_json::json!(10),
+                        serde_json::json!(1),
+                        serde_json::json!(5),
+                        serde_json::json!(true),
+                        serde_json::json!(true),
+                        serde_json::json!(1), // is_gap = 1 (truthy int) → skipped
+                    ]],
+                }],
+            }],
+        };
+        let branches = extract_covered_branches(&json, "/proj");
+        assert!(
+            branches.is_empty(),
+            "is_gap=1 (integer) should skip segment"
+        );
+    }
+
+    // -----------------------------------------------------------------------
+    // parse_coverage_stats — has_count/is_entry/is_gap as integers
+    // -----------------------------------------------------------------------
+
+    /// Target: lines 505-517 — parse_coverage_stats correctly handles integer booleans.
+    #[test]
+    fn parse_coverage_stats_integer_bool_fields() {
+        let json = LlvmCovJson {
+            data: vec![LlvmCovData {
+                files: vec![LlvmCovFile {
+                    filename: "/proj/a.rs".to_string(),
+                    segments: vec![
+                        // All true as ints: should count
+                        vec![
+                            serde_json::json!(1),
+                            serde_json::json!(1),
+                            serde_json::json!(5),
+                            serde_json::json!(1), // has_count = 1
+                            serde_json::json!(1), // is_entry = 1
+                            serde_json::json!(0), // is_gap = 0
+                        ],
+                        // is_gap = 1: should be skipped
+                        vec![
+                            serde_json::json!(2),
+                            serde_json::json!(1),
+                            serde_json::json!(3),
+                            serde_json::json!(1),
+                            serde_json::json!(1),
+                            serde_json::json!(1), // is_gap = 1
+                        ],
+                    ],
+                }],
+            }],
+        };
+        let (_, total, covered) = parse_coverage_stats(&json, "/proj");
+        assert_eq!(total, 1, "only non-gap entry counted");
+        assert_eq!(covered, 1, "non-gap entry with count=5 is covered");
+    }
+
     #[test]
     fn bug_sanitize_angle_brackets() {
         let name = "MyType<T>::test\\path";

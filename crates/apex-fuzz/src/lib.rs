@@ -3,6 +3,7 @@
 
 pub mod cmplog;
 pub mod control;
+pub mod harness;
 pub mod corpus;
 pub mod de_scheduler;
 pub mod directed;

@@ -268,6 +268,10 @@ pub struct LintArgs {
     #[arg(long, short, value_enum)]
     pub lang: LangArg,
 
+    /// Comma-separated list of detectors to run (default: all enabled detectors).
+    #[arg(long, value_delimiter = ',')]
+    pub detectors: Option<Vec<String>>,
+
     /// Output format.
     #[arg(long, default_value = "text")]
     pub output_format: OutputFormat,
@@ -2129,7 +2133,11 @@ async fn run_lint(args: LintArgs, _cfg: &ApexConfig) -> Result<()> {
     let index = load_index(&target_path).ok();
 
     // Run detectors
-    let detect_cfg = DetectConfig::default();
+    let mut detect_cfg = DetectConfig::default();
+    // CLI --detectors overrides default set (same pattern as `apex audit`)
+    if let Some(detectors) = args.detectors {
+        detect_cfg.enabled = detectors;
+    }
     let source_cache = build_source_cache(&target_path, lang);
 
     // Build CPG for Python projects (other languages: TODO)

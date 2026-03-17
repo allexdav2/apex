@@ -3,19 +3,64 @@
 [![CI](https://github.com/sahajamoth/apex/actions/workflows/ci.yml/badge.svg)](https://github.com/sahajamoth/apex/actions/workflows/ci.yml)
 [![Release](https://img.shields.io/github/v/release/sahajamoth/apex?label=release)](https://github.com/sahajamoth/apex/releases/latest)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![0 crashes](https://img.shields.io/badge/crashes-0_across_10_repos-green)](docs/real-world-validation-summary.md)
+[![Validated](https://img.shields.io/badge/validated-Linux_%7C_K8s_%7C_CPython-blue)](docs/real-world-validation-summary.md)
+[![3000+ tests](https://img.shields.io/badge/tests-3000%2B_passing-green)](https://github.com/sahajamoth/apex/actions/workflows/ci.yml)
 
-**Stop guessing what your tests miss.** APEX finds dead code, flaky tests,
-security gaps, and untested branches — then writes the tests to fix them.
+**Find vulnerabilities. Fix coverage gaps. Automatically.**
 
----
+APEX scans your codebase for security gaps, dead code, and untested branches —
+then writes the tests to fix them. Single binary, 11 languages, zero config.
 
-## Validated against the world's biggest codebases
+> **Validated against:** Linux kernel · Kubernetes · CPython · TypeScript compiler ·
+> ripgrep · Spring Boot · .NET Runtime · Vapor · Rails · ktor
+>
+> Found a hardcoded EC private key in Kubernetes (CWE-798).
+> Scanned the Linux kernel in 4 minutes. 0 crashes across 12,770 findings.
 
 <p align="center">
   <img src="docs/assets/real-world-validation.svg" alt="APEX real-world validation results" width="780">
 </p>
 
-APEX was tested against **10 top GitHub repos** (Linux, CPython, TypeScript, ripgrep, Spring Boot, Kubernetes, .NET, Vapor, Rails, ktor) covering **11 languages**. Zero crashes, 12,770 findings, real CVEs and hardcoded secrets caught. [Full report →](docs/real-world-validation-summary.md)
+[Full validation report →](docs/real-world-validation-summary.md)
+
+---
+
+## Quick Start
+
+```bash
+# Install
+curl -sSL https://raw.githubusercontent.com/sahajamoth/apex/main/install.sh | sh
+
+# Scan your project for security issues
+apex audit --target . --lang python
+
+# See coverage gaps + get auto-generated tests
+apex run --target . --lang python
+
+# CI gate — fail if coverage drops below 80%
+apex ratchet --target . --lang python --min-cov 0.8
+```
+
+<details>
+<summary><strong>GitHub Actions</strong></summary>
+
+```yaml
+# .github/workflows/apex.yml
+name: APEX Coverage Gate
+on: [push, pull_request]
+jobs:
+  apex:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install APEX
+        run: curl -sSL https://raw.githubusercontent.com/sahajamoth/apex/main/install.sh | sh
+      - name: Coverage Gate
+        run: apex ratchet --target . --lang python --min-cov 0.8
+```
+
+</details>
 
 ---
 
@@ -88,6 +133,20 @@ $ /apex-intel
 
 ---
 
+## Why APEX?
+
+| | APEX | Semgrep | CodeQL | Snyk | coverage.py |
+|---|:---:|:---:|:---:|:---:|:---:|
+| Auto-writes tests | ✓ | — | — | — | — |
+| Branch-level coverage | ✓ | — | — | — | line only |
+| Security + coverage unified | ✓ | security | security | security | coverage |
+| Dead code detection | semantic | — | limited | — | — |
+| Deploy readiness score | ✓ | — | — | — | — |
+| Single binary, zero deps | ✓ | ✓ | cloud | cloud | pip |
+| 11 languages | ✓ | ✓ | ✓ | ✓ | Python |
+
+---
+
 ## Installation
 
 **Standalone installer** (recommended — macOS and Linux):
@@ -143,49 +202,6 @@ cargo build --release --features "apex-symbolic/z3-solver,apex-fuzz/libafl-backe
 ```
 
 </details>
-
----
-
-## Claude Code-first
-
-APEX is built for Claude Code. The primary interface is slash commands and
-auto-triggered agents — not a CLI you have to learn.
-
-### Slash Commands
-
-| Command | What it does |
-|---------|-------------|
-| `/apex` | **Dashboard** — deploy score, key findings, recommended next actions |
-| `/apex-run` | **Autonomous loop** — measures gaps, writes tests, re-measures, repeats |
-| `/apex-index` | Build per-test branch index for intelligence commands |
-| `/apex-intel` | Full SDLC intelligence — test quality, risk, dead code, hotpaths, contracts |
-| `/apex-deploy` | Deployment readiness — GO / CAUTION / BLOCK with confidence score |
-| `/apex-status` | Coverage table for the workspace |
-| `/apex-gaps` | Top uncovered regions with explanations and suggested tests |
-| `/apex-generate` | Generate tests targeting uncovered branches in a crate |
-| `/apex-ci 0.8` | CI gate — fails if below threshold |
-
-### Auto-triggered Agents
-
-These fire automatically when Claude Code detects a matching intent:
-
-| Agent | Trigger examples |
-|-------|-----------------|
-| **apex-coverage-analyst** | "what's our coverage?", "which parts are uncovered?" |
-| **apex-test-writer** | "write tests for X", "improve coverage in Y" |
-| **apex-runner** | "run apex against Z", "run apex on itself" |
-| **apex-sdlc-analyst** | "what's our deploy score?", "find flaky tests" |
-
-### Strategy Selection
-
-The `/apex-run` loop automatically picks the best strategy per gap:
-
-| Target | Primary | Fallback |
-|--------|---------|----------|
-| Rust workspace | Source-level tests | fuzz harness |
-| Python project | Source-level tests | concolic execution |
-| C/Rust binary | fuzz | driller (when fuzz stalls) |
-| JavaScript | Source-level tests | — |
 
 ---
 
@@ -273,6 +289,50 @@ apex verify-boundaries --target . --lang python \
 
 ---
 
+## Claude Code Integration
+
+APEX integrates natively with Claude Code for an AI-enhanced workflow.
+The standalone CLI works without any AI tooling — Claude Code adds
+slash commands and auto-triggered agents on top.
+
+### Slash Commands
+
+| Command | What it does |
+|---------|-------------|
+| `/apex` | **Dashboard** — deploy score, key findings, recommended next actions |
+| `/apex-run` | **Autonomous loop** — measures gaps, writes tests, re-measures, repeats |
+| `/apex-index` | Build per-test branch index for intelligence commands |
+| `/apex-intel` | Full SDLC intelligence — test quality, risk, dead code, hotpaths, contracts |
+| `/apex-deploy` | Deployment readiness — GO / CAUTION / BLOCK with confidence score |
+| `/apex-status` | Coverage table for the workspace |
+| `/apex-gaps` | Top uncovered regions with explanations and suggested tests |
+| `/apex-generate` | Generate tests targeting uncovered branches in a crate |
+| `/apex-ci 0.8` | CI gate — fails if below threshold |
+
+### Auto-triggered Agents
+
+These fire automatically when Claude Code detects a matching intent:
+
+| Agent | Trigger examples |
+|-------|-----------------|
+| **apex-coverage-analyst** | "what's our coverage?", "which parts are uncovered?" |
+| **apex-test-writer** | "write tests for X", "improve coverage in Y" |
+| **apex-runner** | "run apex against Z", "run apex on itself" |
+| **apex-sdlc-analyst** | "what's our deploy score?", "find flaky tests" |
+
+### Strategy Selection
+
+The `/apex-run` loop automatically picks the best strategy per gap:
+
+| Target | Primary | Fallback |
+|--------|---------|----------|
+| Rust workspace | Source-level tests | fuzz harness |
+| Python project | Source-level tests | concolic execution |
+| C/Rust binary | fuzz | driller (when fuzz stalls) |
+| JavaScript | Source-level tests | — |
+
+---
+
 ## Architecture
 
 Rust workspace, 16 crates. Heavy dependencies (Z3, LibAFL, PyO3, Inkwell,
@@ -351,13 +411,13 @@ max_rounds = 3
 process_timeout_ms = 10000
 ```
 
-## Development
+---
 
-```bash
-cargo test --workspace
-cargo fmt --check
-cargo clippy --workspace -- -D warnings
-```
+## Contributing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for development setup and guidelines.
+
+Bug reports and feature requests: [GitHub Issues](https://github.com/sahajamoth/apex/issues).
 
 ## License
 

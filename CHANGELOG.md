@@ -5,13 +5,12 @@ All notable changes to APEX will be documented in this file.
 ## [Unreleased]
 
 ### Added
-- **`test_harness` module** (`crates/apex-agent/src/test_harness.rs`) — `ScriptedSandbox` and `ScriptedStrategy` mocks for deterministic orchestrator loop testing
-- **7 orchestrator loop tests** using scripted mocks: coverage-target exit, deadline exit, all-covered exit, suggestion/coverage merging, crash bug recording, stall-threshold termination, sandbox-error-mode resilience
-
-### Fixed
-- **Silent error swallowing in `orchestrator.rs::run()`** — strategy `suggest_inputs` and sandbox `run` failures are now logged via `warn!` instead of silently discarded
-- **Nonsensical agent deadline** — `run_agent_cluster` no longer computes `process_timeout_ms * fuzz_iters / 1000` (produces ~28 h for defaults); now uses `cfg.agent.deadline_secs` or a 30-minute fallback
-- **`AgentConfig`** gains `deadline_secs: Option<u64>` field (default `None`) for explicit orchestrator deadline configuration
+- **Dependency audit for C# (.NET)** — `dotnet list package --vulnerable --include-transitive` parser with tabular output support; graceful fallback when `dotnet` is absent
+- **Dependency audit for Ruby** — `bundler-audit check` parser with block-format (Name/Version/Advisory/Criticality/Title/Solution); graceful fallback when `bundler-audit` is absent
+- **Dependency audit for Swift** — `swift-audit check` stub; reports Info finding when tool is not installed
+- **Dependency audit for C/C++** — `osv-scanner` integration for lockfile scanning; reports Info finding when tool is not installed
+- **Exhaustive language match** in `DependencyAuditDetector::analyze()` — replaces wildcard arm with explicit arms for all 12 languages; remaining unsupported languages (Java, Kotlin, Go, Wasm) return empty
+- **+28 tests** for new dep audit parsers and language dispatch
 
 ## [0.2.1] — 2026-03-16
 

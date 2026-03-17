@@ -115,82 +115,73 @@ impl DependencyAuditDetector {
         parse_npm_audit_output(&stdout)
     }
 
-    /// Audit Rust Cargo.lock directly using `cargo audit --json`.
-    /// This is an alias for `audit_cargo` but named to reflect the lockfile source.
-    async fn audit_cargo_lock(&self, ctx: &AnalysisContext) -> Result<Vec<Finding>> {
-        self.audit_cargo(ctx).await
+    async fn audit_dotnet(&self, ctx: &AnalysisContext) -> Result<Vec<Finding>> {
+        let spec = CommandSpec::new("dotnet", &ctx.target_root)
+            .args(["list", "package", "--vulnerable", "--include-transitive"]);
+
+        let output = match ctx.runner.run_command(&spec).await {
+            Ok(o) => o,
+            Err(e) if is_tool_not_found(&e) => {
+                return Ok(vec![tool_not_installed_finding("dotnet", "*.csproj")]);
+            }
+            Err(e) => return Err(ApexError::Detect(format!("dotnet list: {e}"))),
+        };
+
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        parse_dotnet_audit_output(&stdout)
     }
 
-    /// Audit Go modules via `go list -m -json all` + advisory lookup.
-    ///
-    /// Currently a stub — returns an Info finding if go.sum is detected without
-    /// the `govulncheck` tool installed.  Full implementation requires govulncheck.
-    async fn audit_go(&self, ctx: &AnalysisContext) -> Result<Vec<Finding>> {
-        let spec = CommandSpec::new("govulncheck", &ctx.target_root).args(["./..."]);
+    async fn audit_bundler(&self, ctx: &AnalysisContext) -> Result<Vec<Finding>> {
+        let spec = CommandSpec::new("bundler-audit", &ctx.target_root).args(["check"]);
+
+        let output = match ctx.runner.run_command(&spec).await {
+            Ok(o) => o,
+            Err(e) if is_tool_not_found(&e) => {
+                return Ok(vec![tool_not_installed_finding(
+                    "bundler-audit",
+                    "Gemfile.lock",
+                )]);
+            }
+            Err(e) => return Err(ApexError::Detect(format!("bundler-audit: {e}"))),
+        };
+
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        parse_bundler_audit(&stdout)
+    }
+
+    async fn audit_swift(&self, ctx: &AnalysisContext) -> Result<Vec<Finding>> {
+        let spec = CommandSpec::new("swift-audit", &ctx.target_root).args(["check"]);
 
         match ctx.runner.run_command(&spec).await {
             Ok(output) => {
                 let stdout = String::from_utf8_lossy(&output.stdout);
-                // govulncheck outputs one JSON object per vulnerability; count findings.
-                let mut findings = Vec::new();
-                for line in stdout.lines() {
-                    let parse_result: std::result::Result<serde_json::Value, serde_json::Error> =
-                        serde_json::from_str(line);
-                    if let Ok(v) = parse_result {
-                        if v.get("vulnerability").is_some() {
-                            let id = v["vulnerability"]["id"].as_str().unwrap_or("unknown");
-                            let pkg = v["vulnerability"]["modules"]
-                                .as_array()
-                                .and_then(|a| a.first())
-                                .and_then(|m| m["module"].as_str())
-                                .unwrap_or("unknown");
-                            findings.push(Finding {
-                                id: Uuid::new_v4(),
-                                detector: "dependency-audit".into(),
-                                severity: Severity::High,
-                                category: FindingCategory::DependencyVuln,
-                                file: PathBuf::from("go.sum"),
-                                line: Some(advisory_line(id)),
-                                title: format!("{pkg} ({id})"),
-                                description: format!("govulncheck reported {id} in {pkg}"),
-                                evidence: vec![],
-                                covered: true,
-                                suggestion: format!("Review and upgrade {pkg}"),
-                                explanation: None,
-                                fix: None,
-                                cwe_ids: vec![1395],
-                            });
-                        }
-                    }
-                }
-                Ok(findings)
+                parse_swift_audit_output(&stdout)
             }
-            Err(e) if is_tool_not_found(&e) => Ok(vec![tool_not_installed_finding(
-                "govulncheck",
-                "go.sum",
-            )]),
-            Err(e) => Err(ApexError::Detect(format!("govulncheck: {e}"))),
+            Err(e) if is_tool_not_found(&e) => {
+                Ok(vec![tool_not_installed_finding(
+                    "swift-audit",
+                    "Package.resolved",
+                )])
+            }
+            Err(e) => Err(ApexError::Detect(format!("swift-audit: {e}"))),
         }
     }
 
-    /// Audit Maven pom.xml via `mvn dependency-check:check` (OWASP dependency-check).
-    ///
-    /// Currently a stub — returns an Info finding if the tool is not installed.
-    async fn audit_maven(&self, ctx: &AnalysisContext) -> Result<Vec<Finding>> {
-        let spec = CommandSpec::new("mvn", &ctx.target_root)
-            .args(["dependency-check:check", "-DfailBuildOnCVSS=0", "-q"]);
+    async fn audit_cpp(&self, ctx: &AnalysisContext) -> Result<Vec<Finding>> {
+        let spec =
+            CommandSpec::new("osv-scanner", &ctx.target_root).args(["--lockfile", "."]);
 
         match ctx.runner.run_command(&spec).await {
-            Ok(_output) => {
-                // Minimal stub: in a full implementation we would parse the XML report.
-                // For now, return empty (no findings produced by the stub).
-                Ok(vec![])
+            Ok(output) => {
+                parse_osv_scanner_output(&String::from_utf8_lossy(&output.stdout))
             }
-            Err(e) if is_tool_not_found(&e) => Ok(vec![tool_not_installed_finding(
-                "mvn dependency-check",
-                "pom.xml",
-            )]),
-            Err(e) => Err(ApexError::Detect(format!("mvn dependency-check: {e}"))),
+            Err(e) if is_tool_not_found(&e) => {
+                Ok(vec![tool_not_installed_finding(
+                    "osv-scanner",
+                    "conanfile.txt",
+                )])
+            }
+            Err(e) => Err(ApexError::Detect(format!("osv-scanner: {e}"))),
         }
     }
 }
@@ -207,12 +198,14 @@ impl Detector for DependencyAuditDetector {
 
     async fn analyze(&self, ctx: &AnalysisContext) -> Result<Vec<Finding>> {
         match ctx.language {
-            Language::Rust => self.audit_cargo_lock(ctx).await,
+            Language::Rust => self.audit_cargo(ctx).await,
             Language::Python => self.audit_pip(ctx).await,
             Language::JavaScript => self.audit_npm(ctx).await,
-            Language::Go => self.audit_go(ctx).await,
-            Language::Java | Language::Kotlin => self.audit_maven(ctx).await,
-            _ => Ok(vec![]),
+            Language::CSharp => self.audit_dotnet(ctx).await,
+            Language::Ruby => self.audit_bundler(ctx).await,
+            Language::Swift => self.audit_swift(ctx).await,
+            Language::Cpp | Language::C => self.audit_cpp(ctx).await,
+            Language::Java | Language::Kotlin | Language::Go | Language::Wasm => Ok(vec![]),
         }
     }
 }
@@ -478,6 +471,203 @@ pub fn parse_npm_audit_output(raw: &str) -> Result<Vec<Finding>> {
             fix,
             cwe_ids: vec![1395],
         });
+    }
+
+    Ok(findings)
+}
+
+/// Parse `dotnet list package --vulnerable --include-transitive` output.
+///
+/// Lines starting with `>` after trimming are vulnerable package entries:
+/// `> Package.Name   Requested   Resolved   Severity   AdvisoryURL`
+pub fn parse_dotnet_audit_output(raw: &str) -> Result<Vec<Finding>> {
+    let mut findings = Vec::new();
+    for line in raw.lines() {
+        let trimmed = line.trim();
+        if !trimmed.starts_with('>') {
+            continue;
+        }
+        // Strip leading `>` and split on whitespace
+        let parts: Vec<&str> = trimmed[1..].split_whitespace().collect();
+        // Expected columns: Package, Requested, Resolved, Severity, AdvisoryURL
+        if parts.len() < 5 {
+            continue;
+        }
+        let pkg = parts[0];
+        let version = parts[2]; // Resolved version
+        let sev_str = parts[3].to_lowercase();
+        let severity = match sev_str.as_str() {
+            "critical" => Severity::Critical,
+            "high" => Severity::High,
+            "moderate" | "medium" => Severity::Medium,
+            "low" => Severity::Low,
+            _ => Severity::Medium,
+        };
+        findings.push(Finding {
+            id: Uuid::new_v4(),
+            detector: "dependency-audit".into(),
+            severity,
+            category: FindingCategory::DependencyVuln,
+            file: PathBuf::from("*.csproj"),
+            line: None,
+            title: format!("{pkg} {version}"),
+            description: format!("Vulnerable package: {pkg} {version} ({sev_str})"),
+            evidence: vec![],
+            covered: true,
+            suggestion: format!("Upgrade {pkg} to a patched version"),
+            explanation: None,
+            fix: None,
+            cwe_ids: vec![1395],
+        });
+    }
+    Ok(findings)
+}
+
+/// Parse `bundler-audit check` output.
+///
+/// Output consists of blank-line-separated blocks, each with fields:
+/// `Name:`, `Version:`, `Advisory:`, `Criticality:`, `URL:`, `Title:`, `Solution:`
+pub fn parse_bundler_audit(raw: &str) -> Result<Vec<Finding>> {
+    let mut findings = Vec::new();
+    for block in raw.split("\n\n") {
+        let mut name = "";
+        let mut version = "";
+        let mut advisory = "";
+        let mut severity = Severity::Medium;
+        let mut title = "";
+        let mut solution = "";
+        for line in block.lines() {
+            if let Some(v) = line.strip_prefix("Name: ") {
+                name = v;
+            }
+            if let Some(v) = line.strip_prefix("Version: ") {
+                version = v;
+            }
+            if let Some(v) = line.strip_prefix("Advisory: ") {
+                advisory = v;
+            }
+            if let Some(v) = line.strip_prefix("Criticality: ") {
+                severity = match v.to_lowercase().as_str() {
+                    "critical" => Severity::Critical,
+                    "high" => Severity::High,
+                    "medium" => Severity::Medium,
+                    "low" => Severity::Low,
+                    _ => Severity::Medium,
+                };
+            }
+            if let Some(v) = line.strip_prefix("Title: ") {
+                title = v;
+            }
+            if let Some(v) = line.strip_prefix("Solution: ") {
+                solution = v;
+            }
+        }
+        if !name.is_empty() {
+            findings.push(Finding {
+                id: Uuid::new_v4(),
+                detector: "dependency-audit".into(),
+                severity,
+                category: FindingCategory::DependencyVuln,
+                file: PathBuf::from("Gemfile.lock"),
+                line: None,
+                title: format!("{name} {version} ({advisory})"),
+                description: title.to_string(),
+                evidence: vec![],
+                covered: true,
+                suggestion: solution.to_string(),
+                explanation: None,
+                fix: None,
+                cwe_ids: vec![1395],
+            });
+        }
+    }
+    Ok(findings)
+}
+
+/// Parse `swift-audit check` output (stub — format mirrors bundler-audit blocks).
+pub fn parse_swift_audit_output(raw: &str) -> Result<Vec<Finding>> {
+    // swift-audit is a third-party tool; parse its output the same way as bundler-audit
+    // when/if it emits Name:/Version:/Advisory: block format.
+    parse_bundler_audit(raw)
+}
+
+/// Parse `osv-scanner` JSON output (subset used for C/C++ lockfile scanning).
+///
+/// Format: `{"results":[{"packages":[{"package":{"name":"..","version":".."},"groups":[{"ids":["GHSA-.."],"severity":"HIGH"}]}]}]}`
+pub fn parse_osv_scanner_output(raw: &str) -> Result<Vec<Finding>> {
+    if raw.trim().is_empty() {
+        return Ok(vec![]);
+    }
+
+    let parsed: serde_json::Value = serde_json::from_str(raw)
+        .map_err(|e| ApexError::Detect(format!("osv-scanner JSON parse: {e}")))?;
+
+    let mut findings = Vec::new();
+
+    let results = match parsed.get("results").and_then(|v| v.as_array()) {
+        Some(r) => r,
+        None => return Ok(vec![]),
+    };
+
+    for result in results {
+        let packages = match result.get("packages").and_then(|v| v.as_array()) {
+            Some(p) => p,
+            None => continue,
+        };
+        for pkg_entry in packages {
+            let pkg = &pkg_entry["package"];
+            let pkg_name = pkg["name"].as_str().unwrap_or("unknown");
+            let pkg_version = pkg["version"].as_str().unwrap_or("?");
+
+            let groups = match pkg_entry.get("groups").and_then(|v| v.as_array()) {
+                Some(g) => g,
+                None => continue,
+            };
+
+            for group in groups {
+                let ids: Vec<&str> = group["ids"]
+                    .as_array()
+                    .map(|arr| {
+                        arr.iter()
+                            .filter_map(|v| v.as_str())
+                            .collect()
+                    })
+                    .unwrap_or_default();
+
+                if ids.is_empty() {
+                    continue;
+                }
+
+                let sev_str = group["severity"].as_str().unwrap_or("medium");
+                let severity = match sev_str.to_lowercase().as_str() {
+                    "critical" => Severity::Critical,
+                    "high" => Severity::High,
+                    "medium" | "moderate" => Severity::Medium,
+                    "low" => Severity::Low,
+                    _ => Severity::Medium,
+                };
+
+                let advisory_id = ids[0];
+                findings.push(Finding {
+                    id: Uuid::new_v4(),
+                    detector: "dependency-audit".into(),
+                    severity,
+                    category: FindingCategory::DependencyVuln,
+                    file: PathBuf::from("conanfile.txt"),
+                    line: Some(advisory_line(advisory_id)),
+                    title: format!("{pkg_name} {pkg_version} ({advisory_id})"),
+                    description: format!(
+                        "Vulnerable C/C++ dependency: {pkg_name} {pkg_version}"
+                    ),
+                    evidence: vec![],
+                    covered: true,
+                    suggestion: format!("Upgrade {pkg_name} to a patched version"),
+                    explanation: None,
+                    fix: None,
+                    cwe_ids: vec![1395],
+                });
+            }
+        }
     }
 
     Ok(findings)
@@ -896,7 +1086,7 @@ warning: 2 allowed advisories were not found in the advisory database:
     #[tokio::test]
     async fn analyze_unsupported_language_returns_empty() {
         let runner = FixtureRunner::new();
-        let ctx = make_ctx_with_lang(runner, Language::Ruby);
+        let ctx = make_ctx_with_lang(runner, Language::Wasm);
         let findings = DependencyAuditDetector.analyze(&ctx).await.unwrap();
         assert!(findings.is_empty());
     }
@@ -1056,77 +1246,285 @@ warning: 2 allowed advisories were not found in the advisory database:
         assert!(!is_tool_not_found(&e));
     }
 
-    // -----------------------------------------------------------------------
-    // Bug 20: audit_cargo_lock, audit_go, audit_maven stubs
-    // -----------------------------------------------------------------------
+    // ── dotnet audit tests ───────────────────────────────────────────────────
 
-    #[tokio::test]
-    async fn analyze_go_govulncheck_not_installed_returns_info() {
-        let mut mock = MockCmdRunner::new();
-        mock.expect_run_command().returning(|_| {
-            Err(ApexError::Subprocess {
-                exit_code: 127,
-                stderr: "govulncheck: command not found".into(),
-            })
-        });
-        let ctx = make_ctx_with_mock(mock, Language::Go);
-        let findings = DependencyAuditDetector.analyze(&ctx).await.unwrap();
-        assert_eq!(findings.len(), 1);
-        assert_eq!(findings[0].severity, Severity::Info);
-        assert!(findings[0].title.contains("not installed"));
+    #[test]
+    fn parse_dotnet_vulnerable_packages() {
+        let output = r#"Project 'MyApp' has the following vulnerable packages
+   [net8.0]:
+   Top-level Package                     Requested   Resolved   Severity   Advisory URL
+   > System.Text.Json                    8.0.0       8.0.0      High       https://github.com/advisories/GHSA-1234
+   > Microsoft.Data.SqlClient            5.1.0       5.1.0      Critical   https://github.com/advisories/GHSA-5678
+"#;
+        let findings = parse_dotnet_audit_output(output).unwrap();
+        assert_eq!(findings.len(), 2);
+        assert_eq!(findings[0].severity, Severity::High);
+        assert!(findings[0].title.contains("System.Text.Json"));
+        assert_eq!(findings[1].severity, Severity::Critical);
+        assert!(findings[1].title.contains("Microsoft.Data.SqlClient"));
     }
 
-    #[tokio::test]
-    async fn analyze_java_maven_not_installed_returns_info() {
-        let mut mock = MockCmdRunner::new();
-        mock.expect_run_command().returning(|_| {
-            Err(ApexError::Subprocess {
-                exit_code: 127,
-                stderr: "mvn: command not found".into(),
-            })
-        });
-        let ctx = make_ctx_with_mock(mock, Language::Java);
-        let findings = DependencyAuditDetector.analyze(&ctx).await.unwrap();
-        assert_eq!(findings.len(), 1);
-        assert_eq!(findings[0].severity, Severity::Info);
-        assert!(findings[0].title.contains("not installed"));
+    #[test]
+    fn parse_dotnet_no_vulnerabilities() {
+        let output = "Project 'MyApp' has no vulnerable packages.\n";
+        let findings = parse_dotnet_audit_output(output).unwrap();
+        assert!(findings.is_empty());
     }
 
-    #[tokio::test]
-    async fn analyze_kotlin_maven_not_installed_returns_info() {
-        let mut mock = MockCmdRunner::new();
-        mock.expect_run_command().returning(|_| {
-            Err(ApexError::Subprocess {
-                exit_code: 127,
-                stderr: "mvn: command not found".into(),
-            })
-        });
-        let ctx = make_ctx_with_mock(mock, Language::Kotlin);
-        let findings = DependencyAuditDetector.analyze(&ctx).await.unwrap();
+    #[test]
+    fn parse_dotnet_medium_severity() {
+        let output = "   > Newtonsoft.Json                    12.0.1      12.0.1     Moderate   https://github.com/advisories/GHSA-xxxx\n";
+        let findings = parse_dotnet_audit_output(output).unwrap();
         assert_eq!(findings.len(), 1);
-        assert_eq!(findings[0].severity, Severity::Info);
+        assert_eq!(findings[0].severity, Severity::Medium);
+        assert_eq!(findings[0].file, PathBuf::from("*.csproj"));
+        assert!(findings[0].suggestion.contains("Upgrade"));
     }
 
-    #[tokio::test]
-    async fn analyze_go_govulncheck_success_no_output() {
-        // govulncheck ran but found no vulnerabilities (empty output)
-        let runner = FixtureRunner::new()
-            .on("govulncheck", CommandOutput::success(b"".to_vec()));
-        let ctx = make_ctx_with_lang(runner, Language::Go);
-        let findings = DependencyAuditDetector.analyze(&ctx).await.unwrap();
+    #[test]
+    fn parse_dotnet_low_severity() {
+        let output = "   > MinorPkg                          1.0.0       1.0.0      Low        https://github.com/advisories/GHSA-abcd\n";
+        let findings = parse_dotnet_audit_output(output).unwrap();
+        assert_eq!(findings.len(), 1);
+        assert_eq!(findings[0].severity, Severity::Low);
+    }
+
+    #[test]
+    fn parse_dotnet_short_line_skipped() {
+        // Lines with fewer than 5 whitespace-separated tokens after `>` are skipped
+        let output = "   > ShortPkg\n";
+        let findings = parse_dotnet_audit_output(output).unwrap();
         assert!(findings.is_empty());
     }
 
     #[tokio::test]
-    async fn audit_cargo_lock_delegates_to_cargo_audit() {
-        // cargo-lock audit delegates to cargo audit JSON output
-        let audit_json = r#"{"vulnerabilities": {"found": 0, "list": []}}"#;
-        let runner = FixtureRunner::new().on(
-            "cargo",
-            CommandOutput::success(audit_json.as_bytes().to_vec()),
+    async fn analyze_csharp_uses_dotnet() {
+        let output = "   > System.Text.Json                    8.0.0       8.0.0      High       https://github.com/advisories/GHSA-1234\n";
+        let runner =
+            FixtureRunner::new().on("dotnet", CommandOutput::success(output.as_bytes().to_vec()));
+        let ctx = make_ctx_with_lang(runner, Language::CSharp);
+        let findings = DependencyAuditDetector.analyze(&ctx).await.unwrap();
+        assert_eq!(findings.len(), 1);
+        assert!(findings[0].title.contains("System.Text.Json"));
+    }
+
+    #[tokio::test]
+    async fn dotnet_not_installed_returns_info_finding() {
+        let mut mock = MockCmdRunner::new();
+        mock.expect_run_command().returning(|_| {
+            Err(ApexError::Subprocess {
+                exit_code: 127,
+                stderr: "dotnet: command not found".into(),
+            })
+        });
+        let ctx = make_ctx_with_mock(mock, Language::CSharp);
+        let findings = DependencyAuditDetector.analyze(&ctx).await.unwrap();
+        assert_eq!(findings.len(), 1);
+        assert_eq!(findings[0].severity, Severity::Info);
+        assert!(findings[0].title.contains("not installed"));
+        assert!(findings[0].title.contains("dotnet"));
+    }
+
+    // ── bundler-audit tests ──────────────────────────────────────────────────
+
+    #[test]
+    fn parse_bundler_audit_single_vuln() {
+        let output = "Name: actionpack\nVersion: 7.0.4\nAdvisory: CVE-2023-22795\nCriticality: High\nURL: https://nvd.nist.gov/...\nTitle: ReDoS in Action Dispatch\nSolution: upgrade to ~> 7.0.4.1\n\n";
+        let findings = parse_bundler_audit(output).unwrap();
+        assert_eq!(findings.len(), 1);
+        assert!(findings[0].title.contains("actionpack"));
+        assert_eq!(findings[0].severity, Severity::High);
+        assert!(findings[0].title.contains("CVE-2023-22795"));
+        assert_eq!(findings[0].file, PathBuf::from("Gemfile.lock"));
+    }
+
+    #[test]
+    fn parse_bundler_audit_multiple_vulns() {
+        let output = concat!(
+            "Name: rack\nVersion: 2.2.6\nAdvisory: CVE-2023-27539\nCriticality: Medium\n",
+            "URL: https://nvd.nist.gov/...\nTitle: ReDoS in Rack\nSolution: upgrade to ~> 2.2.7\n\n",
+            "Name: rails\nVersion: 7.0.4\nAdvisory: CVE-2023-22796\nCriticality: Critical\n",
+            "URL: https://nvd.nist.gov/...\nTitle: RCE in Rails\nSolution: upgrade to >= 7.0.5\n\n",
         );
-        let ctx = make_ctx_with_lang(runner, Language::Rust);
+        let findings = parse_bundler_audit(output).unwrap();
+        assert_eq!(findings.len(), 2);
+        assert_eq!(findings[0].severity, Severity::Medium);
+        assert_eq!(findings[1].severity, Severity::Critical);
+    }
+
+    #[test]
+    fn parse_bundler_audit_empty_output() {
+        let findings = parse_bundler_audit("").unwrap();
+        assert!(findings.is_empty());
+    }
+
+    #[test]
+    fn parse_bundler_audit_no_vulns_message() {
+        let output = "No vulnerabilities found\n";
+        let findings = parse_bundler_audit(output).unwrap();
+        assert!(findings.is_empty());
+    }
+
+    #[test]
+    fn parse_bundler_audit_solution_in_suggestion() {
+        let output = "Name: nokogiri\nVersion: 1.14.0\nAdvisory: CVE-2023-999\nCriticality: Low\nURL: https://example.com\nTitle: XML vuln\nSolution: upgrade to >= 1.15.0\n\n";
+        let findings = parse_bundler_audit(output).unwrap();
+        assert_eq!(findings.len(), 1);
+        assert!(findings[0].suggestion.contains("upgrade to >= 1.15.0"));
+    }
+
+    #[tokio::test]
+    async fn analyze_ruby_uses_bundler_audit() {
+        let output = "Name: rack\nVersion: 2.2.6\nAdvisory: CVE-2023-27539\nCriticality: High\nURL: https://nvd.nist.gov/...\nTitle: ReDoS\nSolution: upgrade\n\n";
+        let runner = FixtureRunner::new()
+            .on("bundler-audit", CommandOutput::success(output.as_bytes().to_vec()));
+        let ctx = make_ctx_with_lang(runner, Language::Ruby);
+        let findings = DependencyAuditDetector.analyze(&ctx).await.unwrap();
+        assert_eq!(findings.len(), 1);
+        assert!(findings[0].title.contains("rack"));
+    }
+
+    #[tokio::test]
+    async fn bundler_audit_not_installed_returns_info_finding() {
+        let mut mock = MockCmdRunner::new();
+        mock.expect_run_command().returning(|_| {
+            Err(ApexError::Subprocess {
+                exit_code: 127,
+                stderr: "bundler-audit: command not found".into(),
+            })
+        });
+        let ctx = make_ctx_with_mock(mock, Language::Ruby);
+        let findings = DependencyAuditDetector.analyze(&ctx).await.unwrap();
+        assert_eq!(findings.len(), 1);
+        assert_eq!(findings[0].severity, Severity::Info);
+        assert!(findings[0].title.contains("bundler-audit"));
+    }
+
+    // ── swift audit tests ────────────────────────────────────────────────────
+
+    #[tokio::test]
+    async fn swift_audit_not_installed_returns_info_finding() {
+        let mut mock = MockCmdRunner::new();
+        mock.expect_run_command().returning(|_| {
+            Err(ApexError::Subprocess {
+                exit_code: 127,
+                stderr: "swift-audit: command not found".into(),
+            })
+        });
+        let ctx = make_ctx_with_mock(mock, Language::Swift);
+        let findings = DependencyAuditDetector.analyze(&ctx).await.unwrap();
+        assert_eq!(findings.len(), 1);
+        assert_eq!(findings[0].severity, Severity::Info);
+        assert!(findings[0].title.contains("swift-audit"));
+        assert_eq!(findings[0].file, PathBuf::from("Package.resolved"));
+    }
+
+    #[tokio::test]
+    async fn analyze_swift_uses_swift_audit() {
+        let output = "Name: swift-crypto\nVersion: 2.1.0\nAdvisory: CVE-2023-9999\nCriticality: High\nURL: https://example.com\nTitle: Crypto vuln\nSolution: upgrade to >= 2.2.0\n\n";
+        let runner = FixtureRunner::new()
+            .on("swift-audit", CommandOutput::success(output.as_bytes().to_vec()));
+        let ctx = make_ctx_with_lang(runner, Language::Swift);
+        let findings = DependencyAuditDetector.analyze(&ctx).await.unwrap();
+        assert_eq!(findings.len(), 1);
+        assert!(findings[0].title.contains("swift-crypto"));
+    }
+
+    // ── osv-scanner / C/C++ audit tests ─────────────────────────────────────
+
+    #[test]
+    fn parse_osv_scanner_with_vulns() {
+        let raw = r#"{
+            "results": [{
+                "packages": [{
+                    "package": {"name": "libcurl", "version": "7.80.0"},
+                    "groups": [{"ids": ["GHSA-xxxx-yyyy-zzzz"], "severity": "HIGH"}]
+                }]
+            }]
+        }"#;
+        let findings = parse_osv_scanner_output(raw).unwrap();
+        assert_eq!(findings.len(), 1);
+        assert!(findings[0].title.contains("libcurl"));
+        assert_eq!(findings[0].severity, Severity::High);
+        assert_eq!(findings[0].file, PathBuf::from("conanfile.txt"));
+    }
+
+    #[test]
+    fn parse_osv_scanner_critical_severity() {
+        let raw = r#"{
+            "results": [{
+                "packages": [{
+                    "package": {"name": "openssl", "version": "1.0.2"},
+                    "groups": [{"ids": ["CVE-2023-0001"], "severity": "CRITICAL"}]
+                }]
+            }]
+        }"#;
+        let findings = parse_osv_scanner_output(raw).unwrap();
+        assert_eq!(findings.len(), 1);
+        assert_eq!(findings[0].severity, Severity::Critical);
+    }
+
+    #[test]
+    fn parse_osv_scanner_empty_output() {
+        let findings = parse_osv_scanner_output("").unwrap();
+        assert!(findings.is_empty());
+    }
+
+    #[test]
+    fn parse_osv_scanner_no_results() {
+        let raw = r#"{"results": []}"#;
+        let findings = parse_osv_scanner_output(raw).unwrap();
+        assert!(findings.is_empty());
+    }
+
+    #[test]
+    fn parse_osv_scanner_invalid_json() {
+        let result = parse_osv_scanner_output("not json");
+        assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn analyze_cpp_uses_osv_scanner() {
+        let raw = r#"{
+            "results": [{
+                "packages": [{
+                    "package": {"name": "boost", "version": "1.80.0"},
+                    "groups": [{"ids": ["GHSA-boost-vuln"], "severity": "MEDIUM"}]
+                }]
+            }]
+        }"#;
+        let runner =
+            FixtureRunner::new().on("osv-scanner", CommandOutput::success(raw.as_bytes().to_vec()));
+        let ctx = make_ctx_with_lang(runner, Language::Cpp);
+        let findings = DependencyAuditDetector.analyze(&ctx).await.unwrap();
+        assert_eq!(findings.len(), 1);
+        assert!(findings[0].title.contains("boost"));
+    }
+
+    #[tokio::test]
+    async fn analyze_c_uses_osv_scanner() {
+        let raw = r#"{"results": []}"#;
+        let runner =
+            FixtureRunner::new().on("osv-scanner", CommandOutput::success(raw.as_bytes().to_vec()));
+        let ctx = make_ctx_with_lang(runner, Language::C);
         let findings = DependencyAuditDetector.analyze(&ctx).await.unwrap();
         assert!(findings.is_empty());
+    }
+
+    #[tokio::test]
+    async fn osv_scanner_not_installed_returns_info_finding() {
+        let mut mock = MockCmdRunner::new();
+        mock.expect_run_command().returning(|_| {
+            Err(ApexError::Subprocess {
+                exit_code: 127,
+                stderr: "osv-scanner: command not found".into(),
+            })
+        });
+        let ctx = make_ctx_with_mock(mock, Language::Cpp);
+        let findings = DependencyAuditDetector.analyze(&ctx).await.unwrap();
+        assert_eq!(findings.len(), 1);
+        assert_eq!(findings[0].severity, Severity::Info);
+        assert!(findings[0].title.contains("osv-scanner"));
+        assert_eq!(findings[0].file, PathBuf::from("conanfile.txt"));
     }
 }

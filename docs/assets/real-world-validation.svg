@@ -1,166 +1,306 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 860 680">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 860 650">
   <style>
-    @keyframes blink { 0%,49% { opacity: 1 } 50%,100% { opacity: 0 } }
-    @keyframes t1  { 0%,2%  { opacity: 0 } 3%  { opacity: 1 } }
-    @keyframes t2  { 0%,7%  { opacity: 0 } 8%  { opacity: 1 } }
-    @keyframes t3  { 0%,12% { opacity: 0 } 13% { opacity: 1 } }
-    @keyframes t4  { 0%,16% { opacity: 0 } 17% { opacity: 1 } }
-    @keyframes t5  { 0%,22% { opacity: 0 } 23% { opacity: 1 } }
-    @keyframes t6  { 0%,27% { opacity: 0 } 28% { opacity: 1 } }
-    @keyframes t7  { 0%,32% { opacity: 0 } 33% { opacity: 1 } }
-    @keyframes t8  { 0%,37% { opacity: 0 } 38% { opacity: 1 } }
-    @keyframes t9  { 0%,42% { opacity: 0 } 43% { opacity: 1 } }
-    @keyframes t10 { 0%,47% { opacity: 0 } 48% { opacity: 1 } }
-    @keyframes t11 { 0%,52% { opacity: 0 } 53% { opacity: 1 } }
-    @keyframes t12 { 0%,56% { opacity: 0 } 57% { opacity: 1 } }
-    @keyframes t13 { 0%,60% { opacity: 0 } 61% { opacity: 1 } }
-    @keyframes t14 { 0%,64% { opacity: 0 } 65% { opacity: 1 } }
-    .t { font-family: 'SF Mono', 'Cascadia Code', 'Fira Code', 'JetBrains Mono', Menlo, monospace; font-size: 13px; }
-    .prompt { fill: #7ec699 } .cmd { fill: #e0e0e0 } .dim { fill: #6c7086 }
-    .cyan { fill: #89dceb } .yellow { fill: #f9e2af } .red { fill: #f38ba8 }
-    .green { fill: #a6e3a1 } .blue { fill: #89b4fa } .magenta { fill: #cba6f7 }
-    .peach { fill: #fab387 } .white { fill: #cdd6f4 } .b { font-weight: 700 }
-    .s1  { opacity: 0; animation: t1  30s infinite }
-    .s2  { opacity: 0; animation: t2  30s infinite }
-    .s3  { opacity: 0; animation: t3  30s infinite }
-    .s4  { opacity: 0; animation: t4  30s infinite }
-    .s5  { opacity: 0; animation: t5  30s infinite }
-    .s6  { opacity: 0; animation: t6  30s infinite }
-    .s7  { opacity: 0; animation: t7  30s infinite }
-    .s8  { opacity: 0; animation: t8  30s infinite }
-    .s9  { opacity: 0; animation: t9  30s infinite }
-    .s10 { opacity: 0; animation: t10 30s infinite }
-    .s11 { opacity: 0; animation: t11 30s infinite }
-    .s12 { opacity: 0; animation: t12 30s infinite }
-    .s13 { opacity: 0; animation: t13 30s infinite }
-    .s14 { opacity: 0; animation: t14 30s infinite }
-    .cursor { animation: blink 1s step-end infinite }
+    /* Scroll: loops, snaps back at end */
+    @keyframes scroll {
+      0%, 10%  { transform: translateY(0) }
+      20%      { transform: translateY(-60px) }
+      55%      { transform: translateY(-320px) }
+      70%      { transform: translateY(-540px) }
+      97%      { transform: translateY(-540px) }
+      100%     { transform: translateY(0) }
+    }
+    /* Opacity reveals: play ONCE, stay visible forever */
+    @keyframes r1  { 0%,2%  { opacity:0 } 3%  { opacity:1 } }
+    @keyframes r2  { 0%,5%  { opacity:0 } 6%  { opacity:1 } }
+    @keyframes r3  { 0%,8%  { opacity:0 } 9%  { opacity:1 } }
+    @keyframes r4  { 0%,10% { opacity:0 } 11% { opacity:1 } }
+    @keyframes r5  { 0%,14% { opacity:0 } 15% { opacity:1 } }
+    @keyframes r6  { 0%,17% { opacity:0 } 18% { opacity:1 } }
+    @keyframes r7  { 0%,19% { opacity:0 } 20% { opacity:1 } }
+    @keyframes r8  { 0%,24% { opacity:0 } 25% { opacity:1 } }
+    @keyframes r9  { 0%,30% { opacity:0 } 31% { opacity:1 } }
+    @keyframes r10 { 0%,36% { opacity:0 } 37% { opacity:1 } }
+    @keyframes r11 { 0%,55% { opacity:0 } 56% { opacity:1 } }
+    @keyframes r12 { 0%,63% { opacity:0 } 64% { opacity:1 } }
+    @keyframes r13 { 0%,66% { opacity:0 } 67% { opacity:1 } }
+    @keyframes r14 { 0%,70% { opacity:0 } 71% { opacity:1 } }
+    @keyframes blink { 0%,49% { opacity:1 } 50%,100% { opacity:0 } }
+
+    .t { font-family: 'SF Mono','Cascadia Code','Fira Code','JetBrains Mono',Menlo,monospace; font-size: 13px }
+    .scroll { animation: scroll 50s infinite }
+    .r1  { opacity:0; animation: r1  50s 1 forwards }
+    .r2  { opacity:0; animation: r2  50s 1 forwards }
+    .r3  { opacity:0; animation: r3  50s 1 forwards }
+    .r4  { opacity:0; animation: r4  50s 1 forwards }
+    .r5  { opacity:0; animation: r5  50s 1 forwards }
+    .r6  { opacity:0; animation: r6  50s 1 forwards }
+    .r7  { opacity:0; animation: r7  50s 1 forwards }
+    .r8  { opacity:0; animation: r8  50s 1 forwards }
+    .r9  { opacity:0; animation: r9  50s 1 forwards }
+    .r10 { opacity:0; animation: r10 50s 1 forwards }
+    .r11 { opacity:0; animation: r11 50s 1 forwards }
+    .r12 { opacity:0; animation: r12 50s 1 forwards }
+    .r13 { opacity:0; animation: r13 50s 1 forwards }
+    .r14 { opacity:0; animation: r14 50s 1 forwards }
+    .cur { animation: blink 1s step-end infinite }
+
+    .pr { fill:#7ec699 } .cm { fill:#cdd6f4 } .dm { fill:#6c7086 }
+    .cy { fill:#89dceb } .yl { fill:#f9e2af } .rd { fill:#f38ba8 }
+    .gn { fill:#a6e3a1 } .bl { fill:#89b4fa } .mg { fill:#cba6f7 }
+    .pc { fill:#fab387 } .wh { fill:#cdd6f4 } .b { font-weight:700 }
+    .s2 { fill:#585b70 }
   </style>
 
+  <defs>
+    <clipPath id="vp"><rect x="0" y="36" width="860" height="614"/></clipPath>
+  </defs>
+
   <!-- Terminal chrome -->
-  <rect width="860" height="680" rx="10" fill="#1e1e2e"/>
+  <rect width="860" height="650" rx="10" fill="#1e1e2e"/>
   <rect width="860" height="36" rx="10" fill="#313244"/>
   <rect y="26" width="860" height="10" fill="#313244"/>
   <circle cx="20" cy="18" r="6" fill="#f38ba8"/>
   <circle cx="40" cy="18" r="6" fill="#f9e2af"/>
   <circle cx="60" cy="18" r="6" fill="#a6e3a1"/>
-  <text x="430" y="22" text-anchor="middle" class="t dim" font-size="12">apex audit — real-world validation</text>
+  <text x="430" y="22" text-anchor="middle" class="t dm" font-size="12">apex audit — real-world validation</text>
 
-  <g class="t" transform="translate(18, 62)">
-    <!-- Command -->
-    <text y="0" class="prompt">$</text>
-    <text x="16" y="0" class="cmd">apex audit --target ./top-10-repos --lang all</text>
+  <!-- Scrollable content area -->
+  <g clip-path="url(#vp)">
+    <g transform="translate(18, 52)">
+      <g class="scroll t">
 
-    <!-- Phase 1: Scan header -->
-    <g class="s1">
-      <text y="30" class="cyan b">  APEX v0.2.1</text>
-      <text x="120" y="30" class="dim"> — Scanning 10 repos, 11 languages...</text>
-    </g>
+        <!-- ═══ COMMAND ═══ -->
+        <text y="0" class="pr">$</text>
+        <text x="16" y="0" class="cm">apex audit --target ./top-10-repos --lang all</text>
 
-    <!-- Phase 2: Real findings streaming in -->
-    <g class="s2">
-      <text y="60" class="yellow">  ⚠ HIGH</text>
-      <text x="80" y="60" class="dim">kernel/printk/printk.c:312</text>
-      <text x="330" y="60" class="white">CWE-134</text>
-      <text x="410" y="60" class="dim">Format string vulnerability</text>
-      <text y="78" class="yellow">  ⚠ HIGH</text>
-      <text x="80" y="78" class="dim">Objects/fileobject.c:269</text>
-      <text x="330" y="78" class="white">CWE-242</text>
-      <text x="410" y="78" class="green">gets() banned function</text>
-      <text x="590" y="78" class="green b">TP</text>
-    </g>
+        <!-- ═══ APEX HEADER ═══ -->
+        <g class="r1">
+          <text y="30" class="dm">╭───────────────────────────────────────────────────────────╮</text>
+          <text y="48" class="dm">│</text>
+          <text x="16" y="48" class="cy b">APEX v0.2.1</text>
+          <text x="110" y="48" class="dm">— Autonomous Path EXploration</text>
+          <text x="460" y="48" class="dm">│</text>
+          <text y="66" class="dm">│</text>
+          <text x="16" y="66" class="dm">Target: 10 repos · 11 languages · Fleet parallel scan</text>
+          <text x="460" y="66" class="dm">│</text>
+          <text y="84" class="dm">╰───────────────────────────────────────────────────────────╯</text>
+        </g>
 
-    <g class="s3">
-      <text y="96" class="red">  ⚠ CRIT</text>
-      <text x="80" y="96" class="dim">pkg/controlplane/testserver.go:60</text>
-      <text x="330" y="96" class="white">CWE-798</text>
-      <text x="410" y="96" class="green">Hardcoded EC private key</text>
-      <text x="608" y="96" class="green b">TP</text>
-    </g>
+        <!-- ═══ FINDINGS STREAM ═══ -->
+        <g class="r2">
+          <text y="114" class="yl">  ? FP</text>
+          <text x="60" y="114" class="s2">Linux</text>
+          <text x="140" y="114" class="dm">kernel/printk/printk.c:312</text>
+          <text x="380" y="114" class="s2">CWE-134</text>
+          <text x="448" y="114" class="wh">format string vulnerability</text>
 
-    <g class="s4">
-      <text y="114" class="yellow">  ⚠ HIGH</text>
-      <text x="80" y="114" class="dim">src/compiler/emitter.ts:1847</text>
-      <text x="330" y="114" class="white">CWE-94</text>
-      <text x="410" y="114" class="dim">new Function() code injection</text>
-      <text y="132" class="yellow">  ⚠ HIGH</text>
-      <text x="80" y="132" class="dim">Sources/Development/configure.swift:49</text>
-      <text x="330" y="132" class="white">CWE-798</text>
-      <text x="410" y="132" class="green">PEM private key in source</text>
-      <text x="608" y="132" class="green b">TP</text>
-      <text y="154" class="dim">  ...12,770 findings across 10 repos (0 crashes)</text>
-    </g>
+          <text y="132" class="gn">  ✓ TP</text>
+          <text x="60" y="132" class="s2">CPython</text>
+          <text x="140" y="132" class="dm">Objects/fileobject.c:269</text>
+          <text x="380" y="132" class="s2">CWE-242</text>
+          <text x="448" y="132" class="gn">gets() banned function</text>
+        </g>
 
-    <!-- Phase 3: The problem -->
-    <g class="s5">
-      <text y="180" class="dim">  ──────────────────────────────────────────────────────</text>
-    </g>
+        <g class="r3">
+          <text y="150" class="gn">  ✓ TP</text>
+          <text x="60" y="150" class="s2">Kubernetes</text>
+          <text x="140" y="150" class="dm">pkg/controlplane/testserver.go:60</text>
+          <text x="380" y="150" class="s2">CWE-798</text>
+          <text x="448" y="150" class="gn">hardcoded EC private key</text>
+        </g>
 
-    <g class="s6">
-      <text y="206" class="red b">  Problem: 77% are false positives</text>
-      <text x="330" y="206" class="dim">(9,923 of 12,770 findings)</text>
-    </g>
+        <g class="r4">
+          <text y="168" class="yl">  ? FP</text>
+          <text x="60" y="168" class="s2">TypeScript</text>
+          <text x="140" y="168" class="dm">src/compiler/emitter.ts:1847</text>
+          <text x="380" y="168" class="s2">CWE-94</text>
+          <text x="448" y="168" class="wh">new Function() code injection</text>
 
-    <!-- Phase 4: Bug explanations with real code -->
-    <g class="s7">
-      <text y="236" class="peach b">  Bug #1</text>
-      <text x="80" y="236" class="white">printk("hello %d", x)</text>
-      <text x="280" y="236" class="dim">→ literal format string, not a vulnerability</text>
-      <text y="254" class="dim">         1,584 false positives in Linux kernel alone — </text>
-      <text x="455" y="254" class="green">fixed: skip literal fmt args</text>
-    </g>
+          <text y="186" class="gn">  ✓ TP</text>
+          <text x="60" y="186" class="s2">Vapor</text>
+          <text x="140" y="186" class="dm">Sources/Development/configure.swift:49</text>
+          <text x="380" y="186" class="s2">CWE-798</text>
+          <text x="448" y="186" class="gn">PEM private key in source</text>
 
-    <g class="s8">
-      <text y="280" class="peach b">  Bug #2</text>
-      <text x="80" y="280" class="white">cpumask_pr_args</text>
-      <text x="210" y="280" class="dim">(entropy 4.6 bits) → C identifier, not a secret</text>
-      <text y="298" class="dim">         838 false positives across all repos — </text>
-      <text x="391" y="298" class="green">fixed: threshold 4.5 → 5.0</text>
-    </g>
+          <text y="204" class="yl">  ? FP</text>
+          <text x="60" y="204" class="s2">Rails</text>
+          <text x="140" y="204" class="dm">activerecord/persistence.rb:201</text>
+          <text x="380" y="204" class="s2">CWE-94</text>
+          <text x="448" y="204" class="wh">class_eval injection</text>
 
-    <g class="s9">
-      <text y="324" class="peach b">  Bug #4</text>
-      <text x="80" y="324" class="white">new Function()</text>
-      <text x="195" y="324" class="dim">in TypeScript compiler — legitimate codegen</text>
-      <text y="342" class="dim">         760 false positives eliminated — </text>
-      <text x="350" y="342" class="green">fixed: compiler/emitter path skip</text>
-    </g>
+          <text y="222" class="yl">  ? FP</text>
+          <text x="60" y="222" class="s2">CPython</text>
+          <text x="140" y="222" class="dm">Lib/multiprocessing/spawn.py:130</text>
+          <text x="380" y="222" class="s2">CWE-502</text>
+          <text x="448" y="222" class="wh">pickle deserialization</text>
+        </g>
 
-    <!-- Phase 5: After fix (THE MONEY SHOT — visible for ~47% of cycle) -->
-    <g class="s10">
-      <text y="372" class="dim">  ──────────────────────────────────────────────────────</text>
-    </g>
+        <!-- ═══ TOTAL + PROBLEM ═══ -->
+        <g class="r5">
+          <text y="252" class="dm">  12,770 total findings · 0 crashes · 0 panics</text>
+          <text y="280" class="dm">  ──────────────────────────────────────────────────────────</text>
+          <text y="302" class="rd b">  Problem:</text>
+          <text x="95" y="302" class="wh">9,923 findings are false positives</text>
+          <text x="370" y="302" class="rd b">(77%)</text>
+          <text y="320" class="dm">  ──────────────────────────────────────────────────────────</text>
+        </g>
 
-    <g class="s11">
-      <text y="400" class="magenta b">  After 19 bug fixes</text>
-      <text x="195" y="400" class="dim">(+42 tests, 1,207 total)</text>
-    </g>
+        <!-- ═══ BUG HEADER ═══ -->
+        <g class="r6">
+          <text y="350" class="mg b">  20 BUGS FOUND — ALL FIXED</text>
+          <text y="368" class="dm">  ──────────────────────────────────────────────────────────</text>
+        </g>
 
-    <g class="s12">
-      <text y="430" class="white">  FP rate:</text>
-      <text x="120" y="430" class="red b">77%</text>
-      <text x="160" y="430" class="white">→</text>
-      <text x="180" y="430" class="green b" font-size="16">~30%</text>
-      <text y="454" class="white">  Eliminated:</text>
-      <text x="130" y="454" class="green b" font-size="16">~7,200</text>
-      <text x="205" y="454" class="dim">false positives removed</text>
-    </g>
+        <!-- ═══ BUGS #1-5 (HIGH) ═══ -->
+        <g class="r7">
+          <text y="394" class="rd">#1</text>
+          <text x="30" y="394" class="pc">Linux/CPython</text>
+          <text x="160" y="394" class="wh">printf("literal") flagged as CWE-134</text>
+          <text x="460" y="394" class="dm">— 1,584 FPs</text>
 
-    <g class="s13">
-      <text y="478" class="white">  Tests:</text>
-      <text x="120" y="478" class="blue b">1,207 passing</text>
-      <text x="240" y="478" class="dim">(apex-detect)</text>
-      <text y="496" class="white">  Crashes:</text>
-      <text x="120" y="496" class="green b">0</text>
-      <text x="140" y="496" class="dim">across all 10 repos</text>
-      <text y="518" class="dim">  Repos: Linux · CPython · TypeScript · ripgrep · Spring Boot</text>
-      <text y="536" class="dim">         Kubernetes · .NET · Vapor · Rails · ktor</text>
-    </g>
+          <text y="414" class="rd">#2</text>
+          <text x="30" y="414" class="pc">All 10 repos</text>
+          <text x="160" y="414" class="wh">entropy threshold 4.5 flags code identifiers as secrets</text>
+          <text x="570" y="414" class="dm">— 838 FPs</text>
 
-    <!-- Cursor prompt — visible for ~35% of cycle = ~10.5 seconds -->
-    <g class="s14">
-      <text y="566" class="prompt">$</text>
-      <rect x="16" y="555" width="8" height="15" fill="#cdd6f4" class="cursor"/>
+          <text y="434" class="rd">#3</text>
+          <text x="30" y="434" class="pc">All 10 repos</text>
+          <text x="160" y="434" class="wh">audit mixes security + code quality detectors</text>
+          <text x="500" y="434" class="dm">— 5,789 noise</text>
+
+          <text y="454" class="rd">#4</text>
+          <text x="30" y="454" class="pc">TypeScript</text>
+          <text x="160" y="454" class="wh">new Function() in compiler is legitimate codegen</text>
+          <text x="520" y="454" class="dm">— 760 FPs</text>
+
+          <text y="474" class="rd">#5</text>
+          <text x="30" y="474" class="pc">CPython/TS</text>
+          <text x="160" y="474" class="wh">path-normalize fires on path-handling tools</text>
+          <text x="475" y="474" class="dm">— 2,475 FPs</text>
+        </g>
+
+        <!-- ═══ BUGS #6-10 (MEDIUM) ═══ -->
+        <g class="r8">
+          <text y="498" class="yl">#6</text>
+          <text x="30" y="498" class="pc">Vapor/K8s</text>
+          <text x="160" y="498" class="wh">duplicate findings at same file:line</text>
+          <text x="430" y="498" class="dm">— 115 dupes</text>
+
+          <text y="518" class="yl">#7</text>
+          <text x="30" y="518" class="pc">.NET</text>
+          <text x="160" y="518" class="wh">C# patterns miss real sinks: Process, SqlConnection, Deserialize</text>
+
+          <text y="538" class="yl">#8</text>
+          <text x="30" y="538" class="pc">ktor</text>
+          <text x="160" y="538" class="wh">no Kotlin security patterns: ProcessBuilder, Gson, templates</text>
+
+          <text y="558" class="yl">#9</text>
+          <text x="30" y="558" class="pc">Rails</text>
+          <text x="160" y="558" class="wh">class_eval/instance_eval is metaprogramming, not injection</text>
+          <text x="580" y="558" class="dm">— 163 FPs</text>
+
+          <text y="578" class="yl">#10</text>
+          <text x="30" y="578" class="pc">CPython</text>
+          <text x="160" y="578" class="wh">stdlib eval/pickle is legitimate implementation</text>
+        </g>
+
+        <!-- ═══ BUGS #11-15 (MEDIUM) ═══ -->
+        <g class="r9">
+          <text y="602" class="yl">#11</text>
+          <text x="30" y="602" class="pc">TypeScript</text>
+          <text x="160" y="602" class="wh">22-minute scan — walkdir loads all files without cap</text>
+
+          <text y="622" class="yl">#12</text>
+          <text x="30" y="622" class="pc">Kubernetes</text>
+          <text x="160" y="622" class="wh">10-minute scan — traverses vendor/testdata/fixtures</text>
+
+          <text y="642" class="yl">#13</text>
+          <text x="30" y="642" class="pc">Linux/CPython</text>
+          <text x="160" y="642" class="wh">sprintf sanitization '"' matches every line — severity broken</text>
+
+          <text y="662" class="s2">#14</text>
+          <text x="30" y="662" class="s2">CPython</text>
+          <text x="160" y="662" class="dm">encoding tables (cp437, mac_farsi) flagged as secrets</text>
+          <text x="530" y="662" class="dm">— 254 FPs</text>
+
+          <text y="682" class="s2">#15</text>
+          <text x="30" y="682" class="s2">.NET</text>
+          <text x="160" y="682" class="dm">source generator metadata flagged as hardcoded secrets</text>
+          <text x="540" y="682" class="dm">— 61 FPs</text>
+        </g>
+
+        <!-- ═══ BUGS #16-20 (LOW) ═══ -->
+        <g class="r10">
+          <text y="706" class="s2">#16</text>
+          <text x="30" y="706" class="s2">All repos</text>
+          <text x="160" y="706" class="dm">lint subcommand missing --detectors flag</text>
+
+          <text y="726" class="s2">#17</text>
+          <text x="30" y="726" class="s2">Vapor</text>
+          <text x="160" y="726" class="dm">fatalError()/try! in server binary ≠ library code</text>
+          <text x="510" y="726" class="dm">— 46 FPs</text>
+
+          <text y="746" class="s2">#18</text>
+          <text x="30" y="746" class="s2">Internal</text>
+          <text x="160" y="746" class="dm">FALSE_POSITIVE_VALUES duplicated between detectors</text>
+
+          <text y="766" class="s2">#19</text>
+          <text x="30" y="766" class="s2">All repos</text>
+          <text x="160" y="766" class="dm">no detector tag system — can't filter security vs quality</text>
+
+          <text y="786" class="s2">#20</text>
+          <text x="30" y="786" class="s2">Rust/Go/Java</text>
+          <text x="160" y="786" class="dm">dep-audit only npm/pip — misses Cargo.lock, go.sum, pom.xml</text>
+        </g>
+
+        <!-- ═══ HOW APEX HANDLES FPs ═══ -->
+        <g class="r11">
+          <text y="816" class="dm">  ──────────────────────────────────────────────────────────</text>
+          <text y="840" class="cy b">  How APEX reduces false positives:</text>
+          <text y="862" class="wh">    • Literal format string detection</text>
+          <text x="340" y="862" class="dm">— catches printf("lit") as safe</text>
+          <text y="880" class="wh">    • Context-aware skipping</text>
+          <text x="260" y="880" class="dm">— compiler, vendor, stdlib, codegen paths</text>
+          <text y="898" class="wh">    • Entropy calibration at 5.0 bits/char</text>
+          <text x="360" y="898" class="dm">— code identifiers below, secrets above</text>
+          <text y="916" class="wh">    • Detector tags: security | quality | dependency</text>
+          <text x="460" y="916" class="dm">— filter by category</text>
+          <text y="934" class="wh">    • Same-line dedup across overlapping detectors</text>
+          <text y="952" class="wh">    • Fleet parallel scan with crew specialization</text>
+          <text x="460" y="952" class="dm">— 2 crews, 45 min</text>
+        </g>
+
+        <!-- ═══ MONEY SHOT ═══ -->
+        <g class="r12">
+          <text y="982" class="dm">  ══════════════════════════════════════════════════════════</text>
+          <text y="1012" class="mg b">  After 19 bug fixes</text>
+          <text x="195" y="1012" class="dm">(+42 tests, 1,207 total in apex-detect)</text>
+        </g>
+
+        <g class="r13">
+          <text y="1044" class="wh">  FP rate:</text>
+          <text x="120" y="1044" class="rd b">77%</text>
+          <text x="160" y="1044" class="wh b">→</text>
+          <text x="184" y="1044" class="gn b" font-size="18">~30%</text>
+
+          <text y="1072" class="wh">  Eliminated:</text>
+          <text x="130" y="1072" class="gn b" font-size="16">~7,200</text>
+          <text x="210" y="1072" class="dm">false positives removed</text>
+
+          <text y="1098" class="wh">  Crashes:</text>
+          <text x="120" y="1098" class="gn b">0</text>
+          <text x="140" y="1098" class="dm">across all 10 repos · 0 panics</text>
+        </g>
+
+        <g class="r14">
+          <text y="1128" class="dm">  Repos: Linux · CPython · TypeScript · ripgrep · Spring Boot</text>
+          <text y="1146" class="dm">         Kubernetes · .NET · Vapor · Rails · ktor</text>
+
+          <text y="1180" class="pr">  $</text>
+          <rect x="34" y="1169" width="8" height="15" fill="#cdd6f4" class="cur"/>
+        </g>
+
+      </g>
     </g>
   </g>
 </svg>

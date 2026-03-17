@@ -262,7 +262,22 @@
       "Bash(ls:*)",
       "Bash(echo:*)",
       "Bash(kill %1 2>/dev/null; kill %2 2>/dev/null; pkill -f \"cargo test --workspace\" 2>/dev/null; echo \"done\")",
-      "Skill(commit-commands:commit)"
+      "Skill(commit-commands:commit)",
+      "Skill(fleet:fleet-upgrade)",
+      "Bash(source:*)",
+      "Skill(fleet:fleet-ralph)",
+      "Bash(which shellcheck:*)",
+      "Bash(git fetch:*)",
+      "Bash(git rebase:*)",
+      "Bash(for wt:*)",
+      "Bash(do git:*)",
+      "Bash(1 done:*)",
+      "Read(//Users/ad/.claude/plugins/**)",
+      "Read(//Users/ad/.claude/**)",
+      "Bash(cat:*)",
+      "Bash(git:*)",
+      "Bash(gh issue:*)",
+      "WebFetch(domain:formulae.brew.sh)"
     ]
   },
   "sandbox": {

@@ -1747,6 +1747,36 @@ const MAX_SOURCE_FILES: usize = 10_000;
 /// Files larger than this are skipped to avoid reading multi-MB generated files.
 const MAX_SOURCE_FILE_BYTES: u64 = 1_024 * 1_024; // 1 MB
 
+/// Build the appropriate [`apex_core::traits::TestSynthesizer`] for the given language.
+///
+/// Returns a `Box<dyn TestSynthesizer>` pointing at `output_dir`.  The caller is
+/// responsible for writing synthesized tests to disk via `synthesize()`.
+pub fn make_synthesizer(
+    lang: Language,
+    output_dir: impl Into<std::path::PathBuf>,
+) -> Box<dyn apex_core::traits::TestSynthesizer> {
+    use apex_synth::{
+        CargoTestSynthesizer, CSharpTestSynthesizer, CTestSynthesizer, CppTestSynthesizer,
+        GoTestSynthesizer, JUnitSynthesizer, JestSynthesizer, KotlinTestSynthesizer,
+        PytestSynthesizer, RubyTestSynthesizer, SwiftTestSynthesizer, WasmTestSynthesizer,
+    };
+    let dir = output_dir.into();
+    match lang {
+        Language::Python => Box::new(PytestSynthesizer::new(&dir)),
+        Language::JavaScript => Box::new(JestSynthesizer::new(&dir)),
+        Language::Java => Box::new(JUnitSynthesizer::new(&dir)),
+        Language::Rust => Box::new(CargoTestSynthesizer::new(&dir)),
+        Language::Go => Box::new(GoTestSynthesizer::new(&dir)),
+        Language::Cpp => Box::new(CppTestSynthesizer::new(&dir)),
+        Language::C => Box::new(CTestSynthesizer::new(&dir)),
+        Language::CSharp => Box::new(CSharpTestSynthesizer::new(&dir)),
+        Language::Swift => Box::new(SwiftTestSynthesizer::new(&dir)),
+        Language::Kotlin => Box::new(KotlinTestSynthesizer::new(&dir)),
+        Language::Ruby => Box::new(RubyTestSynthesizer::new(&dir)),
+        Language::Wasm => Box::new(WasmTestSynthesizer::new(&dir)),
+    }
+}
+
 fn walkdir(root: &std::path::Path, extensions: &[&str]) -> std::io::Result<Vec<PathBuf>> {
     let mut files = Vec::new();
     walk_recursive(root, extensions, &mut files)?;

@@ -1711,6 +1711,14 @@ fn build_source_cache(
 
     if let Ok(entries) = walkdir(target, extensions) {
         for path in entries {
+            // Skip files larger than 1 MB to avoid loading generated or binary-adjacent files.
+            if path
+                .metadata()
+                .map(|m| m.len() > MAX_SOURCE_FILE_BYTES)
+                .unwrap_or(false)
+            {
+                continue;
+            }
             if let Ok(content) = std::fs::read_to_string(&path) {
                 let rel = path.strip_prefix(target).unwrap_or(&path).to_path_buf();
                 cache.insert(rel, content);
@@ -1720,6 +1728,14 @@ fn build_source_cache(
 
     cache
 }
+
+/// Maximum number of source files to collect during directory walking.
+/// Prevents APEX from being overwhelmed by massive repos (e.g. Linux kernel, 75k+ files).
+const MAX_SOURCE_FILES: usize = 10_000;
+
+/// Maximum file size (in bytes) to load into the source cache.
+/// Files larger than this are skipped to avoid reading multi-MB generated files.
+const MAX_SOURCE_FILE_BYTES: u64 = 1_024 * 1_024; // 1 MB
 
 fn walkdir(root: &std::path::Path, extensions: &[&str]) -> std::io::Result<Vec<PathBuf>> {
     let mut files = Vec::new();
@@ -1732,8 +1748,14 @@ fn walk_recursive(
     extensions: &[&str],
     files: &mut Vec<PathBuf>,
 ) -> std::io::Result<()> {
+    if files.len() >= MAX_SOURCE_FILES {
+        return Ok(());
+    }
     if dir.is_dir() {
         for entry in std::fs::read_dir(dir)? {
+            if files.len() >= MAX_SOURCE_FILES {
+                break;
+            }
             let entry = entry?;
             let path = entry.path();
             if path.is_dir() {
@@ -1749,6 +1771,10 @@ fn walk_recursive(
                             | "dist"
                             | "build"
                             | ".git"
+                            | "vendor"
+                            | "third_party"
+                            | "testdata"
+                            | "fixtures"
                     )
                 {
                     continue;

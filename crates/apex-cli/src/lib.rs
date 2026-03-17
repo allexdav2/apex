@@ -972,7 +972,7 @@ async fn run_agent_cluster(
     oracle: Arc<CoverageOracle>,
     instrumented: &apex_core::types::InstrumentedTarget,
     coverage_target: f64,
-    fuzz_iters: usize,
+    _fuzz_iters: usize,
     args: &RunArgs,
     cfg: &ApexConfig,
 ) -> Result<()> {
@@ -1033,7 +1033,12 @@ async fn run_agent_cluster(
     // Configure from ApexConfig.
     let orch_config = OrchestratorConfig {
         coverage_target,
-        deadline_secs: Some(cfg.sandbox.process_timeout_ms * fuzz_iters as u64 / 1000),
+        // Use the explicitly configured deadline when set; otherwise fall back to a
+        // 30-minute cap (1800 s).  The old per-iteration formula
+        //   process_timeout_ms * fuzz_iters / 1000
+        // produces nonsensical values (e.g. 10_000 ms × 10_000 iters = 100_000 s ≈ 28 h)
+        // for typical defaults and was never the user's intent.
+        deadline_secs: cfg.agent.deadline_secs.or(Some(1800)),
         stall_threshold: cfg.fuzz.stall_iterations as u64,
     };
     cluster = cluster.with_config(orch_config);

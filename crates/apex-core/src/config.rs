@@ -194,6 +194,11 @@ pub struct AgentConfig {
     pub source_context_lines: u32,
     /// Max source files per agent prompt round. Default: 3.
     pub max_files_per_round: usize,
+    /// Hard deadline for the agent exploration loop in seconds.
+    /// When `Some`, the orchestrator exits after this many seconds.
+    /// When `None`, a 30-minute cap (1800s) is used by default to prevent
+    /// runaway loops caused by per-iteration timeout * iteration-count math.
+    pub deadline_secs: Option<u64>,
 }
 
 impl Default for AgentConfig {
@@ -204,6 +209,7 @@ impl Default for AgentConfig {
             max_refinement_rounds: 3,
             source_context_lines: 15,
             max_files_per_round: 3,
+            deadline_secs: None,
         }
     }
 }

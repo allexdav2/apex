@@ -1,6 +1,8 @@
 //! AI agent orchestration for APEX — multi-agent ensemble strategies,
 //! test generation, and coverage-driven refinement loops.
 
+pub mod test_harness;
+
 pub mod adversarial;
 pub mod bandit;
 pub mod budget;

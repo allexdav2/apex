@@ -115,24 +115,35 @@ impl AgentCluster {
             };
 
             // Run all strategies in parallel.
-            let suggestions: Vec<_> =
+            let raw_suggestions: Vec<apex_core::error::Result<Vec<_>>> =
                 futures::future::join_all(self.strategies.iter().map(|s| s.suggest_inputs(&ctx)))
-                    .await
-                    .into_iter()
-                    .filter_map(|r| r.ok())
-                    .flatten()
-                    .collect();
+                    .await;
+            let strategy_err_count = raw_suggestions.iter().filter(|r| r.is_err()).count();
+            if strategy_err_count > 0 {
+                warn!(errors = strategy_err_count, "strategy suggest_inputs failed");
+            }
+            let suggestions: Vec<_> = raw_suggestions
+                .into_iter()
+                .filter_map(|r| r.ok())
+                .flatten()
+                .collect();
 
             if suggestions.is_empty() {
                 stall_count += 1;
             } else {
-                let results: Vec<_> = futures::future::join_all(
-                    suggestions.iter().map(|seed| self.sandbox.run(seed)),
-                )
-                .await
-                .into_iter()
-                .filter_map(|r| r.ok())
-                .collect();
+                let raw_results: Vec<apex_core::error::Result<_>> =
+                    futures::future::join_all(
+                        suggestions.iter().map(|seed| self.sandbox.run(seed)),
+                    )
+                    .await;
+                let sandbox_err_count = raw_results.iter().filter(|r| r.is_err()).count();
+                if sandbox_err_count > 0 {
+                    warn!(errors = sandbox_err_count, "sandbox run failed");
+                }
+                let results: Vec<_> = raw_results
+                    .into_iter()
+                    .filter_map(|r| r.ok())
+                    .collect();
 
                 let mut new_coverage = false;
                 for result in &results {
@@ -4145,5 +4156,187 @@ mod tests {
         };
         // Direct call exercises the previously-uncovered observe() body
         strategy.observe(&result).await.unwrap();
+    }
+
+    // ------------------------------------------------------------------
+    // ScriptedSandbox / ScriptedStrategy harness tests
+    // ------------------------------------------------------------------
+
+    /// Run exits immediately when coverage_target is already met.
+    /// Register 2 branches, pre-cover 2, set coverage_target=0.5 → 100% >= 50%.
+    #[tokio::test]
+    async fn run_exits_on_coverage_target() {
+        use crate::test_harness::ScriptedSandbox;
+
+        let oracle = Arc::new(CoverageOracle::new());
+        let b1 = apex_core::types::BranchId::new(200, 1, 0, 0);
+        let b2 = apex_core::types::BranchId::new(200, 2, 0, 0);
+        oracle.register_branches([b1.clone(), b2.clone()]);
+        oracle.mark_covered(&b1, apex_core::types::SeedId::new());
+        oracle.mark_covered(&b2, apex_core::types::SeedId::new());
+
+        let sandbox: Arc<dyn Sandbox> = Arc::new(ScriptedSandbox::pass_fallback());
+        let cluster = AgentCluster::new(oracle.clone(), sandbox, test_target()).with_config(
+            OrchestratorConfig {
+                coverage_target: 0.5,
+                deadline_secs: None,
+                stall_threshold: 100,
+            },
+        );
+        cluster.run().await.unwrap();
+        // Both branches were pre-covered; coverage should be 100%.
+        assert_eq!(oracle.covered_count(), 2);
+    }
+
+    /// Run exits immediately when deadline_secs=0.
+    #[tokio::test]
+    async fn run_exits_on_deadline() {
+        use crate::test_harness::ScriptedSandbox;
+
+        let oracle = Arc::new(CoverageOracle::new());
+        let b = apex_core::types::BranchId::new(201, 1, 0, 0);
+        oracle.register_branches([b]);
+
+        let sandbox: Arc<dyn Sandbox> = Arc::new(ScriptedSandbox::pass_fallback());
+        let cluster = AgentCluster::new(oracle, sandbox, test_target()).with_config(
+            OrchestratorConfig {
+                coverage_target: 1.0,
+                deadline_secs: Some(0),
+                stall_threshold: 100,
+            },
+        );
+        // deadline_secs=0 fires on every iteration; run() must return Ok.
+        cluster.run().await.unwrap();
+    }
+
+    /// Run exits immediately when no branches are registered (all covered trivially).
+    #[tokio::test]
+    async fn run_exits_when_all_covered() {
+        use crate::test_harness::ScriptedSandbox;
+
+        let oracle = Arc::new(CoverageOracle::new());
+        // Register 0 branches → uncovered_branches().is_empty() immediately.
+        let sandbox: Arc<dyn Sandbox> = Arc::new(ScriptedSandbox::pass_fallback());
+        let cluster = AgentCluster::new(oracle.clone(), sandbox, test_target());
+        cluster.run().await.unwrap();
+        assert_eq!(oracle.total_count(), 0);
+    }
+
+    /// ScriptedStrategy returns 1 seed; ScriptedSandbox returns a result with new_branches.
+    /// After run(), oracle coverage should reflect that branch.
+    #[tokio::test]
+    async fn run_processes_suggestions_and_merges_coverage() {
+        use crate::test_harness::{pass_with_branches, test_seed, ScriptedSandbox, ScriptedStrategy};
+
+        let oracle = Arc::new(CoverageOracle::new());
+        let branch1 = apex_core::types::BranchId::new(202, 1, 0, 0);
+        oracle.register_branches([branch1.clone()]);
+
+        let seed = test_seed();
+        let result = pass_with_branches(seed.id, vec![branch1.clone()]);
+
+        let sandbox: Arc<dyn Sandbox> = Arc::new(ScriptedSandbox::new(
+            vec![result],
+            crate::test_harness::pass_result(apex_core::types::SeedId::new()),
+        ));
+        let strategy = ScriptedStrategy::new(vec![vec![seed]]);
+
+        let cluster = AgentCluster::new(oracle.clone(), sandbox, test_target())
+            .with_strategy(Box::new(strategy))
+            .with_config(OrchestratorConfig {
+                coverage_target: 0.9,
+                deadline_secs: Some(5),
+                stall_threshold: 100,
+            });
+        cluster.run().await.unwrap();
+        // branch1 was reported as new in the scripted result → oracle should have it covered.
+        assert!(oracle.covered_count() >= 1);
+    }
+
+    /// ScriptedSandbox returns a Crash result; ledger should record a bug.
+    #[tokio::test]
+    async fn run_records_bugs_from_crash_results() {
+        use crate::test_harness::{crash_result, test_seed, ScriptedSandbox, ScriptedStrategy};
+
+        let oracle = Arc::new(CoverageOracle::new());
+        let b = apex_core::types::BranchId::new(203, 1, 0, 0);
+        oracle.register_branches([b]);
+
+        let seed = test_seed();
+        let crash = crash_result(seed.id);
+
+        let sandbox: Arc<dyn Sandbox> = Arc::new(ScriptedSandbox::new(
+            vec![crash],
+            crate::test_harness::pass_result(apex_core::types::SeedId::new()),
+        ));
+        // Strategy returns one seed then exhausts → stall terminates the run.
+        let strategy = ScriptedStrategy::new(vec![vec![seed]]);
+
+        let cluster = AgentCluster::new(oracle, sandbox, test_target())
+            .with_strategy(Box::new(strategy))
+            .with_config(OrchestratorConfig {
+                coverage_target: 1.0,
+                deadline_secs: Some(5),
+                stall_threshold: 2,
+            });
+        cluster.run().await.unwrap();
+        assert!(cluster.ledger.count() > 0, "expected a bug to be recorded");
+    }
+
+    /// ScriptedStrategy returns seeds; ScriptedSandbox returns Pass with no new branches.
+    /// With stall_threshold=3, run() should exit after 3 stall iterations.
+    #[tokio::test]
+    async fn run_stalls_after_threshold_with_no_new_coverage() {
+        use crate::test_harness::{test_seed, ScriptedSandbox, ScriptedStrategy};
+
+        let oracle = Arc::new(CoverageOracle::new());
+        let b = apex_core::types::BranchId::new(204, 1, 0, 0);
+        oracle.register_branches([b]);
+
+        // 10 seed batches, but stall_threshold=3 terminates first.
+        let seed = test_seed();
+        let strategy = ScriptedStrategy::repeating(seed, 10);
+
+        let sandbox: Arc<dyn Sandbox> = Arc::new(ScriptedSandbox::pass_fallback());
+
+        let cluster = AgentCluster::new(oracle.clone(), sandbox, test_target())
+            .with_strategy(Box::new(strategy))
+            .with_config(OrchestratorConfig {
+                coverage_target: 1.0,
+                deadline_secs: None,
+                stall_threshold: 3,
+            });
+        cluster.run().await.unwrap();
+        // No new branches produced → oracle coverage unchanged.
+        assert_eq!(oracle.covered_count(), 0);
+    }
+
+    /// ScriptedSandbox in error mode returns Err for every call.
+    /// Run still terminates via stall threshold (suggestions non-empty but
+    /// all sandbox calls fail → no new coverage → stall increments).
+    #[tokio::test]
+    async fn run_silent_error_all_sandbox_failures() {
+        use crate::test_harness::{test_seed, ScriptedSandbox, ScriptedStrategy};
+
+        let oracle = Arc::new(CoverageOracle::new());
+        let b = apex_core::types::BranchId::new(205, 1, 0, 0);
+        oracle.register_branches([b]);
+
+        let seed = test_seed();
+        let strategy = ScriptedStrategy::repeating(seed, 20);
+
+        let mut sandbox = ScriptedSandbox::pass_fallback();
+        sandbox.error_mode = true;
+        let sandbox: Arc<dyn Sandbox> = Arc::new(sandbox);
+
+        let cluster = AgentCluster::new(oracle, sandbox, test_target())
+            .with_strategy(Box::new(strategy))
+            .with_config(OrchestratorConfig {
+                coverage_target: 1.0,
+                deadline_secs: None,
+                stall_threshold: 3,
+            });
+        // Must not panic; all sandbox errors are logged and swallowed.
+        cluster.run().await.unwrap();
     }
 }

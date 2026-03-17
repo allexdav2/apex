@@ -4,6 +4,14 @@ All notable changes to APEX will be documented in this file.
 
 ## [Unreleased]
 
+### Added
+- **Dependency audit for C# (.NET)** — `dotnet list package --vulnerable --include-transitive` parser with tabular output support; graceful fallback when `dotnet` is absent
+- **Dependency audit for Ruby** — `bundler-audit check` parser with block-format (Name/Version/Advisory/Criticality/Title/Solution); graceful fallback when `bundler-audit` is absent
+- **Dependency audit for Swift** — `swift-audit check` stub; reports Info finding when tool is not installed
+- **Dependency audit for C/C++** — `osv-scanner` integration for lockfile scanning; reports Info finding when tool is not installed
+- **Exhaustive language match** in `DependencyAuditDetector::analyze()` — replaces wildcard arm with explicit arms for all 12 languages; remaining unsupported languages (Java, Kotlin, Go, Wasm) return empty
+- **+28 tests** for new dep audit parsers and language dispatch
+
 ## [0.2.1] — 2026-03-16
 
 ### Fixed

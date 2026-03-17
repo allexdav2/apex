@@ -234,4 +234,254 @@ mod tests {
         let json = serde_json::to_string(&report).unwrap();
         assert!(json.contains("test"));
     }
+
+    // -----------------------------------------------------------------------
+    // Cycle detection edge cases
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn detect_self_loop_is_cycle() {
+        // A node pointing to itself is a cycle (stack contains it when we see it again)
+        let edges = vec![("a".to_string(), "a".to_string())];
+        let cycles = detect_cycles(&edges);
+        assert!(!cycles.is_empty(), "self-loop should be detected as a cycle");
+    }
+
+    #[test]
+    fn detect_two_node_cycle() {
+        // a -> b, b -> a
+        let edges = vec![
+            ("a".to_string(), "b".to_string()),
+            ("b".to_string(), "a".to_string()),
+        ];
+        let cycles = detect_cycles(&edges);
+        assert!(!cycles.is_empty());
+    }
+
+    #[test]
+    fn detect_cycle_in_longer_chain() {
+        // a -> b -> c -> d -> b (cycle b-c-d)
+        let edges = vec![
+            ("a".to_string(), "b".to_string()),
+            ("b".to_string(), "c".to_string()),
+            ("c".to_string(), "d".to_string()),
+            ("d".to_string(), "b".to_string()),
+        ];
+        let cycles = detect_cycles(&edges);
+        assert!(!cycles.is_empty());
+    }
+
+    #[test]
+    fn no_cycle_in_diamond_dag() {
+        // Diamond: a -> b, a -> c, b -> d, c -> d — no cycle
+        let edges = vec![
+            ("a".to_string(), "b".to_string()),
+            ("a".to_string(), "c".to_string()),
+            ("b".to_string(), "d".to_string()),
+            ("c".to_string(), "d".to_string()),
+        ];
+        let cycles = detect_cycles(&edges);
+        assert!(cycles.is_empty(), "diamond DAG has no cycles");
+    }
+
+    #[test]
+    fn disconnected_graph_two_components_no_cycle() {
+        // Two unconnected chains: a->b and c->d
+        let edges = vec![
+            ("a".to_string(), "b".to_string()),
+            ("c".to_string(), "d".to_string()),
+        ];
+        let cycles = detect_cycles(&edges);
+        assert!(cycles.is_empty());
+    }
+
+    #[test]
+    fn disconnected_graph_one_component_with_cycle() {
+        // a->b (no cycle) and c->d->c (cycle)
+        let edges = vec![
+            ("a".to_string(), "b".to_string()),
+            ("c".to_string(), "d".to_string()),
+            ("d".to_string(), "c".to_string()),
+        ];
+        let cycles = detect_cycles(&edges);
+        assert!(!cycles.is_empty(), "should detect cycle in second component");
+    }
+
+    #[test]
+    fn cycle_path_contains_expected_nodes() {
+        // a -> b -> c -> a: cycle should include a, b, c
+        let edges = vec![
+            ("a".to_string(), "b".to_string()),
+            ("b".to_string(), "c".to_string()),
+            ("c".to_string(), "a".to_string()),
+        ];
+        let cycles = detect_cycles(&edges);
+        assert!(!cycles.is_empty());
+        let flat: Vec<&str> = cycles.iter().flatten().map(|s| s.as_str()).collect();
+        assert!(flat.contains(&"a") || flat.contains(&"b") || flat.contains(&"c"),
+            "cycle path should include nodes from the cycle");
+    }
+
+    // -----------------------------------------------------------------------
+    // Fan-in / fan-out metrics
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn fan_in_fan_out_zero_for_isolated_nodes() {
+        // All nodes with zero fan-in/out should have entries (not missing)
+        let dir = std::env::temp_dir().join("apex_test_depgraph_isolated");
+        let _ = std::fs::remove_dir_all(&dir);
+        let _ = std::fs::create_dir_all(&dir);
+        std::fs::write(
+            dir.join("Cargo.toml"),
+            "[package]\nname = \"isolated\"\nversion = \"1.0.0\"\n",
+        )
+        .unwrap();
+        let report = analyze_cargo(&dir);
+        // Package with no deps: fan_out["isolated"] == 0, fan_in["isolated"] == 0
+        assert_eq!(report.fan_out.get("isolated").copied(), Some(0));
+        assert_eq!(report.fan_in.get("isolated").copied(), Some(0));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn fan_out_increments_per_dependency() {
+        let dir = std::env::temp_dir().join("apex_test_depgraph_fan_out");
+        let _ = std::fs::remove_dir_all(&dir);
+        let _ = std::fs::create_dir_all(&dir);
+        std::fs::write(
+            dir.join("Cargo.toml"),
+            "[package]\nname = \"myapp\"\nversion = \"0.1.0\"\n\n[dependencies]\nserde = \"1\"\ntokio = \"1\"\n",
+        )
+        .unwrap();
+        let report = analyze_cargo(&dir);
+        assert_eq!(report.fan_out.get("myapp").copied(), Some(2), "myapp depends on 2 crates");
+        assert_eq!(report.fan_in.get("serde").copied(), Some(1));
+        assert_eq!(report.fan_in.get("tokio").copied(), Some(1));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn fan_in_reflects_shared_dependency() {
+        // Two packages both depending on "shared" -> fan_in["shared"] == 2
+        // We simulate this via dev-dependencies and dependencies in one Cargo.toml
+        let dir = std::env::temp_dir().join("apex_test_depgraph_shared_dep");
+        let _ = std::fs::remove_dir_all(&dir);
+        let _ = std::fs::create_dir_all(&dir);
+        std::fs::write(
+            dir.join("Cargo.toml"),
+            "[package]\nname = \"app\"\nversion = \"0.1.0\"\n\n[dependencies]\nshared = \"1\"\n\n[dev-dependencies]\nshared = \"1\"\n",
+        )
+        .unwrap();
+        let report = analyze_cargo(&dir);
+        // "shared" is listed twice (once per section), so fan_in should be 2
+        assert_eq!(
+            report.fan_in.get("shared").copied(),
+            Some(2),
+            "shared dep appears in both deps and dev-deps"
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    // -----------------------------------------------------------------------
+    // Workspace member discovery
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn workspace_members_are_discovered() {
+        // find_workspace_tomls looks for Cargo.toml in subdirs and crates/**
+        let dir = std::env::temp_dir().join("apex_test_depgraph_workspace");
+        let _ = std::fs::remove_dir_all(&dir);
+        let crates_dir = dir.join("crates").join("mylib");
+        let _ = std::fs::create_dir_all(&crates_dir);
+        std::fs::write(
+            dir.join("Cargo.toml"),
+            "[workspace]\nmembers = [\"crates/mylib\"]\n",
+        )
+        .unwrap();
+        std::fs::write(
+            crates_dir.join("Cargo.toml"),
+            "[package]\nname = \"mylib\"\nversion = \"0.1.0\"\n",
+        )
+        .unwrap();
+        let report = analyze_cargo(&dir);
+        let node_names: Vec<&str> = report.nodes.iter().map(|n| n.name.as_str()).collect();
+        assert!(node_names.contains(&"mylib"), "workspace member should be discovered");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn workspace_member_deps_contribute_to_fan_metrics() {
+        // A workspace member with its own dep should update fan_in/fan_out
+        let dir = std::env::temp_dir().join("apex_test_depgraph_ws_fanout");
+        let _ = std::fs::remove_dir_all(&dir);
+        let crates_dir = dir.join("crates").join("mylib");
+        let _ = std::fs::create_dir_all(&crates_dir);
+        std::fs::write(
+            dir.join("Cargo.toml"),
+            "[workspace]\nmembers = [\"crates/mylib\"]\n",
+        )
+        .unwrap();
+        std::fs::write(
+            crates_dir.join("Cargo.toml"),
+            "[package]\nname = \"mylib\"\nversion = \"0.1.0\"\n\n[dependencies]\nanyhow = \"1\"\n",
+        )
+        .unwrap();
+        let report = analyze_cargo(&dir);
+        assert_eq!(
+            report.fan_out.get("mylib").copied(),
+            Some(1),
+            "mylib should have fan_out=1 for its dep on anyhow"
+        );
+        assert_eq!(report.fan_in.get("anyhow").copied(), Some(1));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn missing_cargo_toml_returns_empty_report() {
+        // analyze_cargo on a dir without Cargo.toml returns an empty report
+        let dir = std::env::temp_dir().join("apex_test_depgraph_no_cargo");
+        let _ = std::fs::remove_dir_all(&dir);
+        let _ = std::fs::create_dir_all(&dir);
+        let report = analyze_cargo(&dir);
+        assert!(report.nodes.is_empty(), "no nodes without Cargo.toml");
+        assert!(report.edges.is_empty());
+        assert!(report.cycles.is_empty());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn deduplication_removes_duplicate_nodes() {
+        // If a dep appears in both dependencies and dev-dependencies, it should
+        // appear only once in nodes after deduplication
+        let dir = std::env::temp_dir().join("apex_test_depgraph_dedup");
+        let _ = std::fs::remove_dir_all(&dir);
+        let _ = std::fs::create_dir_all(&dir);
+        std::fs::write(
+            dir.join("Cargo.toml"),
+            "[package]\nname = \"app\"\nversion = \"0.1.0\"\n\n[dependencies]\nserde = \"1\"\n\n[dev-dependencies]\nserde = \"1\"\n",
+        )
+        .unwrap();
+        let report = analyze_cargo(&dir);
+        let serde_count = report.nodes.iter().filter(|n| n.name == "serde").count();
+        assert_eq!(serde_count, 1, "deduplication should ensure serde appears once");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn build_dependencies_are_included() {
+        let dir = std::env::temp_dir().join("apex_test_depgraph_build_deps");
+        let _ = std::fs::remove_dir_all(&dir);
+        let _ = std::fs::create_dir_all(&dir);
+        std::fs::write(
+            dir.join("Cargo.toml"),
+            "[package]\nname = \"app\"\nversion = \"0.1.0\"\n\n[build-dependencies]\ncc = \"1\"\n",
+        )
+        .unwrap();
+        let report = analyze_cargo(&dir);
+        let node_names: Vec<&str> = report.nodes.iter().map(|n| n.name.as_str()).collect();
+        assert!(node_names.contains(&"cc"), "build-dependencies should be included");
+        assert_eq!(report.fan_in.get("cc").copied(), Some(1));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
 }

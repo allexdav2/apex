@@ -187,4 +187,165 @@ mod tests {
         let r = analyze_migration("-- ALTER TABLE users DROP COLUMN email;");
         assert_eq!(r.issues.len(), 0);
     }
+
+    // -----------------------------------------------------------------------
+    // Additional coverage: DROP TABLE, RENAME COLUMN, CHANGE TYPE, TRUNCATE,
+    // multiple issues, case insensitivity, UNIQUE INDEX variations
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn detects_drop_table() {
+        // DROP TABLE is Dangerous
+        let r = analyze_migration("DROP TABLE users;");
+        assert_eq!(r.dangerous_count, 1);
+        assert_eq!(r.issues[0].risk, MigrationRisk::Dangerous);
+        assert!(r.issues[0].description.contains("permanent data loss"));
+    }
+
+    #[test]
+    fn detects_drop_table_if_exists() {
+        // DROP TABLE IF EXISTS is also dangerous
+        let r = analyze_migration("DROP TABLE IF EXISTS users;");
+        assert_eq!(r.dangerous_count, 1);
+    }
+
+    #[test]
+    fn detects_rename_column() {
+        // RENAME COLUMN is Caution
+        let r = analyze_migration("ALTER TABLE users RENAME COLUMN email TO user_email;");
+        assert_eq!(r.caution_count, 1);
+        assert_eq!(r.issues[0].risk, MigrationRisk::Caution);
+        assert!(r.issues[0].description.contains("old name"));
+    }
+
+    #[test]
+    fn detects_change_type_set_data_type() {
+        // ALTER COLUMN ... SET DATA TYPE is Caution
+        let r = analyze_migration("ALTER TABLE users ALTER COLUMN age SET DATA TYPE bigint;");
+        assert_eq!(r.caution_count, 1);
+        assert_eq!(r.issues[0].risk, MigrationRisk::Caution);
+    }
+
+    #[test]
+    fn detects_change_type_without_set_data() {
+        // ALTER COLUMN ... TYPE (short form) is also Caution
+        let r = analyze_migration("ALTER TABLE users ALTER COLUMN score TYPE numeric;");
+        assert_eq!(r.caution_count, 1);
+    }
+
+    #[test]
+    fn detects_truncate() {
+        // TRUNCATE is Dangerous
+        let r = analyze_migration("TRUNCATE TABLE audit_log;");
+        assert_eq!(r.dangerous_count, 1);
+        assert_eq!(r.issues[0].risk, MigrationRisk::Dangerous);
+        assert!(r.issues[0].description.contains("removes all data permanently"));
+    }
+
+    #[test]
+    fn detects_multiple_issues_in_one_migration() {
+        // A migration with several risky statements accumulates all counts
+        let sql = "\
+DROP TABLE old_users;\n\
+ALTER TABLE users DROP COLUMN legacy;\n\
+TRUNCATE TABLE sessions;\n\
+ALTER TABLE posts ALTER COLUMN body TYPE text;\n\
+CREATE INDEX idx_posts_title ON posts(title);\n\
+";
+        let r = analyze_migration(sql);
+        assert_eq!(r.dangerous_count, 3, "DROP TABLE + DROP COLUMN + TRUNCATE");
+        assert_eq!(r.caution_count, 2, "CHANGE TYPE + non-concurrent INDEX");
+    }
+
+    #[test]
+    fn case_insensitive_drop_table_lowercase() {
+        // All patterns are (?i) — lowercase should still match
+        let r = analyze_migration("drop table users;");
+        assert_eq!(r.dangerous_count, 1);
+    }
+
+    #[test]
+    fn case_insensitive_rename_column_mixed() {
+        let r = analyze_migration("Alter Table users Rename Column email To mail;");
+        assert_eq!(r.caution_count, 1);
+    }
+
+    #[test]
+    fn case_insensitive_truncate_uppercase() {
+        let r = analyze_migration("TRUNCATE TABLE big_table;");
+        assert_eq!(r.dangerous_count, 1);
+    }
+
+    #[test]
+    fn unique_index_without_concurrently_is_caution() {
+        // CREATE UNIQUE INDEX without CONCURRENTLY
+        let r = analyze_migration("CREATE UNIQUE INDEX idx_email ON users(email);");
+        assert_eq!(r.caution_count, 1);
+    }
+
+    #[test]
+    fn unique_index_with_concurrently_is_safe() {
+        // CREATE UNIQUE INDEX CONCURRENTLY — no caution
+        let r = analyze_migration("CREATE UNIQUE INDEX CONCURRENTLY idx_email ON users(email);");
+        assert_eq!(r.caution_count, 0);
+    }
+
+    #[test]
+    fn empty_sql_produces_no_issues() {
+        let r = analyze_migration("");
+        assert_eq!(r.issues.len(), 0);
+        assert_eq!(r.safe_count, 0);
+        assert_eq!(r.caution_count, 0);
+        assert_eq!(r.dangerous_count, 0);
+    }
+
+    #[test]
+    fn only_whitespace_and_comments_produces_no_issues() {
+        let sql = "   \n-- comment\n   \n-- another comment\n";
+        let r = analyze_migration(sql);
+        assert_eq!(r.issues.len(), 0);
+    }
+
+    #[test]
+    fn line_numbers_are_correct() {
+        // Issue on line 3 should report line = 3
+        let sql = "-- safe\n\nDROP TABLE users;\n";
+        let r = analyze_migration(sql);
+        assert_eq!(r.issues.len(), 1);
+        assert_eq!(r.issues[0].line, 3);
+    }
+
+    #[test]
+    fn statement_field_is_trimmed_line_content() {
+        let r = analyze_migration("  DROP TABLE users;  ");
+        assert_eq!(r.issues.len(), 1);
+        assert_eq!(r.issues[0].statement, "DROP TABLE users;");
+    }
+
+    #[test]
+    fn not_null_with_default_is_safe() {
+        // ADD COLUMN NOT NULL DEFAULT x should not fire
+        let r = analyze_migration(
+            "ALTER TABLE users ADD COLUMN score integer NOT NULL DEFAULT 0;",
+        );
+        assert_eq!(r.dangerous_count, 0);
+    }
+
+    #[test]
+    fn add_column_not_null_missing_default_fires() {
+        // No DEFAULT — should be dangerous
+        let r = analyze_migration(
+            "ALTER TABLE users ADD score integer NOT NULL;",
+        );
+        assert_eq!(r.dangerous_count, 1);
+    }
+
+    #[test]
+    fn add_column_with_column_keyword_not_null_no_default() {
+        // "ADD COLUMN col_name type NOT NULL" — with COLUMN keyword
+        let r = analyze_migration(
+            "ALTER TABLE users ADD COLUMN active boolean NOT NULL;",
+        );
+        assert_eq!(r.dangerous_count, 1);
+    }
 }

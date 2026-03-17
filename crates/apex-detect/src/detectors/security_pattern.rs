@@ -462,6 +462,24 @@ const C_SECURITY_PATTERNS: &[SecurityPattern] = &[
         sanitization_indicators: &["SIZE_MAX", "check", "limit", "max_size", "overflow"],
         cwe: &[190],
     },
+    SecurityPattern {
+        sink: "vsprintf(",
+        description: "vsprintf() — no bounds checking, use vsnprintf",
+        category: FindingCategory::MemorySafety,
+        base_severity: Severity::High,
+        user_input_indicators: &["argv", "stdin", "fgets", "recv", "getenv", "%s"],
+        sanitization_indicators: &["vsnprintf"],
+        cwe: &[120],
+    },
+    SecurityPattern {
+        sink: "free(",
+        description: "free() — potential use-after-free if pointer is accessed after deallocation",
+        category: FindingCategory::MemorySafety,
+        base_severity: Severity::Medium,
+        user_input_indicators: &["*", "=", "->", "ptr", "buf", "mem"],
+        sanitization_indicators: &["NULL", "nullptr", "= NULL", "= nullptr"],
+        cwe: &[416],
+    },
 ];
 
 const CPP_SECURITY_PATTERNS: &[SecurityPattern] = &[
@@ -562,6 +580,24 @@ const CPP_SECURITY_PATTERNS: &[SecurityPattern] = &[
         user_input_indicators: &["argv", "cin", "getline", "getenv", "string"],
         sanitization_indicators: &["escape", "sanitize"],
         cwe: &[78],
+    },
+    SecurityPattern {
+        sink: "vsprintf(",
+        description: "vsprintf() — no bounds checking, use vsnprintf",
+        category: FindingCategory::MemorySafety,
+        base_severity: Severity::High,
+        user_input_indicators: &["argv", "stdin", "fgets", "recv", "getenv", "%s"],
+        sanitization_indicators: &["vsnprintf"],
+        cwe: &[120],
+    },
+    SecurityPattern {
+        sink: "free(",
+        description: "free() — potential use-after-free if pointer is accessed after deallocation",
+        category: FindingCategory::MemorySafety,
+        base_severity: Severity::Medium,
+        user_input_indicators: &["*", "=", "->", "ptr", "buf", "mem"],
+        sanitization_indicators: &["NULL", "nullptr", "= NULL", "= nullptr"],
+        cwe: &[416],
     },
 ];
 
@@ -793,6 +829,34 @@ const GO_SECURITY_PATTERNS: &[SecurityPattern] = &[
         sanitization_indicators: &[],
         cwe: &[327],
     },
+    SecurityPattern {
+        sink: "json.Unmarshal(",
+        description:
+            "JSON unmarshal into interface{} — accepts arbitrary types, may enable injection",
+        category: FindingCategory::SecuritySmell,
+        base_severity: Severity::Medium,
+        user_input_indicators: &["request", "body", "param", "input", "recv", "Read"],
+        sanitization_indicators: &["struct", "Validate", "schema"],
+        cwe: &[502],
+    },
+    SecurityPattern {
+        sink: "log.Fatal(",
+        description: "log.Fatal in library code — calls os.Exit, skips deferred cleanup",
+        category: FindingCategory::PanicPath,
+        base_severity: Severity::Medium,
+        user_input_indicators: &[],
+        sanitization_indicators: &[],
+        cwe: &[705],
+    },
+    SecurityPattern {
+        sink: "os.Exit(",
+        description: "os.Exit in library code — skips deferred cleanup, untestable",
+        category: FindingCategory::PanicPath,
+        base_severity: Severity::Medium,
+        user_input_indicators: &[],
+        sanitization_indicators: &[],
+        cwe: &[705],
+    },
 ];
 
 // Swift security patterns
@@ -859,6 +923,24 @@ const SWIFT_SECURITY_PATTERNS: &[SecurityPattern] = &[
         user_input_indicators: &[],
         sanitization_indicators: &[],
         cwe: &[705],
+    },
+    SecurityPattern {
+        sink: "CC_MD5(",
+        description: "CommonCrypto CC_MD5 — weak hash algorithm, use CC_SHA256 or higher",
+        category: FindingCategory::SecuritySmell,
+        base_severity: Severity::Medium,
+        user_input_indicators: &[],
+        sanitization_indicators: &[],
+        cwe: &[327],
+    },
+    SecurityPattern {
+        sink: "CC_SHA1(",
+        description: "CommonCrypto CC_SHA1 — weak hash algorithm, use CC_SHA256 or higher",
+        category: FindingCategory::SecuritySmell,
+        base_severity: Severity::Medium,
+        user_input_indicators: &[],
+        sanitization_indicators: &[],
+        cwe: &[327],
     },
 ];
 
@@ -935,6 +1017,15 @@ const CSHARP_SECURITY_PATTERNS: &[SecurityPattern] = &[
         user_input_indicators: &["Request", "input", "path", "userInput"],
         sanitization_indicators: &["Path.GetFullPath", "Path.Combine"],
         cwe: &[22],
+    },
+    SecurityPattern {
+        sink: "Environment.Exit(",
+        description: "Environment.Exit in library code — skips finalizers, use exceptions instead",
+        category: FindingCategory::PanicPath,
+        base_severity: Severity::Medium,
+        user_input_indicators: &[],
+        sanitization_indicators: &[],
+        cwe: &[705],
     },
 ];
 
@@ -1706,5 +1797,525 @@ mod tests {
         let indicators = &["request"];
         let matched = collect_matched_indicators(&lines, 2, indicators);
         assert_eq!(matched.len(), 1);
+    }
+
+    // -- Go security pattern tests --
+
+    #[tokio::test]
+    async fn go_exec_command_injection() {
+        let mut files = HashMap::new();
+        files.insert(
+            PathBuf::from("main.go"),
+            "func run(request string) {\n    cmd := exec.Command(request)\n    cmd.Run()\n}\n"
+                .into(),
+        );
+        let ctx = make_ctx(files, Language::Go);
+        let findings = SecurityPatternDetector.analyze(&ctx).await.unwrap();
+        assert!(!findings.is_empty(), "should detect exec.Command injection");
+        assert_eq!(findings[0].category, FindingCategory::Injection);
+        assert_eq!(findings[0].cwe_ids, vec![78]);
+    }
+
+    #[tokio::test]
+    async fn go_sql_query_sprintf_injection() {
+        let mut files = HashMap::new();
+        files.insert(
+            PathBuf::from("db.go"),
+            "func find(param string) {\n    rows, _ := db.Query(fmt.Sprintf(\"SELECT * FROM t WHERE id=%s\", param))\n    _ = rows\n}\n".into(),
+        );
+        let ctx = make_ctx(files, Language::Go);
+        let findings = SecurityPatternDetector.analyze(&ctx).await.unwrap();
+        assert!(
+            !findings.is_empty(),
+            "should detect db.Query(fmt.Sprintf SQL injection"
+        );
+        assert_eq!(findings[0].cwe_ids, vec![89]);
+    }
+
+    #[tokio::test]
+    async fn go_http_get_ssrf() {
+        let mut files = HashMap::new();
+        files.insert(
+            PathBuf::from("fetch.go"),
+            "func fetch(url string) {\n    resp, _ := http.Get(url)\n    _ = resp\n}\n".into(),
+        );
+        let ctx = make_ctx(files, Language::Go);
+        let findings = SecurityPatternDetector.analyze(&ctx).await.unwrap();
+        assert!(!findings.is_empty(), "should detect http.Get SSRF");
+        assert_eq!(findings[0].cwe_ids, vec![918]);
+    }
+
+    #[tokio::test]
+    async fn go_template_html_xss() {
+        let mut files = HashMap::new();
+        files.insert(
+            PathBuf::from("tmpl.go"),
+            "func render(input string) {\n    safe := template.HTML(input)\n    _ = safe\n}\n"
+                .into(),
+        );
+        let ctx = make_ctx(files, Language::Go);
+        let findings = SecurityPatternDetector.analyze(&ctx).await.unwrap();
+        assert!(!findings.is_empty(), "should detect template.HTML XSS");
+        assert_eq!(findings[0].cwe_ids, vec![79]);
+    }
+
+    #[tokio::test]
+    async fn go_os_open_path_traversal() {
+        let mut files = HashMap::new();
+        files.insert(
+            PathBuf::from("files.go"),
+            "func read(path string) {\n    f, _ := os.Open(path)\n    _ = f\n}\n".into(),
+        );
+        let ctx = make_ctx(files, Language::Go);
+        let findings = SecurityPatternDetector.analyze(&ctx).await.unwrap();
+        assert!(!findings.is_empty(), "should detect os.Open path traversal");
+        assert_eq!(findings[0].cwe_ids, vec![22]);
+    }
+
+    #[tokio::test]
+    async fn go_json_unmarshal_unsafe_deserialization() {
+        let mut files = HashMap::new();
+        files.insert(
+            PathBuf::from("parse.go"),
+            "func parse(body []byte) {\n    var v interface{}\n    json.Unmarshal(body, &v)\n}\n"
+                .into(),
+        );
+        let ctx = make_ctx(files, Language::Go);
+        let findings = SecurityPatternDetector.analyze(&ctx).await.unwrap();
+        assert!(
+            !findings.is_empty(),
+            "should detect json.Unmarshal deserialization"
+        );
+        assert_eq!(findings[0].cwe_ids, vec![502]);
+    }
+
+    #[tokio::test]
+    async fn go_md5_weak_crypto() {
+        let mut files = HashMap::new();
+        files.insert(
+            PathBuf::from("crypto.go"),
+            "func hash(data []byte) []byte {\n    h := md5.New()\n    h.Write(data)\n    return h.Sum(nil)\n}\n".into(),
+        );
+        let ctx = make_ctx(files, Language::Go);
+        let findings = SecurityPatternDetector.analyze(&ctx).await.unwrap();
+        assert!(!findings.is_empty(), "should detect md5.New weak crypto");
+        assert_eq!(findings[0].cwe_ids, vec![327]);
+    }
+
+    #[tokio::test]
+    async fn go_sha1_weak_crypto() {
+        let mut files = HashMap::new();
+        files.insert(
+            PathBuf::from("crypto.go"),
+            "func hash(data []byte) []byte {\n    h := sha1.New()\n    h.Write(data)\n    return h.Sum(nil)\n}\n".into(),
+        );
+        let ctx = make_ctx(files, Language::Go);
+        let findings = SecurityPatternDetector.analyze(&ctx).await.unwrap();
+        assert!(!findings.is_empty(), "should detect sha1.New weak crypto");
+        assert_eq!(findings[0].cwe_ids, vec![327]);
+    }
+
+    #[tokio::test]
+    async fn go_log_fatal_in_library() {
+        let mut files = HashMap::new();
+        files.insert(
+            PathBuf::from("lib.go"),
+            "func Process(data []byte) {\n    if data == nil {\n        log.Fatal(\"nil input\")\n    }\n}\n".into(),
+        );
+        let ctx = make_ctx(files, Language::Go);
+        let findings = SecurityPatternDetector.analyze(&ctx).await.unwrap();
+        assert!(!findings.is_empty(), "should detect log.Fatal in library");
+        assert_eq!(findings[0].cwe_ids, vec![705]);
+    }
+
+    #[tokio::test]
+    async fn go_os_exit_in_library() {
+        let mut files = HashMap::new();
+        files.insert(
+            PathBuf::from("lib.go"),
+            "func Init(cfg Config) {\n    if cfg.Invalid() {\n        os.Exit(1)\n    }\n}\n"
+                .into(),
+        );
+        let ctx = make_ctx(files, Language::Go);
+        let findings = SecurityPatternDetector.analyze(&ctx).await.unwrap();
+        assert!(!findings.is_empty(), "should detect os.Exit in library");
+        assert_eq!(findings[0].cwe_ids, vec![705]);
+    }
+
+    // -- C# security pattern tests --
+
+    #[tokio::test]
+    async fn csharp_process_start_command_injection() {
+        let mut files = HashMap::new();
+        files.insert(
+            PathBuf::from("Runner.cs"),
+            "public void Run(string input) {\n    Process.Start(input);\n}\n".into(),
+        );
+        let ctx = make_ctx(files, Language::CSharp);
+        let findings = SecurityPatternDetector.analyze(&ctx).await.unwrap();
+        assert!(
+            !findings.is_empty(),
+            "should detect Process.Start injection"
+        );
+        assert_eq!(findings[0].cwe_ids, vec![78]);
+    }
+
+    #[tokio::test]
+    async fn csharp_sql_command_injection() {
+        let mut files = HashMap::new();
+        files.insert(
+            PathBuf::from("Dao.cs"),
+            "public void Find(string param) {\n    var cmd = new SqlCommand(\"SELECT * FROM t WHERE id=\" + param);\n}\n".into(),
+        );
+        let ctx = make_ctx(files, Language::CSharp);
+        let findings = SecurityPatternDetector.analyze(&ctx).await.unwrap();
+        assert!(!findings.is_empty(), "should detect SqlCommand injection");
+        assert_eq!(findings[0].cwe_ids, vec![89]);
+    }
+
+    #[tokio::test]
+    async fn csharp_httpclient_ssrf() {
+        let mut files = HashMap::new();
+        files.insert(
+            PathBuf::from("Client.cs"),
+            "public async Task Fetch(string url) {\n    var client = new HttpClient();\n    await client.GetAsync(url);\n}\n".into(),
+        );
+        let ctx = make_ctx(files, Language::CSharp);
+        let findings = SecurityPatternDetector.analyze(&ctx).await.unwrap();
+        assert!(!findings.is_empty(), "should detect HttpClient SSRF");
+        assert_eq!(findings[0].cwe_ids, vec![918]);
+    }
+
+    #[tokio::test]
+    async fn csharp_binary_formatter_deserialization() {
+        let mut files = HashMap::new();
+        files.insert(
+            PathBuf::from("Serializer.cs"),
+            "public object Deserialize(Stream s) {\n    var bf = new BinaryFormatter();\n    return bf.Deserialize(s);\n}\n".into(),
+        );
+        let ctx = make_ctx(files, Language::CSharp);
+        let findings = SecurityPatternDetector.analyze(&ctx).await.unwrap();
+        assert!(
+            !findings.is_empty(),
+            "should detect BinaryFormatter deserialization"
+        );
+        assert_eq!(findings[0].cwe_ids, vec![502]);
+    }
+
+    #[tokio::test]
+    async fn csharp_md5_weak_crypto() {
+        let mut files = HashMap::new();
+        files.insert(
+            PathBuf::from("Crypto.cs"),
+            "public byte[] Hash(byte[] data) {\n    using var md5 = MD5.Create();\n    return md5.ComputeHash(data);\n}\n".into(),
+        );
+        let ctx = make_ctx(files, Language::CSharp);
+        let findings = SecurityPatternDetector.analyze(&ctx).await.unwrap();
+        assert!(!findings.is_empty(), "should detect MD5.Create weak crypto");
+        assert_eq!(findings[0].cwe_ids, vec![327]);
+    }
+
+    #[tokio::test]
+    async fn csharp_sha1_weak_crypto() {
+        let mut files = HashMap::new();
+        files.insert(
+            PathBuf::from("Crypto.cs"),
+            "public byte[] Hash(byte[] data) {\n    using var sha = SHA1.Create();\n    return sha.ComputeHash(data);\n}\n".into(),
+        );
+        let ctx = make_ctx(files, Language::CSharp);
+        let findings = SecurityPatternDetector.analyze(&ctx).await.unwrap();
+        assert!(
+            !findings.is_empty(),
+            "should detect SHA1.Create weak crypto"
+        );
+        assert_eq!(findings[0].cwe_ids, vec![327]);
+    }
+
+    #[tokio::test]
+    async fn csharp_response_write_xss() {
+        let mut files = HashMap::new();
+        files.insert(
+            PathBuf::from("Handler.cs"),
+            "public void Handle(HttpContext ctx) {\n    string input = ctx.Request[\"q\"];\n    ctx.Response.Write(input);\n}\n".into(),
+        );
+        let ctx = make_ctx(files, Language::CSharp);
+        let findings = SecurityPatternDetector.analyze(&ctx).await.unwrap();
+        assert!(!findings.is_empty(), "should detect Response.Write XSS");
+        assert_eq!(findings[0].cwe_ids, vec![79]);
+    }
+
+    #[tokio::test]
+    async fn csharp_file_read_path_traversal() {
+        let mut files = HashMap::new();
+        files.insert(
+            PathBuf::from("Files.cs"),
+            "public string Read(string path) {\n    return File.ReadAllText(path);\n}\n".into(),
+        );
+        let ctx = make_ctx(files, Language::CSharp);
+        let findings = SecurityPatternDetector.analyze(&ctx).await.unwrap();
+        assert!(
+            !findings.is_empty(),
+            "should detect File.ReadAllText path traversal"
+        );
+        assert_eq!(findings[0].cwe_ids, vec![22]);
+    }
+
+    #[tokio::test]
+    async fn csharp_environment_exit_in_library() {
+        let mut files = HashMap::new();
+        files.insert(
+            PathBuf::from("Lib.cs"),
+            "public void Init(Config cfg) {\n    if (!cfg.IsValid()) Environment.Exit(1);\n}\n"
+                .into(),
+        );
+        let ctx = make_ctx(files, Language::CSharp);
+        let findings = SecurityPatternDetector.analyze(&ctx).await.unwrap();
+        assert!(
+            !findings.is_empty(),
+            "should detect Environment.Exit in library"
+        );
+        assert_eq!(findings[0].cwe_ids, vec![705]);
+    }
+
+    // -- Swift security pattern tests --
+
+    #[tokio::test]
+    async fn swift_process_command_injection() {
+        let mut files = HashMap::new();
+        files.insert(
+            PathBuf::from("Runner.swift"),
+            "func run(userInput: String) {\n    let task = Process()\n    task.arguments = [userInput]\n}\n".into(),
+        );
+        let ctx = make_ctx(files, Language::Swift);
+        let findings = SecurityPatternDetector.analyze(&ctx).await.unwrap();
+        assert!(
+            !findings.is_empty(),
+            "should detect Process() command injection"
+        );
+        assert_eq!(findings[0].cwe_ids, vec![78]);
+    }
+
+    #[tokio::test]
+    async fn swift_urlsession_ssrf() {
+        let mut files = HashMap::new();
+        files.insert(
+            PathBuf::from("Fetcher.swift"),
+            "func fetch(url: String) {\n    URLSession.shared.dataTask(with: URL(string: url)!) { _, _, _ in }.resume()\n}\n".into(),
+        );
+        let ctx = make_ctx(files, Language::Swift);
+        let findings = SecurityPatternDetector.analyze(&ctx).await.unwrap();
+        assert!(
+            !findings.is_empty(),
+            "should detect URLSession.shared.dataTask SSRF"
+        );
+        assert_eq!(findings[0].cwe_ids, vec![918]);
+    }
+
+    #[tokio::test]
+    async fn swift_nsapplescript_code_injection() {
+        let mut files = HashMap::new();
+        files.insert(
+            PathBuf::from("Script.swift"),
+            "func exec(input: String) {\n    let script = NSAppleScript(source: input)\n    script?.executeAndReturnError(nil)\n}\n".into(),
+        );
+        let ctx = make_ctx(files, Language::Swift);
+        let findings = SecurityPatternDetector.analyze(&ctx).await.unwrap();
+        assert!(
+            !findings.is_empty(),
+            "should detect NSAppleScript code injection"
+        );
+        assert_eq!(findings[0].cwe_ids, vec![94]);
+    }
+
+    #[tokio::test]
+    async fn swift_userdefaults_sensitive_data() {
+        let mut files = HashMap::new();
+        files.insert(
+            PathBuf::from("Storage.swift"),
+            "func save(password: String) {\n    UserDefaults.standard.set(password, forKey: \"password\")\n}\n".into(),
+        );
+        let ctx = make_ctx(files, Language::Swift);
+        let findings = SecurityPatternDetector.analyze(&ctx).await.unwrap();
+        assert!(
+            !findings.is_empty(),
+            "should detect UserDefaults for sensitive data"
+        );
+        assert_eq!(findings[0].cwe_ids, vec![312]);
+    }
+
+    #[tokio::test]
+    async fn swift_nskeyedunarchiver_deserialization() {
+        let mut files = HashMap::new();
+        files.insert(
+            PathBuf::from("Archive.swift"),
+            "func load(data: Data) -> Any? {\n    return NSKeyedUnarchiver.unarchiveObject(with: data)\n}\n".into(),
+        );
+        let ctx = make_ctx(files, Language::Swift);
+        let findings = SecurityPatternDetector.analyze(&ctx).await.unwrap();
+        assert!(
+            !findings.is_empty(),
+            "should detect NSKeyedUnarchiver deserialization"
+        );
+        assert_eq!(findings[0].cwe_ids, vec![502]);
+    }
+
+    #[tokio::test]
+    async fn swift_force_try_panic() {
+        let mut files = HashMap::new();
+        files.insert(
+            PathBuf::from("Parser.swift"),
+            "func parse(data: Data) -> Model {\n    return try! JSONDecoder().decode(Model.self, from: data)\n}\n".into(),
+        );
+        let ctx = make_ctx(files, Language::Swift);
+        let findings = SecurityPatternDetector.analyze(&ctx).await.unwrap();
+        assert!(!findings.is_empty(), "should detect try! force unwrap");
+        assert_eq!(findings[0].cwe_ids, vec![755]);
+    }
+
+    #[tokio::test]
+    async fn swift_fatal_error_in_library() {
+        let mut files = HashMap::new();
+        files.insert(
+            PathBuf::from("Lib.swift"),
+            "func validate(input: String) {\n    guard !input.isEmpty else {\n        fatalError(\"input must not be empty\")\n    }\n}\n".into(),
+        );
+        let ctx = make_ctx(files, Language::Swift);
+        let findings = SecurityPatternDetector.analyze(&ctx).await.unwrap();
+        assert!(!findings.is_empty(), "should detect fatalError in library");
+        assert_eq!(findings[0].cwe_ids, vec![705]);
+    }
+
+    #[tokio::test]
+    async fn swift_cc_md5_weak_crypto() {
+        let mut files = HashMap::new();
+        files.insert(
+            PathBuf::from("Hash.swift"),
+            "func hash(data: UnsafePointer<UInt8>, len: CC_LONG) -> [UInt8] {\n    var digest = [UInt8](repeating: 0, count: Int(CC_MD5_DIGEST_LENGTH))\n    CC_MD5(data, len, &digest)\n    return digest\n}\n".into(),
+        );
+        let ctx = make_ctx(files, Language::Swift);
+        let findings = SecurityPatternDetector.analyze(&ctx).await.unwrap();
+        assert!(!findings.is_empty(), "should detect CC_MD5 weak crypto");
+        assert_eq!(findings[0].cwe_ids, vec![327]);
+    }
+
+    #[tokio::test]
+    async fn swift_cc_sha1_weak_crypto() {
+        let mut files = HashMap::new();
+        files.insert(
+            PathBuf::from("Hash.swift"),
+            "func hash(data: UnsafePointer<UInt8>, len: CC_LONG) -> [UInt8] {\n    var digest = [UInt8](repeating: 0, count: Int(CC_SHA1_DIGEST_LENGTH))\n    CC_SHA1(data, len, &digest)\n    return digest\n}\n".into(),
+        );
+        let ctx = make_ctx(files, Language::Swift);
+        let findings = SecurityPatternDetector.analyze(&ctx).await.unwrap();
+        assert!(!findings.is_empty(), "should detect CC_SHA1 weak crypto");
+        assert_eq!(findings[0].cwe_ids, vec![327]);
+    }
+
+    // -- C/C++ additional pattern tests --
+
+    #[tokio::test]
+    async fn cpp_vsprintf_buffer_overflow() {
+        let mut files = HashMap::new();
+        files.insert(
+            PathBuf::from("format.cpp"),
+            "#include <cstdio>\nvoid fmt(char *buf, const char *fmt, ...) {\n    va_list args;\n    va_start(args, fmt);\n    vsprintf(buf, fmt, args);\n}\n".into(),
+        );
+        let ctx = make_ctx(files, Language::Cpp);
+        let findings = SecurityPatternDetector.analyze(&ctx).await.unwrap();
+        assert!(
+            !findings.is_empty(),
+            "should detect vsprintf buffer overflow"
+        );
+        assert_eq!(findings[0].cwe_ids, vec![120]);
+    }
+
+    #[tokio::test]
+    async fn c_vsprintf_buffer_overflow() {
+        let mut files = HashMap::new();
+        files.insert(
+            PathBuf::from("format.c"),
+            "#include <stdio.h>\nvoid fmt(char *buf, const char *fmt, ...) {\n    va_list args;\n    va_start(args, fmt);\n    vsprintf(buf, fmt, args);\n}\n".into(),
+        );
+        let ctx = make_ctx(files, Language::C);
+        let findings = SecurityPatternDetector.analyze(&ctx).await.unwrap();
+        assert!(!findings.is_empty(), "should detect vsprintf in C");
+        assert_eq!(findings[0].cwe_ids, vec![120]);
+    }
+
+    #[tokio::test]
+    async fn cpp_free_use_after_free_heuristic() {
+        let mut files = HashMap::new();
+        files.insert(
+            PathBuf::from("mem.cpp"),
+            "void process(char *buf) {\n    free(buf);\n    buf->next = ptr;\n}\n".into(),
+        );
+        let ctx = make_ctx(files, Language::Cpp);
+        let findings = SecurityPatternDetector.analyze(&ctx).await.unwrap();
+        assert!(
+            !findings.is_empty(),
+            "should detect free() use-after-free heuristic"
+        );
+        assert_eq!(findings[0].cwe_ids, vec![416]);
+    }
+
+    #[tokio::test]
+    async fn cpp_reinterpret_cast_unsafe() {
+        let mut files = HashMap::new();
+        files.insert(
+            PathBuf::from("cast.cpp"),
+            "void process(void *ptr) {\n    char *buf = reinterpret_cast<char*>(ptr);\n    *buf = 0;\n}\n".into(),
+        );
+        let ctx = make_ctx(files, Language::Cpp);
+        let findings = SecurityPatternDetector.analyze(&ctx).await.unwrap();
+        assert!(!findings.is_empty(), "should detect reinterpret_cast");
+        assert_eq!(findings[0].cwe_ids, vec![704]);
+    }
+
+    #[tokio::test]
+    async fn cpp_std_system_command_injection() {
+        let mut files = HashMap::new();
+        files.insert(
+            PathBuf::from("cmd.cpp"),
+            "#include <cstdlib>\nvoid run(const std::string& cmd) {\n    std::system(cmd.c_str());\n}\n".into(),
+        );
+        let ctx = make_ctx(files, Language::Cpp);
+        let findings = SecurityPatternDetector.analyze(&ctx).await.unwrap();
+        assert!(
+            !findings.is_empty(),
+            "should detect std::system command injection"
+        );
+        assert_eq!(findings[0].cwe_ids, vec![78]);
+    }
+
+    #[tokio::test]
+    async fn c_printf_format_string() {
+        let mut files = HashMap::new();
+        files.insert(
+            PathBuf::from("log.c"),
+            "void log_msg(char *buf) {\n    printf(buf);\n}\n".into(),
+        );
+        let ctx = make_ctx(files, Language::C);
+        let findings = SecurityPatternDetector.analyze(&ctx).await.unwrap();
+        assert!(
+            !findings.is_empty(),
+            "should detect printf format string vulnerability"
+        );
+        assert_eq!(findings[0].cwe_ids, vec![134]);
+    }
+
+    #[tokio::test]
+    async fn c_system_command_injection() {
+        let mut files = HashMap::new();
+        files.insert(
+            PathBuf::from("exec.c"),
+            "void run(char *argv[]) {\n    system(argv[1]);\n}\n".into(),
+        );
+        let ctx = make_ctx(files, Language::C);
+        let findings = SecurityPatternDetector.analyze(&ctx).await.unwrap();
+        assert!(
+            !findings.is_empty(),
+            "should detect system() command injection"
+        );
+        assert_eq!(findings[0].cwe_ids, vec![78]);
     }
 }

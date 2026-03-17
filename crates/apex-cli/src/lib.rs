@@ -8,6 +8,7 @@
 
 pub mod doctor;
 pub mod fuzz;
+pub mod integrate;
 pub mod mcp;
 
 use apex_agent::{AgentCluster, OrchestratorConfig};
@@ -124,6 +125,8 @@ pub enum Commands {
     TestData(TestDataArgs),
     /// Start MCP STDIO server for AI tool integration.
     Mcp,
+    /// Write MCP server config for Claude Code, Cursor, or Windsurf.
+    Integrate(integrate::IntegrateArgs),
 }
 
 #[derive(Parser, Clone)]
@@ -713,6 +716,7 @@ pub async fn run_cli(cli: Cli, cfg: &ApexConfig) -> Result<()> {
         Commands::SchemaCheck(args) => run_schema_check(args).await,
         Commands::TestData(args) => run_test_data(args).await,
         Commands::Mcp => mcp::run_mcp().await,
+        Commands::Integrate(args) => integrate::run_integrate(args).await,
     }
 }
 

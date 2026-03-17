@@ -96,6 +96,102 @@ pub struct DeployScoreParams {
     pub lang: String,
 }
 
+/// Parameters for `apex complexity`.
+#[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
+pub struct ComplexityParams {
+    /// Path to the target repository.
+    #[schemars(description = "Path to the target repository")]
+    pub target: String,
+}
+
+/// Parameters for `apex dead-code`.
+#[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
+pub struct DeadCodeParams {
+    /// Path to the target repository.
+    #[schemars(description = "Path to the target repository")]
+    pub target: String,
+}
+
+/// Parameters for `apex risk`.
+#[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
+pub struct RiskParams {
+    /// Path to the target repository.
+    #[schemars(description = "Path to the target repository")]
+    pub target: String,
+
+    /// Comma-separated list of changed files.
+    #[schemars(description = "Comma-separated list of changed files")]
+    pub changed_files: String,
+}
+
+/// Parameters for `apex hotpaths`.
+#[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
+pub struct HotpathsParams {
+    /// Path to the target repository.
+    #[schemars(description = "Path to the target repository")]
+    pub target: String,
+}
+
+/// Parameters for `apex test-optimize`.
+#[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
+pub struct TestOptimizeParams {
+    /// Path to the target repository.
+    #[schemars(description = "Path to the target repository")]
+    pub target: String,
+}
+
+/// Parameters for `apex test-prioritize`.
+#[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
+pub struct TestPrioritizeParams {
+    /// Path to the target repository.
+    #[schemars(description = "Path to the target repository")]
+    pub target: String,
+
+    /// Comma-separated list of changed files.
+    #[schemars(description = "Comma-separated list of changed files")]
+    pub changed_files: String,
+}
+
+/// Parameters for `apex blast-radius`.
+#[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
+pub struct BlastRadiusParams {
+    /// Path to the target repository.
+    #[schemars(description = "Path to the target repository")]
+    pub target: String,
+
+    /// Programming language.
+    #[schemars(description = "Programming language: python, js, java, c, rust, wasm, ruby")]
+    pub lang: String,
+
+    /// Comma-separated list of changed files.
+    #[schemars(description = "Comma-separated list of changed files")]
+    pub changed_files: String,
+}
+
+/// Parameters for `apex secret-scan`.
+#[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
+pub struct SecretScanParams {
+    /// Path to the target repository.
+    #[schemars(description = "Path to the target repository")]
+    pub target: String,
+
+    /// Programming language.
+    #[schemars(description = "Programming language: python, js, java, c, rust, wasm, ruby")]
+    pub lang: String,
+}
+
+/// Parameters for `apex data-flow`.
+#[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
+pub struct DataFlowParams {
+    /// Path to the target repository.
+    #[schemars(description = "Path to the target repository")]
+    pub target: String,
+
+    /// Programming language.
+    #[schemars(description = "Programming language: python, js, java, c, rust, wasm, ruby")]
+    pub lang: String,
+}
+
 // ---------------------------------------------------------------------------
 // Path validation
 // ---------------------------------------------------------------------------
@@ -308,6 +404,211 @@ impl ApexMcpService {
         .await?;
         Ok(CallToolResult::success(vec![Content::text(output)]))
     }
+
+    /// Analyze function-level cyclomatic complexity. Returns hotspots sorted
+    /// by complexity score.
+    #[tool(
+        description = "Analyze function-level cyclomatic complexity. Returns hotspots sorted by complexity score."
+    )]
+    async fn apex_complexity(
+        &self,
+        Parameters(params): Parameters<ComplexityParams>,
+    ) -> Result<CallToolResult, McpError> {
+        let target = validate_target_path(&params.target)?;
+        let output = run_apex_command(&[
+            "complexity",
+            "--target",
+            &target,
+            "--output-format",
+            "json",
+        ])
+        .await?;
+        Ok(CallToolResult::success(vec![Content::text(output)]))
+    }
+
+    /// Find unreachable branches and dead code. Returns per-file dead branch
+    /// counts.
+    #[tool(
+        description = "Find unreachable branches and dead code. Returns per-file dead branch counts."
+    )]
+    async fn apex_dead_code(
+        &self,
+        Parameters(params): Parameters<DeadCodeParams>,
+    ) -> Result<CallToolResult, McpError> {
+        let target = validate_target_path(&params.target)?;
+        let output = run_apex_command(&[
+            "dead-code",
+            "--target",
+            &target,
+            "--output-format",
+            "json",
+        ])
+        .await?;
+        Ok(CallToolResult::success(vec![Content::text(output)]))
+    }
+
+    /// Assess risk of changed files. Returns affected test count and risk
+    /// level.
+    #[tool(
+        description = "Assess risk of changed files. Returns affected test count and risk level."
+    )]
+    async fn apex_risk(
+        &self,
+        Parameters(params): Parameters<RiskParams>,
+    ) -> Result<CallToolResult, McpError> {
+        let target = validate_target_path(&params.target)?;
+        let mut args = vec![
+            "risk".to_string(),
+            "--target".to_string(),
+            target,
+            "--output-format".to_string(),
+            "json".to_string(),
+        ];
+        if !params.changed_files.is_empty() {
+            args.push("--changed-files".to_string());
+            args.push(params.changed_files.clone());
+        }
+        let arg_refs: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
+        let output = run_apex_command(&arg_refs).await?;
+        Ok(CallToolResult::success(vec![Content::text(output)]))
+    }
+
+    /// Identify the most frequently executed code paths. Returns branches
+    /// sorted by hit count.
+    #[tool(
+        description = "Identify the most frequently executed code paths. Returns branches sorted by hit count."
+    )]
+    async fn apex_hotpaths(
+        &self,
+        Parameters(params): Parameters<HotpathsParams>,
+    ) -> Result<CallToolResult, McpError> {
+        let target = validate_target_path(&params.target)?;
+        let output = run_apex_command(&[
+            "hotpaths",
+            "--target",
+            &target,
+            "--output-format",
+            "json",
+        ])
+        .await?;
+        Ok(CallToolResult::success(vec![Content::text(output)]))
+    }
+
+    /// Identify redundant tests that can be removed to save CI time.
+    #[tool(
+        description = "Identify redundant tests that can be removed to save CI time."
+    )]
+    async fn apex_test_optimize(
+        &self,
+        Parameters(params): Parameters<TestOptimizeParams>,
+    ) -> Result<CallToolResult, McpError> {
+        let target = validate_target_path(&params.target)?;
+        let output = run_apex_command(&[
+            "test-optimize",
+            "--target",
+            &target,
+            "--output-format",
+            "json",
+        ])
+        .await?;
+        Ok(CallToolResult::success(vec![Content::text(output)]))
+    }
+
+    /// Prioritize tests by relevance to changed files. Returns ordered test
+    /// list.
+    #[tool(
+        description = "Prioritize tests by relevance to changed files. Returns ordered test list."
+    )]
+    async fn apex_test_prioritize(
+        &self,
+        Parameters(params): Parameters<TestPrioritizeParams>,
+    ) -> Result<CallToolResult, McpError> {
+        let target = validate_target_path(&params.target)?;
+        let mut args = vec![
+            "test-prioritize".to_string(),
+            "--target".to_string(),
+            target,
+            "--output-format".to_string(),
+            "json".to_string(),
+        ];
+        if !params.changed_files.is_empty() {
+            args.push("--changed-files".to_string());
+            args.push(params.changed_files.clone());
+        }
+        let arg_refs: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
+        let output = run_apex_command(&arg_refs).await?;
+        Ok(CallToolResult::success(vec![Content::text(output)]))
+    }
+
+    /// Calculate the blast radius of changed files — which modules and tests
+    /// are affected.
+    #[tool(
+        description = "Calculate the blast radius of changed files — which modules and tests are affected."
+    )]
+    async fn apex_blast_radius(
+        &self,
+        Parameters(params): Parameters<BlastRadiusParams>,
+    ) -> Result<CallToolResult, McpError> {
+        let target = validate_target_path(&params.target)?;
+        let mut args = vec![
+            "blast-radius".to_string(),
+            "--target".to_string(),
+            target,
+            "--lang".to_string(),
+            params.lang.clone(),
+        ];
+        if !params.changed_files.is_empty() {
+            args.push("--changed-files".to_string());
+            args.push(params.changed_files.clone());
+        }
+        let arg_refs: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
+        let output = run_apex_command(&arg_refs).await?;
+        Ok(CallToolResult::success(vec![Content::text(output)]))
+    }
+
+    /// Scan for hardcoded secrets, API keys, and high-entropy strings.
+    #[tool(
+        description = "Scan for hardcoded secrets, API keys, and high-entropy strings."
+    )]
+    async fn apex_secret_scan(
+        &self,
+        Parameters(params): Parameters<SecretScanParams>,
+    ) -> Result<CallToolResult, McpError> {
+        let target = validate_target_path(&params.target)?;
+        let output = run_apex_command(&[
+            "secret-scan",
+            "--target",
+            &target,
+            "--lang",
+            &params.lang,
+            "--output-format",
+            "json",
+        ])
+        .await?;
+        Ok(CallToolResult::success(vec![Content::text(output)]))
+    }
+
+    /// Trace data flow and taint paths through the codebase.
+    #[tool(
+        description = "Trace data flow and taint paths through the codebase."
+    )]
+    async fn apex_data_flow(
+        &self,
+        Parameters(params): Parameters<DataFlowParams>,
+    ) -> Result<CallToolResult, McpError> {
+        let target = validate_target_path(&params.target)?;
+        let output = run_apex_command(&[
+            "data-flow",
+            "--target",
+            &target,
+            "--lang",
+            &params.lang,
+            "--output-format",
+            "json",
+        ])
+        .await?;
+        Ok(CallToolResult::success(vec![Content::text(output)]))
+    }
 }
 
 #[tool_handler]
@@ -396,6 +697,75 @@ mod tests {
     }
 
     #[test]
+    fn complexity_params_generates_valid_schema() {
+        let schema = rmcp::schemars::schema_for!(ComplexityParams);
+        let json = serde_json::to_string_pretty(&schema).unwrap();
+        assert!(json.contains("target"));
+    }
+
+    #[test]
+    fn dead_code_params_generates_valid_schema() {
+        let schema = rmcp::schemars::schema_for!(DeadCodeParams);
+        let json = serde_json::to_string_pretty(&schema).unwrap();
+        assert!(json.contains("target"));
+    }
+
+    #[test]
+    fn risk_params_generates_valid_schema() {
+        let schema = rmcp::schemars::schema_for!(RiskParams);
+        let json = serde_json::to_string_pretty(&schema).unwrap();
+        assert!(json.contains("target"));
+        assert!(json.contains("changed_files"));
+    }
+
+    #[test]
+    fn hotpaths_params_generates_valid_schema() {
+        let schema = rmcp::schemars::schema_for!(HotpathsParams);
+        let json = serde_json::to_string_pretty(&schema).unwrap();
+        assert!(json.contains("target"));
+    }
+
+    #[test]
+    fn test_optimize_params_generates_valid_schema() {
+        let schema = rmcp::schemars::schema_for!(TestOptimizeParams);
+        let json = serde_json::to_string_pretty(&schema).unwrap();
+        assert!(json.contains("target"));
+    }
+
+    #[test]
+    fn test_prioritize_params_generates_valid_schema() {
+        let schema = rmcp::schemars::schema_for!(TestPrioritizeParams);
+        let json = serde_json::to_string_pretty(&schema).unwrap();
+        assert!(json.contains("target"));
+        assert!(json.contains("changed_files"));
+    }
+
+    #[test]
+    fn blast_radius_params_generates_valid_schema() {
+        let schema = rmcp::schemars::schema_for!(BlastRadiusParams);
+        let json = serde_json::to_string_pretty(&schema).unwrap();
+        assert!(json.contains("target"));
+        assert!(json.contains("lang"));
+        assert!(json.contains("changed_files"));
+    }
+
+    #[test]
+    fn secret_scan_params_generates_valid_schema() {
+        let schema = rmcp::schemars::schema_for!(SecretScanParams);
+        let json = serde_json::to_string_pretty(&schema).unwrap();
+        assert!(json.contains("target"));
+        assert!(json.contains("lang"));
+    }
+
+    #[test]
+    fn data_flow_params_generates_valid_schema() {
+        let schema = rmcp::schemars::schema_for!(DataFlowParams);
+        let json = serde_json::to_string_pretty(&schema).unwrap();
+        assert!(json.contains("target"));
+        assert!(json.contains("lang"));
+    }
+
+    #[test]
     fn all_schemas_are_valid_json_schema_objects() {
         // Verify each schema has the expected JSON Schema structure
         for schema in [
@@ -404,6 +774,15 @@ mod tests {
             rmcp::schemars::schema_for!(ReachParams),
             rmcp::schemars::schema_for!(RatchetParams),
             rmcp::schemars::schema_for!(DeployScoreParams),
+            rmcp::schemars::schema_for!(ComplexityParams),
+            rmcp::schemars::schema_for!(DeadCodeParams),
+            rmcp::schemars::schema_for!(RiskParams),
+            rmcp::schemars::schema_for!(HotpathsParams),
+            rmcp::schemars::schema_for!(TestOptimizeParams),
+            rmcp::schemars::schema_for!(TestPrioritizeParams),
+            rmcp::schemars::schema_for!(BlastRadiusParams),
+            rmcp::schemars::schema_for!(SecretScanParams),
+            rmcp::schemars::schema_for!(DataFlowParams),
         ] {
             let json = serde_json::to_value(&schema).unwrap();
             assert!(json.get("type").is_some() || json.get("$schema").is_some());
@@ -421,6 +800,28 @@ mod tests {
         assert!(required_names.contains(&"lang"));
         // strategy is optional -- should NOT be in required
         assert!(!required_names.contains(&"strategy"));
+
+        // complexity: only target required
+        let schema = serde_json::to_value(rmcp::schemars::schema_for!(ComplexityParams)).unwrap();
+        let required = schema.get("required").unwrap().as_array().unwrap();
+        let required_names: Vec<&str> = required.iter().map(|v| v.as_str().unwrap()).collect();
+        assert!(required_names.contains(&"target"));
+
+        // risk: both target and changed_files required
+        let schema = serde_json::to_value(rmcp::schemars::schema_for!(RiskParams)).unwrap();
+        let required = schema.get("required").unwrap().as_array().unwrap();
+        let required_names: Vec<&str> = required.iter().map(|v| v.as_str().unwrap()).collect();
+        assert!(required_names.contains(&"target"));
+        assert!(required_names.contains(&"changed_files"));
+
+        // blast_radius: target, lang, changed_files all required
+        let schema =
+            serde_json::to_value(rmcp::schemars::schema_for!(BlastRadiusParams)).unwrap();
+        let required = schema.get("required").unwrap().as_array().unwrap();
+        let required_names: Vec<&str> = required.iter().map(|v| v.as_str().unwrap()).collect();
+        assert!(required_names.contains(&"target"));
+        assert!(required_names.contains(&"lang"));
+        assert!(required_names.contains(&"changed_files"));
     }
 
     #[test]

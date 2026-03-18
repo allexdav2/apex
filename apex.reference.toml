@@ -1,0 +1,477 @@
+# ============================================================================
+# APEX Configuration Reference
+# ============================================================================
+# Copy this file to `apex.toml` in your project root and customize.
+# All values shown are defaults -- omit any you don't need to change.
+#
+# Precedence: CLI args > apex.toml > struct defaults
+#
+# Generated 2026-03-18 from source audit of all 17 crates.
+
+# ============================================================================
+# [coverage] -- Coverage targets and file discovery
+# ============================================================================
+
+[coverage]
+# Target coverage ratio (0.0-1.0). APEX stops exploring when reached.
+# Clamped to valid range on load.
+target = 0.95
+
+# Minimum coverage ratio for `apex ratchet` CI gate (0.0-1.0).
+# Clamped to valid range on load.
+min_ratchet = 0.8
+
+# Directory name patterns to skip when collecting source files.
+# Override to replace the entire list (not additive).
+omit_patterns = [
+    "target",
+    "node_modules",
+    "__pycache__",
+    ".venv",
+    "venv",
+    "dist",
+    "build",
+]
+
+# ============================================================================
+# [fuzz] -- Coverage-guided fuzzing engine
+# ============================================================================
+
+[fuzz]
+# Maximum corpus size. Oldest entries are evicted (LRU) when full.
+# Source: apex-fuzz/src/lib.rs CORPUS_MAX
+corpus_max = 10_000
+
+# Number of mutated inputs generated per scheduler tick.
+# Source: apex-fuzz/src/lib.rs MUTATIONS_PER_INPUT
+mutations_per_input = 8
+
+# Iterations without new coverage before the fuzzer declares a stall and stops.
+stall_iterations = 50
+
+# Minimum random seed length when bootstrapping corpus from scratch.
+seed_len_min = 1
+
+# Maximum random seed length when bootstrapping corpus from scratch.
+seed_len_max = 64
+
+# ---- MOpt adaptive mutation scheduler ----
+
+[fuzz.scheduler]
+# Minimum EMA yield per mutator. Prevents zero-weight starvation.
+floor = 0.01
+
+# EMA smoothing factor for mutator yield tracking (0.0-1.0).
+# Higher = more responsive to recent performance; lower = more stable.
+alpha = 0.1
+
+# ---- PSO-MOpt scheduler (advanced) ----
+# These are compile-time constants in PsoMOptScheduler. Listed here for
+# documentation; wiring them to config requires code changes.
+#
+# [fuzz.pso]
+# # PSO inertia weight -- higher values preserve velocity across epochs.
+# w = 0.7
+# # Cognitive coefficient -- attraction to each operator's local best.
+# c1 = 1.5
+# # Social coefficient -- attraction to the global best distribution.
+# c2 = 1.5
+# # Minimum probability floor to prevent operator starvation.
+# prob_min = 0.01
+
+# ---- FOX adaptive controller (advanced) ----
+# Hardcoded in apex-fuzz/src/control.rs. Listed for documentation.
+#
+# [fuzz.fox]
+# # Initial mutation rate (0.0-1.0).
+# mutation_rate = 0.5
+# # Initial exploration rate (0.0-1.0). >= 0.5 means explore, < 0.5 means exploit.
+# exploration_rate = 0.5
+# # Learning rate for rate adaptation.
+# alpha = 0.1
+
+# ---- Semantic feedback weights ----
+# Hardcoded in apex-fuzz/src/semantic_feedback.rs. Listed for documentation.
+#
+# [fuzz.semantic]
+# # Weight for new-branch score component.
+# branch_weight = 1.0
+# # Weight for semantic signal (assertion distance) component.
+# semantic_weight = 0.5
+
+# ---- Thompson bandit scheduler ----
+# Hardcoded in apex-fuzz/src/thompson.rs. Listed for documentation.
+#
+# [fuzz.thompson]
+# # Beta distribution cap to prevent permanent arm death after many penalties.
+# beta_cap = 50.0
+
+# ---- CmpLog / RedQueen ----
+# Hardcoded in apex-fuzz/src/cmplog.rs. Listed for documentation.
+#
+# [fuzz.cmplog]
+# # Maximum comparison entries stored per branch (ring buffer size).
+# ring_max = 256
+
+# ---- HGFuzzer directed energy ----
+# Hardcoded in apex-fuzz/src/hgfuzzer.rs. Listed for documentation.
+#
+# [fuzz.directed]
+# # Default energy for seeds with unknown distance to target.
+# unknown_distance_energy = 0.1
+
+# ============================================================================
+# [concolic] -- Concolic execution (hybrid symbolic/concrete)
+# ============================================================================
+
+[concolic]
+# Maximum concolic exploration rounds per invocation.
+max_rounds = 5
+
+# ============================================================================
+# [symbolic] -- Symbolic constraint solver
+# ============================================================================
+
+[symbolic]
+# Maximum constraint chain depth before pruning.
+# Source: apex-symbolic/src/solver.rs MAX_DEPTH
+max_depth = 64
+
+# ============================================================================
+# [agent] -- Orchestrator and AI agent settings
+# ============================================================================
+
+[agent]
+# Iterations without coverage growth before declaring a stall.
+# Source: apex-agent/src/orchestrator.rs STALL_THRESHOLD
+stall_threshold = 10
+
+# Maximum AI agent refinement rounds per exploration cycle.
+max_rounds = 3
+
+# Maximum refinement rounds in the synthesis pipeline.
+max_refinement_rounds = 3
+
+# Lines of source context shown around each uncovered branch cluster.
+# Source: apex-agent/src/source.rs WINDOW
+source_context_lines = 15
+
+# Maximum source files included per agent prompt round (keeps prompts focused).
+# Source: apex-agent/src/source.rs MAX_FILES_PER_ROUND
+max_files_per_round = 3
+
+# Hard deadline for the agent exploration loop (seconds).
+# When unset (null), a 30-minute cap is used internally to prevent runaway loops.
+# Set explicitly to override.
+# deadline_secs = 1800
+
+# ---- Coverage monitor (advanced) ----
+# Hardcoded in orchestrator.rs CoverageMonitor::new(10). Listed for documentation.
+#
+# [agent.monitor]
+# # Sliding window size for coverage growth detection.
+# window_size = 10
+
+# ============================================================================
+# [sandbox] -- Process sandbox and execution timeouts
+# ============================================================================
+
+[sandbox]
+# Generic process sandbox timeout (ms). Used for fuzz harness execution.
+process_timeout_ms = 10_000
+
+# Python test runner timeout (ms).
+python_timeout_ms = 30_000
+
+# General command execution timeout (ms). Used by subprocess-based detectors.
+command_timeout_ms = 30_000
+
+# ============================================================================
+# [instrument] -- Code instrumentation
+# ============================================================================
+
+[instrument]
+# Coverage bitmap size (number of edge slots). Must be a power of 2.
+# Shared between apex-instrument, apex-sandbox (MAP_SIZE, MAX_EDGES), and
+# the LD_PRELOAD shim.
+# Source: apex-sandbox/src/shm.rs MAP_SIZE, apex-sandbox/src/sancov_rt.rs MAX_EDGES
+bitmap_size = 65_536
+
+# ---- Language-specific instrumentation timeouts (advanced) ----
+# These are hardcoded per-language constants. Listed for documentation.
+# Wiring them to config requires code changes.
+#
+# [instrument.timeouts]
+# # C/C++ compilation timeout (ms).        Source: apex-instrument/src/c_coverage.rs
+# c_compile_ms = 300_000
+# # C/C++ test binary execution timeout.    Source: apex-instrument/src/c_coverage.rs
+# c_test_run_ms = 120_000
+# # gcov/llvm-cov collection timeout.       Source: apex-instrument/src/c_coverage.rs
+# c_gcov_ms = 60_000
+# # C# instrumentation timeout.             Source: apex-instrument/src/csharp.rs
+# csharp_instrument_ms = 600_000
+# # Swift coverage test timeout.            Source: apex-instrument/src/swift.rs
+# swift_cov_test_ms = 600_000
+# # Swift codecov path resolution timeout.  Source: apex-instrument/src/swift.rs
+# swift_codecov_path_ms = 60_000
+# # JVM build timeout (Java/Kotlin).        Source: apex-instrument/src/java.rs, apex-lang/src/java.rs
+# jvm_build_ms = 600_000
+# # C# dotnet restore timeout.              Source: apex-lang/src/csharp.rs
+# csharp_restore_ms = 300_000
+# # C# dotnet test timeout.                 Source: apex-lang/src/csharp.rs
+# csharp_test_ms = 600_000
+# # Swift resolve timeout.                  Source: apex-lang/src/swift.rs
+# swift_resolve_ms = 300_000
+# # Swift test timeout.                     Source: apex-lang/src/swift.rs
+# swift_test_ms = 600_000
+
+# ============================================================================
+# [logging] -- Output format and verbosity
+# ============================================================================
+
+[logging]
+# Log level filter: "trace", "debug", "info", "warn", "error".
+level = "info"
+
+# Output format: "text" (human-readable) or "json" (structured).
+format = "text"
+
+# ============================================================================
+# [detect] -- Security and quality detectors
+# ============================================================================
+
+[detect]
+# List of enabled detector names. Empty list in apex-core means "all defaults".
+# The full default set (27 detectors) is defined in apex-detect/src/config.rs.
+# Override to enable only specific detectors.
+enabled = [
+    "unsafe",
+    "deps",
+    "panic",
+    "static",
+    "security",
+    "secrets",
+    "path-normalize",
+    "timeout",
+    "session-security",
+    "secret-scan",
+    "license-scan",
+    "flag-hygiene",
+    "discarded-async-result",
+    "mixed-bool-ops",
+    "partial-cmp-unwrap",
+    "substring-security",
+    "vecdeque-partial",
+    "process-exit-in-lib",
+    "unsafe-send-sync",
+    "duplicated-fn",
+    "js-sql-injection",
+    "js-command-injection",
+    "js-ssrf",
+    "js-crypto-failure",
+    "js-timeout",
+    "js-insecure-deser",
+    "js-path-traversal",
+]
+
+# Minimum severity to report: "low", "medium", "high", "critical".
+severity_threshold = "low"
+
+# Per-detector timeout in seconds. Unset means no per-detector timeout.
+# per_detector_timeout_secs = 60
+
+# Detection mode: "Full" (all detectors including subprocess) or "Fast" (pattern-only).
+detect_mode = "Full"
+
+# Optional tag filter. If set, only detectors with this tag run.
+# Values: "security", "quality", "dependency".
+# tag_filter = "security"
+
+# ---- Sanitizer replay ----
+
+[detect.sanitizer]
+# Percentage of top-coverage inputs to replay with sanitizers (1-100).
+replay_top_percent = 1
+
+# Sanitizer flavors to enable during replay.
+sanitizers = ["address", "undefined"]
+
+# ---- Static analysis integration ----
+
+[detect.static]
+# Extra arguments passed to `cargo clippy`.
+clippy_extra_args = []
+
+# Paths to external SARIF report files to ingest.
+sarif_paths = []
+
+# ---- LLM-assisted detection ----
+
+[detect.llm]
+# Whether to enable LLM-assisted vulnerability analysis.
+enabled = false
+
+# Number of findings to batch per LLM request.
+batch_size = 10
+
+# LLM model identifier.
+model = "claude-sonnet-4-6"
+
+# ---- Diff-mode detection ----
+
+[detect.diff]
+# Git ref to diff against (e.g. "main", "HEAD~5"). Empty = full scan.
+base_ref = ""
+
+# ---- Property checks ----
+# Define custom property checks as an array of tables.
+#
+# [[detect.properties]]
+# name = "no-panic"
+# check = "assert_no_panic()"
+# target = "src/lib.rs"
+
+# ---- Secret scan tuning (advanced) ----
+# Hardcoded in apex-detect/src/detectors/secret_scan.rs. Listed for documentation.
+#
+# [detect.secret_scan]
+# # Shannon entropy threshold for flagging high-entropy strings as potential secrets.
+# entropy_threshold = 5.0
+
+# ---- Security pattern detector (advanced) ----
+# Hardcoded in apex-detect/src/detectors/security_pattern.rs. Listed for documentation.
+#
+# [detect.security_pattern]
+# # Lines of context around a finding for sanitization detection.
+# context_window = 3
+
+# ---- Pipeline concurrency (advanced) ----
+# Hardcoded in apex-detect/src/pipeline.rs. Listed for documentation.
+#
+# [detect.pipeline]
+# # Maximum concurrent subprocess-based detectors.
+# max_subprocess_concurrency = 4
+
+# ---- Analyzer skip dirs (advanced) ----
+# Hardcoded in apex-detect/src/analyzer_registry.rs. Listed for documentation.
+# These directories are always skipped during analysis traversal.
+#
+# [detect.skip_dirs]
+# dirs = [
+#     "node_modules", ".git", "target", "__pycache__",
+#     ".venv", "venv", "dist", "build", ".tox", ".mypy_cache",
+# ]
+
+# ============================================================================
+# [threat_model] -- What kind of software is being analyzed
+# ============================================================================
+
+[threat_model]
+# Software type. Determines default trust boundaries.
+# Values: "cli-tool", "web-service", "library", "ci-pipeline".
+# type = "web-service"
+
+# Additional sources to treat as trusted (beyond defaults for the model type).
+trusted_sources = []
+
+# Additional sources to treat as untrusted (overrides defaults).
+untrusted_sources = []
+
+# ============================================================================
+# [analyze] -- Compound analysis pipeline
+# ============================================================================
+
+[analyze]
+# Whether compound analysis is enabled.
+enabled = true
+
+# Analyzer names to skip (e.g. ["iac-scan", "slo-check"]).
+skip = []
+
+# Per-analyzer timeout in seconds. Unset means no timeout.
+# timeout_secs = 120
+
+# ============================================================================
+# [synth] -- Test synthesis
+# ============================================================================
+# These parameters are currently hardcoded per-language synthesizer.
+# Listed for documentation; wiring to config requires code changes.
+#
+# [synth]
+# # Number of test candidates grouped per output file.
+# # Most languages use 20; C/C++ (gtest, c_test) use 10.
+# chunk_size = 20
+#
+# # Maximum uncovered branches shown in SeedMind LLM prompts.
+# max_branches_in_prompt = 20
+#
+# # Number of diverse inputs requested from LLM per SeedMind round.
+# seeds_per_request = 5
+
+# ============================================================================
+# [index] -- Source indexing and analysis
+# ============================================================================
+# These are hardcoded in apex-cli. Listed for documentation.
+#
+# [index]
+# # Maximum source files to collect during directory walk.
+# # Prevents APEX from being overwhelmed by massive repos.
+# # Source: apex-cli/src/lib.rs MAX_SOURCE_FILES
+# max_source_files = 10_000
+#
+# # Maximum individual file size to load into the source cache (bytes).
+# # Files larger than this are skipped.
+# # Source: apex-cli/src/lib.rs MAX_SOURCE_FILE_BYTES
+# max_source_file_bytes = 1_048_576  # 1 MB
+
+# ============================================================================
+# [cpg] -- Code Property Graph analysis
+# ============================================================================
+# These are hardcoded constants. Listed for documentation.
+#
+# [cpg]
+# # Maximum rows returned by a CPG query before truncation.
+# # Source: apex-cpg/src/query/executor.rs MAX_ROWS
+# max_query_rows = 100_000
+#
+# # Feature vector dimension for DeepDFA node embeddings.
+# # Source: apex-cpg/src/deepdfa.rs FEATURE_DIM
+# feature_dim = 8
+
+# ============================================================================
+# [cpg.taint] -- Taint analysis
+# ============================================================================
+# The taint analysis max_depth is passed as a function parameter, not config.
+# The default call site typically uses 64 (matching symbolic.max_depth).
+# Source/sink/sanitizer lists are language-specific constants in apex-cpg/src/taint.rs.
+
+# ============================================================================
+# [reach] -- Reachability analysis
+# ============================================================================
+# Hardcoded in apex-reach/src/engine.rs. Listed for documentation.
+#
+# [reach]
+# # Maximum call-chain depth for reverse path engine.
+# # Source: apex-reach/src/engine.rs ReversePathEngine default
+# max_depth = 20
+
+# ============================================================================
+# [rpc] -- Distributed fuzzing coordinator
+# ============================================================================
+# The RPC server has no configurable parameters beyond the bind address,
+# which is passed as a function argument. No hardcoded defaults to extract.
+
+# ============================================================================
+# [sandbox.sancov] -- SanCov runtime (advanced)
+# ============================================================================
+# These are compile-time constants for the SanCov instrumentation runtime.
+# They must match the bitmap_size above. Listed for documentation.
+#
+# [sandbox.sancov]
+# # Maximum edge slots in SanCov coverage bitmap.
+# # Source: apex-sandbox/src/sancov_rt.rs MAX_EDGES
+# max_edges = 65_536
+#
+# # Maximum CmpLog comparison entries (ring buffer).
+# # Source: apex-sandbox/src/sancov_rt.rs MAX_CMP_ENTRIES
+# max_cmp_entries = 4096

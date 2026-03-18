@@ -101,7 +101,7 @@ impl CoverageConfig {
 impl Default for CoverageConfig {
     fn default() -> Self {
         CoverageConfig {
-            target: 1.0,
+            target: 0.95,
             min_ratchet: 0.8,
             omit_patterns: Self::default_omit_patterns(),
         }
@@ -395,7 +395,7 @@ mod tests {
     #[test]
     fn default_config_has_expected_values() {
         let cfg = ApexConfig::default();
-        assert_eq!(cfg.coverage.target, 1.0);
+        assert!((cfg.coverage.target - 0.95).abs() < f64::EPSILON);
         assert_eq!(cfg.coverage.min_ratchet, 0.8);
         assert_eq!(cfg.fuzz.corpus_max, 10_000);
         assert_eq!(cfg.fuzz.mutations_per_input, 8);

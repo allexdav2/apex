@@ -230,3 +230,33 @@ fn tiny_python_fixture_exists() {
     assert!(p.join("test_main.py").exists(), "test_main.py missing");
     assert!(p.join("pytest.ini").exists(), "pytest.ini missing");
 }
+
+#[test]
+fn tiny_js_fixture_exists() {
+    let p = fixture_path("tiny-js");
+    assert!(p.join("index.js").exists(), "index.js missing");
+    assert!(p.join("index.test.js").exists(), "index.test.js missing");
+    assert!(p.join("package.json").exists(), "package.json missing");
+}
+
+// ---------------------------------------------------------------------------
+// JavaScript integration tests
+// ---------------------------------------------------------------------------
+
+#[tokio::test]
+async fn test_audit_js_succeeds() {
+    let target = fixture_path("tiny-js");
+    let cli = Cli::parse_from([
+        "apex", "audit", "--lang", "js", "--target",
+        target.to_str().unwrap(),
+    ]);
+    let result = run_cli(cli, &default_cfg()).await;
+    assert!(result.is_ok(), "apex audit --lang js failed: {:?}", result);
+}
+
+#[tokio::test]
+async fn test_features_js() {
+    let cli = Cli::parse_from(["apex", "features", "--lang", "js"]);
+    let result = run_cli(cli, &default_cfg()).await;
+    assert!(result.is_ok(), "apex features --lang js failed: {:?}", result);
+}

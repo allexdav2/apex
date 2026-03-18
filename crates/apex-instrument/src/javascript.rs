@@ -17,6 +17,22 @@ use std::{
 use tracing::{info, warn};
 
 // ---------------------------------------------------------------------------
+// Bun availability probe
+// ---------------------------------------------------------------------------
+
+/// Returns `Some("bun")` if the `bun` binary is on PATH, `None` otherwise.
+fn resolve_bun() -> Option<String> {
+    std::process::Command::new("bun")
+        .arg("--version")
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .status()
+        .ok()
+        .filter(|s| s.success())
+        .map(|_| "bun".to_string())
+}
+
+// ---------------------------------------------------------------------------
 // Coverage tool selection
 // ---------------------------------------------------------------------------
 
@@ -45,16 +61,32 @@ struct CoverageToolConfig {
     command: Vec<String>,
     output_path: CoverageOutput,
     format: CoverageFormat,
+    /// When set, the test command must be run with `NODE_V8_COVERAGE=<dir>` in
+    /// the environment.  After the run, V8 JSON files are collected from this
+    /// directory.  Used for Bun (which honours the Node `NODE_V8_COVERAGE` env
+    /// var and writes V8-format JSON files rather than piping a text report).
+    node_v8_coverage_dir: Option<PathBuf>,
 }
 
 fn select_coverage_tool(env: &JsEnvironment, target: &Path) -> CoverageToolConfig {
     match env.runtime {
-        JsRuntime::Bun => CoverageToolConfig {
-            tool: CoverageTool::Bun,
-            command: vec!["bun".into(), "test".into(), "--coverage".into()],
-            output_path: CoverageOutput::Stdout,
-            format: CoverageFormat::V8,
-        },
+        JsRuntime::Bun => {
+            // Bun honours the Node `NODE_V8_COVERAGE` environment variable: when
+            // set to a directory path, `bun test` writes one V8-format JSON file
+            // per script into that directory instead of producing a text summary
+            // on stdout.  We use a sub-directory of the project's coverage dir so
+            // that cleanup is straightforward.
+            let bun_bin = resolve_bun().unwrap_or_else(|| "bun".into());
+            let v8_dir = target.join(".apex_coverage_js").join("bun_v8");
+            CoverageToolConfig {
+                tool: CoverageTool::Bun,
+                // No --coverage flag: the env var triggers file output.
+                command: vec![bun_bin, "test".into()],
+                output_path: CoverageOutput::FilePath(v8_dir.clone()),
+                format: CoverageFormat::V8,
+                node_v8_coverage_dir: Some(v8_dir),
+            }
+        }
         JsRuntime::Node => {
             if env.test_runner == JsTestRunner::Vitest {
                 let has_vitest_v8 = target.join("node_modules/@vitest/coverage-v8").exists();
@@ -74,6 +106,7 @@ fn select_coverage_tool(env: &JsEnvironment, target: &Path) -> CoverageToolConfi
                             report_dir.join("coverage-final.json"),
                         ),
                         format: CoverageFormat::V8,
+                        node_v8_coverage_dir: None,
                     };
                 }
             }
@@ -99,6 +132,7 @@ fn select_coverage_tool(env: &JsEnvironment, target: &Path) -> CoverageToolConfi
                             report_dir.join("coverage-final.json"),
                         ),
                         format: CoverageFormat::V8,
+                        node_v8_coverage_dir: None,
                     }
                 }
                 ModuleSystem::CommonJS => {
@@ -127,6 +161,7 @@ fn select_coverage_tool(env: &JsEnvironment, target: &Path) -> CoverageToolConfi
                                 report_dir.join("coverage-final.json"),
                             ),
                             format: CoverageFormat::Istanbul,
+                            node_v8_coverage_dir: None,
                         }
                     } else {
                         let report_dir = target.join(".apex_coverage_js");
@@ -149,6 +184,7 @@ fn select_coverage_tool(env: &JsEnvironment, target: &Path) -> CoverageToolConfi
                                 report_dir.join("coverage-final.json"),
                             ),
                             format: CoverageFormat::V8,
+                            node_v8_coverage_dir: None,
                         }
                     }
                 }
@@ -159,6 +195,7 @@ fn select_coverage_tool(env: &JsEnvironment, target: &Path) -> CoverageToolConfi
             command: vec!["deno".into(), "test".into(), "--coverage".into()],
             output_path: CoverageOutput::Stdout,
             format: CoverageFormat::V8,
+            node_v8_coverage_dir: None,
         },
     }
 }
@@ -384,6 +421,12 @@ impl Instrumentor for JavaScriptInstrumentor {
         std::fs::create_dir_all(&report_dir)
             .map_err(|e| ApexError::Instrumentation(format!("create report dir: {e}")))?;
 
+        // Create the NODE_V8_COVERAGE output directory if needed.
+        if let Some(v8_dir) = &config.node_v8_coverage_dir {
+            std::fs::create_dir_all(v8_dir)
+                .map_err(|e| ApexError::Instrumentation(format!("create bun v8 coverage dir: {e}")))?;
+        }
+
         info!(
             target = %target.root.display(),
             cmd = ?effective_cmd,
@@ -394,7 +437,14 @@ impl Instrumentor for JavaScriptInstrumentor {
             .split_first()
             .ok_or_else(|| ApexError::Instrumentation("empty command".into()))?;
 
-        let spec = CommandSpec::new(program, &target.root).args(args.to_vec());
+        let mut spec = CommandSpec::new(program, &target.root).args(args.to_vec());
+
+        // Set NODE_V8_COVERAGE when running Bun so that V8 coverage JSON files
+        // are written to the directory rather than a text summary going to stdout.
+        if let Some(v8_dir) = &config.node_v8_coverage_dir {
+            spec = spec.env("NODE_V8_COVERAGE", v8_dir.to_string_lossy().as_ref());
+        }
+
         let output = self
             .runner
             .run_command(&spec)
@@ -434,28 +484,99 @@ impl Instrumentor for JavaScriptInstrumentor {
                 )
             }
             CoverageFormat::V8 => {
-                let json_path = match &config.output_path {
-                    CoverageOutput::FilePath(p) => p.clone(),
+                match &config.output_path {
+                    CoverageOutput::FilePath(p) if config.node_v8_coverage_dir.is_some() => {
+                        // Bun path: NODE_V8_COVERAGE dir contains multiple V8 JSON files,
+                        // one per script.  Collect and merge them all.
+                        let v8_dir = p;
+                        if !v8_dir.exists() {
+                            return Err(ApexError::Instrumentation(format!(
+                                "Bun V8 coverage directory not found at {}; \
+                                 ensure bun test ran successfully",
+                                v8_dir.display()
+                            )));
+                        }
+
+                        // Gather all .json files written by bun into the coverage dir.
+                        let json_files: Vec<PathBuf> = std::fs::read_dir(v8_dir)
+                            .map_err(|e| ApexError::Instrumentation(format!(
+                                "read bun v8 coverage dir: {e}"
+                            )))?
+                            .filter_map(|entry| entry.ok())
+                            .map(|e| e.path())
+                            .filter(|p| p.extension().and_then(|s| s.to_str()) == Some("json"))
+                            .collect();
+
+                        if json_files.is_empty() {
+                            return Err(ApexError::Instrumentation(
+                                "no V8 coverage JSON files produced by bun test; \
+                                 check that NODE_V8_COVERAGE was honoured"
+                                    .into(),
+                            ));
+                        }
+
+                        info!(
+                            files = json_files.len(),
+                            dir = %v8_dir.display(),
+                            "collecting Bun NODE_V8_COVERAGE files"
+                        );
+
+                        // Merge results across all per-script JSON files.
+                        let mut all_branches: Vec<BranchId> = Vec::new();
+                        let mut all_executed: Vec<BranchId> = Vec::new();
+                        let mut all_file_paths: HashMap<u64, PathBuf> = HashMap::new();
+
+                        for json_file in &json_files {
+                            let json_str = std::fs::read_to_string(json_file).map_err(|e| {
+                                ApexError::Instrumentation(format!(
+                                    "read bun V8 coverage json {}: {e}",
+                                    json_file.display()
+                                ))
+                            })?;
+                            match v8_coverage::parse_v8_coverage(
+                                &json_str,
+                                &target.root,
+                                &|path| std::fs::read_to_string(path).ok(),
+                            ) {
+                                Ok((branches, executed, file_paths)) => {
+                                    all_branches.extend(branches);
+                                    all_executed.extend(executed);
+                                    all_file_paths.extend(file_paths);
+                                }
+                                Err(e) => {
+                                    warn!(
+                                        file = %json_file.display(),
+                                        err = %e,
+                                        "skipping unparseable bun V8 coverage file"
+                                    );
+                                }
+                            }
+                        }
+
+                        (all_branches, all_executed, all_file_paths)
+                    }
+                    CoverageOutput::FilePath(p) => {
+                        let json_path = p.clone();
+                        if !json_path.exists() {
+                            return Err(ApexError::Instrumentation(format!(
+                                "coverage JSON not produced at {}; is the coverage tool installed?",
+                                json_path.display()
+                            )));
+                        }
+                        let json_str = std::fs::read_to_string(&json_path).map_err(|e| {
+                            ApexError::Instrumentation(format!("read V8 coverage json: {e}"))
+                        })?;
+                        v8_coverage::parse_v8_coverage(&json_str, &target.root, &|path| {
+                            std::fs::read_to_string(path).ok()
+                        })
+                        .map_err(ApexError::Instrumentation)?
+                    }
                     CoverageOutput::Stdout => {
-                        // TODO: Parse V8 coverage from stdout
                         return Err(ApexError::Instrumentation(
-                            "V8 coverage from stdout not yet implemented".into(),
+                            "V8 coverage from stdout is not supported".into(),
                         ));
                     }
-                };
-                if !json_path.exists() {
-                    return Err(ApexError::Instrumentation(format!(
-                        "coverage JSON not produced at {}; is the coverage tool installed?",
-                        json_path.display()
-                    )));
                 }
-                let json_str = std::fs::read_to_string(&json_path).map_err(|e| {
-                    ApexError::Instrumentation(format!("read V8 coverage json: {e}"))
-                })?;
-                v8_coverage::parse_v8_coverage(&json_str, &target.root, &|path| {
-                    std::fs::read_to_string(path).ok()
-                })
-                .map_err(ApexError::Instrumentation)?
             }
         };
 
@@ -1347,7 +1468,7 @@ mod tests {
     }
 
     #[test]
-    fn test_select_bun_output_is_stdout() {
+    fn test_select_bun_uses_node_v8_coverage_dir() {
         let tmp = tempfile::tempdir().unwrap();
         let env = JsEnvironment {
             runtime: JsRuntime::Bun,
@@ -1359,10 +1480,19 @@ mod tests {
             monorepo: None,
         };
         let config = select_coverage_tool(&env, tmp.path());
-        assert!(matches!(config.output_path, CoverageOutput::Stdout));
+
+        // Output is now a FilePath (the NODE_V8_COVERAGE directory), not Stdout.
+        assert!(matches!(config.output_path, CoverageOutput::FilePath(_)));
+
+        // The node_v8_coverage_dir must be set so that the env var is applied.
+        assert!(config.node_v8_coverage_dir.is_some());
+        let v8_dir = config.node_v8_coverage_dir.unwrap();
+        assert!(v8_dir.to_string_lossy().contains("bun_v8"));
+
+        // Command uses "bun test" without --coverage (env var does the work).
         assert!(config.command.contains(&"bun".to_string()));
         assert!(config.command.contains(&"test".to_string()));
-        assert!(config.command.contains(&"--coverage".to_string()));
+        assert!(!config.command.contains(&"--coverage".to_string()));
     }
 
     #[test]
@@ -2252,5 +2382,143 @@ mod tests {
         assert_eq!(inst.branch_ids.len(), 2);
         // None are hit because b["0"] doesn't exist
         assert_eq!(inst.executed_branch_ids.len(), 0);
+    }
+
+    // -----------------------------------------------------------------------
+    // resolve_bun helper
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn resolve_bun_returns_string_or_none() {
+        // The return value depends on the test environment (bun may or may not
+        // be installed).  We only assert that the function returns without
+        // panicking and, if present, yields the literal string "bun".
+        let result = resolve_bun();
+        if let Some(s) = result {
+            assert_eq!(s, "bun");
+        }
+    }
+
+    // -----------------------------------------------------------------------
+    // Bun instrument() path via NODE_V8_COVERAGE
+    // -----------------------------------------------------------------------
+
+    fn setup_bun_project(root: &Path) {
+        std::fs::write(
+            root.join("package.json"),
+            r#"{"name": "bun-proj", "devDependencies": {}}"#,
+        )
+        .unwrap();
+        // bun.lockb signals bun runtime
+        std::fs::write(root.join("bun.lockb"), b"").unwrap();
+    }
+
+    #[tokio::test]
+    async fn test_instrument_bun_sets_node_v8_coverage_env() {
+        // When instrumenting a Bun project, the instrument() call must set
+        // NODE_V8_COVERAGE in the environment and then collect the JSON files
+        // it writes.
+        let tmp = tempfile::tempdir().unwrap();
+        let repo_root = tmp.path();
+
+        setup_bun_project(repo_root);
+
+        // Pre-create the bun V8 coverage directory and put a JSON file in it.
+        let v8_dir = repo_root.join(".apex_coverage_js").join("bun_v8");
+        std::fs::create_dir_all(&v8_dir).unwrap();
+
+        let src_dir = repo_root.join("src");
+        std::fs::create_dir_all(&src_dir).unwrap();
+        std::fs::write(src_dir.join("index.js"), "function foo() {\n  return 1;\n}\n").unwrap();
+
+        // Write a V8-format JSON file into the bun_v8 directory.
+        let v8_json = sample_v8_coverage_json(repo_root.to_str().unwrap());
+        std::fs::write(v8_dir.join("coverage-0.json"), &v8_json).unwrap();
+
+        let runner = Arc::new(FakeRunner::success());
+        let inst = JavaScriptInstrumentor::with_runner(runner);
+
+        let target = Target {
+            root: repo_root.to_path_buf(),
+            language: apex_core::types::Language::JavaScript,
+            test_command: Vec::new(),
+        };
+
+        let result = inst.instrument(&target).await.unwrap();
+        assert_eq!(result.work_dir, repo_root.to_path_buf());
+        // V8 parser should have seen at least one file
+        assert!(!result.file_paths.is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_instrument_bun_empty_v8_dir_is_err() {
+        // If the bun_v8 directory is empty (no JSON files), instrument() should
+        // return an error rather than silently producing no coverage data.
+        let tmp = tempfile::tempdir().unwrap();
+        let repo_root = tmp.path();
+
+        setup_bun_project(repo_root);
+
+        // Create the directory but leave it empty.
+        let v8_dir = repo_root.join(".apex_coverage_js").join("bun_v8");
+        std::fs::create_dir_all(&v8_dir).unwrap();
+
+        let runner = Arc::new(FakeRunner::success());
+        let inst = JavaScriptInstrumentor::with_runner(runner);
+
+        let target = Target {
+            root: repo_root.to_path_buf(),
+            language: apex_core::types::Language::JavaScript,
+            test_command: Vec::new(),
+        };
+
+        let result = inst.instrument(&target).await;
+        assert!(result.is_err());
+        let msg = format!("{}", result.unwrap_err());
+        assert!(
+            msg.contains("no V8 coverage JSON files"),
+            "unexpected: {msg}"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_instrument_bun_multiple_v8_json_files_merged() {
+        // Multiple per-script JSON files are all merged into one result.
+        let tmp = tempfile::tempdir().unwrap();
+        let repo_root = tmp.path();
+
+        setup_bun_project(repo_root);
+
+        let v8_dir = repo_root.join(".apex_coverage_js").join("bun_v8");
+        std::fs::create_dir_all(&v8_dir).unwrap();
+
+        let src_dir = repo_root.join("src");
+        std::fs::create_dir_all(&src_dir).unwrap();
+        std::fs::write(src_dir.join("index.js"), "function f() {}\n").unwrap();
+
+        // Two separate V8 JSON files (bun writes one per script).
+        let json1 = format!(
+            r#"{{"result":[{{"url":"file://{root}/src/a.js","functions":[{{"ranges":[{{"startOffset":0,"endOffset":10,"count":1}}]}}]}}]}}"#,
+            root = repo_root.to_str().unwrap()
+        );
+        let json2 = format!(
+            r#"{{"result":[{{"url":"file://{root}/src/b.js","functions":[{{"ranges":[{{"startOffset":0,"endOffset":10,"count":0}}]}}]}}]}}"#,
+            root = repo_root.to_str().unwrap()
+        );
+        std::fs::write(v8_dir.join("cov-a.json"), &json1).unwrap();
+        std::fs::write(v8_dir.join("cov-b.json"), &json2).unwrap();
+
+        let runner = Arc::new(FakeRunner::success());
+        let inst = JavaScriptInstrumentor::with_runner(runner);
+
+        let target = Target {
+            root: repo_root.to_path_buf(),
+            language: apex_core::types::Language::JavaScript,
+            test_command: Vec::new(),
+        };
+
+        let result = inst.instrument(&target).await.unwrap();
+        // Should have file paths from both JSON files
+        assert_eq!(result.file_paths.len(), 2);
     }
 }

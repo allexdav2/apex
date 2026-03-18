@@ -97,6 +97,214 @@ pub struct DeployScoreParams {
 }
 
 // ---------------------------------------------------------------------------
+// P1 parameter structs
+// ---------------------------------------------------------------------------
+
+/// Parameters for `apex diff`.
+#[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
+pub struct DiffParams {
+    /// Path to the target repository.
+    #[schemars(description = "Absolute or relative path to the target repository")]
+    pub target: String,
+
+    /// Programming language.
+    #[schemars(description = "Programming language: python, js, java, c, rust, wasm, ruby")]
+    pub lang: String,
+
+    /// Git ref to compare against (branch name, tag, or commit hash).
+    #[schemars(description = "Git ref to compare against (branch, tag, or commit hash)")]
+    pub base: String,
+}
+
+/// Parameters for `apex regression-check`.
+#[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
+pub struct RegressionCheckParams {
+    /// Path to the target repository.
+    #[schemars(description = "Absolute or relative path to the target repository")]
+    pub target: String,
+
+    /// Programming language.
+    #[schemars(description = "Programming language: python, js, java, c, rust, wasm, ruby")]
+    pub lang: String,
+}
+
+/// Parameters for `apex lint`.
+#[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
+pub struct LintParams {
+    /// Path to the target repository.
+    #[schemars(description = "Absolute or relative path to the target repository")]
+    pub target: String,
+
+    /// Programming language.
+    #[schemars(description = "Programming language: python, js, java, c, rust, wasm, ruby")]
+    pub lang: String,
+}
+
+/// Parameters for `apex flaky-detect`.
+#[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
+pub struct FlakyDetectParams {
+    /// Path to the target repository.
+    #[schemars(description = "Absolute or relative path to the target repository")]
+    pub target: String,
+
+    /// Programming language.
+    #[schemars(description = "Programming language: python, js, java, c, rust, wasm, ruby")]
+    pub lang: String,
+}
+
+/// Parameters for `apex contracts`.
+#[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
+pub struct ContractsParams {
+    /// Path to the target repository.
+    #[schemars(description = "Absolute or relative path to the target repository")]
+    pub target: String,
+}
+
+/// Parameters for `apex attack-surface`.
+#[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
+pub struct AttackSurfaceParams {
+    /// Path to the target repository.
+    #[schemars(description = "Absolute or relative path to the target repository")]
+    pub target: String,
+
+    /// Programming language.
+    #[schemars(description = "Programming language: python, js, java, c, rust, wasm, ruby")]
+    pub lang: String,
+}
+
+/// Parameters for `apex verify-boundaries`.
+#[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
+pub struct VerifyBoundariesParams {
+    /// Path to the target repository.
+    #[schemars(description = "Absolute or relative path to the target repository")]
+    pub target: String,
+
+    /// Programming language.
+    #[schemars(description = "Programming language: python, js, java, c, rust, wasm, ruby")]
+    pub lang: String,
+}
+
+/// Parameters for `apex features`.
+#[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
+pub struct FeaturesParams {
+    /// Programming language.
+    #[schemars(description = "Programming language: python, js, java, c, rust, wasm, ruby")]
+    pub lang: String,
+}
+
+// ---------------------------------------------------------------------------
+// P2 parameter structs
+// ---------------------------------------------------------------------------
+
+/// Parameters for `apex index`.
+#[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
+pub struct IndexParams {
+    /// Path to the target repository.
+    #[schemars(description = "Absolute or relative path to the target repository")]
+    pub target: String,
+
+    /// Programming language.
+    #[schemars(description = "Programming language: python, js, java, c, rust, wasm, ruby")]
+    pub lang: String,
+}
+
+/// Parameters for `apex docs`.
+#[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
+pub struct DocsParams {
+    /// Path to the target repository.
+    #[schemars(description = "Absolute or relative path to the target repository")]
+    pub target: String,
+}
+
+/// Parameters for `apex license-scan`.
+#[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
+pub struct LicenseScanParams {
+    /// Path to the target repository.
+    #[schemars(description = "Absolute or relative path to the target repository")]
+    pub target: String,
+
+    /// Programming language.
+    #[schemars(description = "Programming language: python, js, java, c, rust, wasm, ruby")]
+    pub lang: String,
+}
+
+/// Parameters for `apex flag-hygiene`.
+#[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
+pub struct FlagHygieneParams {
+    /// Path to the target repository.
+    #[schemars(description = "Absolute or relative path to the target repository")]
+    pub target: String,
+
+    /// Programming language.
+    #[schemars(description = "Programming language: python, js, java, c, rust, wasm, ruby")]
+    pub lang: String,
+}
+
+/// Parameters for `apex api-diff`.
+#[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
+pub struct ApiDiffParams {
+    /// Path to the old OpenAPI spec file.
+    #[schemars(description = "Absolute or relative path to the old OpenAPI spec")]
+    pub old_spec: String,
+
+    /// Path to the new OpenAPI spec file.
+    #[schemars(description = "Absolute or relative path to the new OpenAPI spec")]
+    pub new_spec: String,
+}
+
+/// Parameters for `apex compliance-export`.
+#[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
+pub struct ComplianceExportParams {
+    /// Path to the target repository.
+    #[schemars(description = "Absolute or relative path to the target repository")]
+    pub target: String,
+
+    /// Programming language.
+    #[schemars(description = "Programming language: python, js, java, c, rust, wasm, ruby")]
+    pub lang: String,
+}
+
+/// Parameters for `apex api-coverage`.
+#[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
+pub struct ApiCoverageParams {
+    /// Path to the target repository.
+    #[schemars(description = "Absolute or relative path to the target repository")]
+    pub target: String,
+
+    /// Programming language.
+    #[schemars(description = "Programming language: python, js, java, c, rust, wasm, ruby")]
+    pub lang: String,
+}
+
+/// Parameters for `apex service-map`.
+#[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
+pub struct ServiceMapParams {
+    /// Path to the target repository.
+    #[schemars(description = "Absolute or relative path to the target repository")]
+    pub target: String,
+
+    /// Programming language.
+    #[schemars(description = "Programming language: python, js, java, c, rust, wasm, ruby")]
+    pub lang: String,
+}
+
+/// Parameters for `apex schema-check`.
+#[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
+pub struct SchemaCheckParams {
+    /// Path to the SQL migration file to check.
+    #[schemars(description = "Absolute or relative path to the SQL migration file")]
+    pub target: String,
+}
+
+/// Parameters for `apex test-data`.
+#[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
+pub struct TestDataParams {
+    /// Path to the target repository or schema file.
+    #[schemars(description = "Absolute or relative path to the target repository or schema file")]
+    pub target: String,
+}
+
+// ---------------------------------------------------------------------------
 // Path validation
 // ---------------------------------------------------------------------------
 
@@ -308,6 +516,381 @@ impl ApexMcpService {
         .await?;
         Ok(CallToolResult::success(vec![Content::text(output)]))
     }
+
+    // -----------------------------------------------------------------------
+    // P1 tools
+    // -----------------------------------------------------------------------
+
+    /// Compare coverage between current state and a git ref.
+    #[tool(
+        description = "Compare coverage between current state and a git ref. Returns added/removed/changed branches."
+    )]
+    async fn apex_diff(
+        &self,
+        Parameters(params): Parameters<DiffParams>,
+    ) -> Result<CallToolResult, McpError> {
+        let target = validate_target_path(&params.target)?;
+        let output = run_apex_command(&[
+            "diff",
+            "--target",
+            &target,
+            "--lang",
+            &params.lang,
+            "--base",
+            &params.base,
+            "--output-format",
+            "json",
+        ])
+        .await?;
+        Ok(CallToolResult::success(vec![Content::text(output)]))
+    }
+
+    /// Check for coverage regressions against the stored baseline.
+    #[tool(
+        description = "Check for coverage regressions against the stored baseline."
+    )]
+    async fn apex_regression_check(
+        &self,
+        Parameters(params): Parameters<RegressionCheckParams>,
+    ) -> Result<CallToolResult, McpError> {
+        let target = validate_target_path(&params.target)?;
+        let output = run_apex_command(&[
+            "regression-check",
+            "--target",
+            &target,
+            "--lang",
+            &params.lang,
+            "--output-format",
+            "json",
+        ])
+        .await?;
+        Ok(CallToolResult::success(vec![Content::text(output)]))
+    }
+
+    /// Run code quality lints including complexity, naming, and style checks.
+    #[tool(
+        description = "Run code quality lints including complexity, naming, and style checks."
+    )]
+    async fn apex_lint(
+        &self,
+        Parameters(params): Parameters<LintParams>,
+    ) -> Result<CallToolResult, McpError> {
+        let target = validate_target_path(&params.target)?;
+        let output = run_apex_command(&[
+            "lint",
+            "--target",
+            &target,
+            "--lang",
+            &params.lang,
+            "--output-format",
+            "json",
+        ])
+        .await?;
+        Ok(CallToolResult::success(vec![Content::text(output)]))
+    }
+
+    /// Detect flaky tests by analyzing test execution history and timing variance.
+    #[tool(
+        description = "Detect flaky tests by analyzing test execution history and timing variance."
+    )]
+    async fn apex_flaky_detect(
+        &self,
+        Parameters(params): Parameters<FlakyDetectParams>,
+    ) -> Result<CallToolResult, McpError> {
+        let target = validate_target_path(&params.target)?;
+        let output = run_apex_command(&[
+            "flaky-detect",
+            "--target",
+            &target,
+            "--lang",
+            &params.lang,
+            "--output-format",
+            "json",
+        ])
+        .await?;
+        Ok(CallToolResult::success(vec![Content::text(output)]))
+    }
+
+    /// Extract function contracts (pre/post conditions, invariants) from source.
+    #[tool(
+        description = "Extract function contracts (pre/post conditions, invariants) from source."
+    )]
+    async fn apex_contracts(
+        &self,
+        Parameters(params): Parameters<ContractsParams>,
+    ) -> Result<CallToolResult, McpError> {
+        let target = validate_target_path(&params.target)?;
+        let output = run_apex_command(&[
+            "contracts",
+            "--target",
+            &target,
+            "--output-format",
+            "json",
+        ])
+        .await?;
+        Ok(CallToolResult::success(vec![Content::text(output)]))
+    }
+
+    /// Map the attack surface — entry points, untrusted inputs, and reachable code paths.
+    #[tool(
+        description = "Map the attack surface — entry points, untrusted inputs, and reachable code paths."
+    )]
+    async fn apex_attack_surface(
+        &self,
+        Parameters(params): Parameters<AttackSurfaceParams>,
+    ) -> Result<CallToolResult, McpError> {
+        let target = validate_target_path(&params.target)?;
+        let output = run_apex_command(&[
+            "attack-surface",
+            "--target",
+            &target,
+            "--lang",
+            &params.lang,
+            "--output-format",
+            "json",
+        ])
+        .await?;
+        Ok(CallToolResult::success(vec![Content::text(output)]))
+    }
+
+    /// Verify trust boundaries — check that auth/validation exists on entry paths.
+    #[tool(
+        description = "Verify trust boundaries — check that auth/validation exists on entry paths."
+    )]
+    async fn apex_verify_boundaries(
+        &self,
+        Parameters(params): Parameters<VerifyBoundariesParams>,
+    ) -> Result<CallToolResult, McpError> {
+        let target = validate_target_path(&params.target)?;
+        let output = run_apex_command(&[
+            "verify-boundaries",
+            "--target",
+            &target,
+            "--lang",
+            &params.lang,
+            "--output-format",
+            "json",
+        ])
+        .await?;
+        Ok(CallToolResult::success(vec![Content::text(output)]))
+    }
+
+    /// Show the per-language feature matrix — what instrumentation and analysis is available.
+    #[tool(
+        description = "Show the per-language feature matrix — what instrumentation and analysis is available."
+    )]
+    async fn apex_features(
+        &self,
+        Parameters(params): Parameters<FeaturesParams>,
+    ) -> Result<CallToolResult, McpError> {
+        let output = run_apex_command(&["features", "--lang", &params.lang]).await?;
+        Ok(CallToolResult::success(vec![Content::text(output)]))
+    }
+
+    // -----------------------------------------------------------------------
+    // P2 tools
+    // -----------------------------------------------------------------------
+
+    /// Build the branch coverage index for a target project.
+    #[tool(description = "Build the branch coverage index for a target project.")]
+    async fn apex_index(
+        &self,
+        Parameters(params): Parameters<IndexParams>,
+    ) -> Result<CallToolResult, McpError> {
+        let target = validate_target_path(&params.target)?;
+        let output = run_apex_command(&[
+            "index",
+            "--target",
+            &target,
+            "--lang",
+            &params.lang,
+        ])
+        .await?;
+        Ok(CallToolResult::success(vec![Content::text(output)]))
+    }
+
+    /// Generate documentation coverage report.
+    #[tool(description = "Generate documentation coverage report.")]
+    async fn apex_docs(
+        &self,
+        Parameters(params): Parameters<DocsParams>,
+    ) -> Result<CallToolResult, McpError> {
+        let target = validate_target_path(&params.target)?;
+        let output = run_apex_command(&[
+            "docs",
+            "--target",
+            &target,
+            "--output-format",
+            "json",
+        ])
+        .await?;
+        Ok(CallToolResult::success(vec![Content::text(output)]))
+    }
+
+    /// Scan dependencies for license compliance issues.
+    #[tool(description = "Scan dependencies for license compliance issues.")]
+    async fn apex_license_scan(
+        &self,
+        Parameters(params): Parameters<LicenseScanParams>,
+    ) -> Result<CallToolResult, McpError> {
+        let target = validate_target_path(&params.target)?;
+        let output = run_apex_command(&[
+            "license-scan",
+            "--target",
+            &target,
+            "--lang",
+            &params.lang,
+            "--output-format",
+            "json",
+        ])
+        .await?;
+        Ok(CallToolResult::success(vec![Content::text(output)]))
+    }
+
+    /// Detect stale or unused feature flags in source code.
+    #[tool(description = "Detect stale or unused feature flags in source code.")]
+    async fn apex_flag_hygiene(
+        &self,
+        Parameters(params): Parameters<FlagHygieneParams>,
+    ) -> Result<CallToolResult, McpError> {
+        let target = validate_target_path(&params.target)?;
+        let output = run_apex_command(&[
+            "flag-hygiene",
+            "--target",
+            &target,
+            "--lang",
+            &params.lang,
+            "--output-format",
+            "json",
+        ])
+        .await?;
+        Ok(CallToolResult::success(vec![Content::text(output)]))
+    }
+
+    /// Compare two OpenAPI specs for breaking changes.
+    #[tool(description = "Compare two OpenAPI specs for breaking changes.")]
+    async fn apex_api_diff(
+        &self,
+        Parameters(params): Parameters<ApiDiffParams>,
+    ) -> Result<CallToolResult, McpError> {
+        let old_spec = validate_target_path(&params.old_spec)?;
+        let new_spec = validate_target_path(&params.new_spec)?;
+        let output = run_apex_command(&[
+            "api-diff",
+            "--old",
+            &old_spec,
+            "--new",
+            &new_spec,
+            "--output-format",
+            "json",
+        ])
+        .await?;
+        Ok(CallToolResult::success(vec![Content::text(output)]))
+    }
+
+    /// Export compliance report (ASVS, STRIDE, SSDF) for audit purposes.
+    #[tool(
+        description = "Export compliance report (ASVS, STRIDE, SSDF) for audit purposes."
+    )]
+    async fn apex_compliance_export(
+        &self,
+        Parameters(params): Parameters<ComplianceExportParams>,
+    ) -> Result<CallToolResult, McpError> {
+        let target = validate_target_path(&params.target)?;
+        let output = run_apex_command(&[
+            "compliance-export",
+            "--target",
+            &target,
+            "--lang",
+            &params.lang,
+            "--output-format",
+            "json",
+        ])
+        .await?;
+        Ok(CallToolResult::success(vec![Content::text(output)]))
+    }
+
+    /// Measure API endpoint test coverage against an OpenAPI spec.
+    #[tool(
+        description = "Measure API endpoint test coverage against an OpenAPI spec."
+    )]
+    async fn apex_api_coverage(
+        &self,
+        Parameters(params): Parameters<ApiCoverageParams>,
+    ) -> Result<CallToolResult, McpError> {
+        let target = validate_target_path(&params.target)?;
+        let output = run_apex_command(&[
+            "api-coverage",
+            "--target",
+            &target,
+            "--lang",
+            &params.lang,
+            "--output-format",
+            "json",
+        ])
+        .await?;
+        Ok(CallToolResult::success(vec![Content::text(output)]))
+    }
+
+    /// Map service dependencies — HTTP clients, database connections, message queues.
+    #[tool(
+        description = "Map service dependencies — HTTP clients, database connections, message queues."
+    )]
+    async fn apex_service_map(
+        &self,
+        Parameters(params): Parameters<ServiceMapParams>,
+    ) -> Result<CallToolResult, McpError> {
+        let target = validate_target_path(&params.target)?;
+        let output = run_apex_command(&[
+            "service-map",
+            "--target",
+            &target,
+            "--lang",
+            &params.lang,
+            "--output-format",
+            "json",
+        ])
+        .await?;
+        Ok(CallToolResult::success(vec![Content::text(output)]))
+    }
+
+    /// Check SQL migrations for dangerous operations (DROP, TRUNCATE, data loss risk).
+    #[tool(
+        description = "Check SQL migrations for dangerous operations (DROP, TRUNCATE, data loss risk)."
+    )]
+    async fn apex_schema_check(
+        &self,
+        Parameters(params): Parameters<SchemaCheckParams>,
+    ) -> Result<CallToolResult, McpError> {
+        let target = validate_target_path(&params.target)?;
+        let output = run_apex_command(&[
+            "schema-check",
+            "--target",
+            &target,
+            "--output-format",
+            "json",
+        ])
+        .await?;
+        Ok(CallToolResult::success(vec![Content::text(output)]))
+    }
+
+    /// Generate test data based on schema analysis.
+    #[tool(description = "Generate test data based on schema analysis.")]
+    async fn apex_test_data(
+        &self,
+        Parameters(params): Parameters<TestDataParams>,
+    ) -> Result<CallToolResult, McpError> {
+        let target = validate_target_path(&params.target)?;
+        let output = run_apex_command(&[
+            "test-data",
+            "--target",
+            &target,
+            "--output-format",
+            "json",
+        ])
+        .await?;
+        Ok(CallToolResult::success(vec![Content::text(output)]))
+    }
 }
 
 #[tool_handler]
@@ -395,6 +978,150 @@ mod tests {
         assert!(json.contains("lang"));
     }
 
+    // --- P1 schema tests ---
+
+    #[test]
+    fn diff_params_generates_valid_schema() {
+        let schema = rmcp::schemars::schema_for!(DiffParams);
+        let json = serde_json::to_string_pretty(&schema).unwrap();
+        assert!(json.contains("target"));
+        assert!(json.contains("lang"));
+        assert!(json.contains("base"));
+    }
+
+    #[test]
+    fn regression_check_params_generates_valid_schema() {
+        let schema = rmcp::schemars::schema_for!(RegressionCheckParams);
+        let json = serde_json::to_string_pretty(&schema).unwrap();
+        assert!(json.contains("target"));
+        assert!(json.contains("lang"));
+    }
+
+    #[test]
+    fn lint_params_generates_valid_schema() {
+        let schema = rmcp::schemars::schema_for!(LintParams);
+        let json = serde_json::to_string_pretty(&schema).unwrap();
+        assert!(json.contains("target"));
+        assert!(json.contains("lang"));
+    }
+
+    #[test]
+    fn flaky_detect_params_generates_valid_schema() {
+        let schema = rmcp::schemars::schema_for!(FlakyDetectParams);
+        let json = serde_json::to_string_pretty(&schema).unwrap();
+        assert!(json.contains("target"));
+        assert!(json.contains("lang"));
+    }
+
+    #[test]
+    fn contracts_params_generates_valid_schema() {
+        let schema = rmcp::schemars::schema_for!(ContractsParams);
+        let json = serde_json::to_string_pretty(&schema).unwrap();
+        assert!(json.contains("target"));
+    }
+
+    #[test]
+    fn attack_surface_params_generates_valid_schema() {
+        let schema = rmcp::schemars::schema_for!(AttackSurfaceParams);
+        let json = serde_json::to_string_pretty(&schema).unwrap();
+        assert!(json.contains("target"));
+        assert!(json.contains("lang"));
+    }
+
+    #[test]
+    fn verify_boundaries_params_generates_valid_schema() {
+        let schema = rmcp::schemars::schema_for!(VerifyBoundariesParams);
+        let json = serde_json::to_string_pretty(&schema).unwrap();
+        assert!(json.contains("target"));
+        assert!(json.contains("lang"));
+    }
+
+    #[test]
+    fn features_params_generates_valid_schema() {
+        let schema = rmcp::schemars::schema_for!(FeaturesParams);
+        let json = serde_json::to_string_pretty(&schema).unwrap();
+        assert!(json.contains("lang"));
+    }
+
+    // --- P2 schema tests ---
+
+    #[test]
+    fn index_params_generates_valid_schema() {
+        let schema = rmcp::schemars::schema_for!(IndexParams);
+        let json = serde_json::to_string_pretty(&schema).unwrap();
+        assert!(json.contains("target"));
+        assert!(json.contains("lang"));
+    }
+
+    #[test]
+    fn docs_params_generates_valid_schema() {
+        let schema = rmcp::schemars::schema_for!(DocsParams);
+        let json = serde_json::to_string_pretty(&schema).unwrap();
+        assert!(json.contains("target"));
+    }
+
+    #[test]
+    fn license_scan_params_generates_valid_schema() {
+        let schema = rmcp::schemars::schema_for!(LicenseScanParams);
+        let json = serde_json::to_string_pretty(&schema).unwrap();
+        assert!(json.contains("target"));
+        assert!(json.contains("lang"));
+    }
+
+    #[test]
+    fn flag_hygiene_params_generates_valid_schema() {
+        let schema = rmcp::schemars::schema_for!(FlagHygieneParams);
+        let json = serde_json::to_string_pretty(&schema).unwrap();
+        assert!(json.contains("target"));
+        assert!(json.contains("lang"));
+    }
+
+    #[test]
+    fn api_diff_params_generates_valid_schema() {
+        let schema = rmcp::schemars::schema_for!(ApiDiffParams);
+        let json = serde_json::to_string_pretty(&schema).unwrap();
+        assert!(json.contains("old_spec"));
+        assert!(json.contains("new_spec"));
+    }
+
+    #[test]
+    fn compliance_export_params_generates_valid_schema() {
+        let schema = rmcp::schemars::schema_for!(ComplianceExportParams);
+        let json = serde_json::to_string_pretty(&schema).unwrap();
+        assert!(json.contains("target"));
+        assert!(json.contains("lang"));
+    }
+
+    #[test]
+    fn api_coverage_params_generates_valid_schema() {
+        let schema = rmcp::schemars::schema_for!(ApiCoverageParams);
+        let json = serde_json::to_string_pretty(&schema).unwrap();
+        assert!(json.contains("target"));
+        assert!(json.contains("lang"));
+    }
+
+    #[test]
+    fn service_map_params_generates_valid_schema() {
+        let schema = rmcp::schemars::schema_for!(ServiceMapParams);
+        let json = serde_json::to_string_pretty(&schema).unwrap();
+        assert!(json.contains("target"));
+        assert!(json.contains("lang"));
+    }
+
+    #[test]
+    fn schema_check_params_generates_valid_schema() {
+        let schema = rmcp::schemars::schema_for!(SchemaCheckParams);
+        let json = serde_json::to_string_pretty(&schema).unwrap();
+        assert!(json.contains("target"));
+    }
+
+    #[test]
+    fn test_data_params_generates_valid_schema() {
+        let schema = rmcp::schemars::schema_for!(TestDataParams);
+        let json = serde_json::to_string_pretty(&schema).unwrap();
+        assert!(json.contains("target"));
+    }
+
     #[test]
     fn all_schemas_are_valid_json_schema_objects() {
         // Verify each schema has the expected JSON Schema structure
@@ -404,6 +1131,26 @@ mod tests {
             rmcp::schemars::schema_for!(ReachParams),
             rmcp::schemars::schema_for!(RatchetParams),
             rmcp::schemars::schema_for!(DeployScoreParams),
+            // P1
+            rmcp::schemars::schema_for!(DiffParams),
+            rmcp::schemars::schema_for!(RegressionCheckParams),
+            rmcp::schemars::schema_for!(LintParams),
+            rmcp::schemars::schema_for!(FlakyDetectParams),
+            rmcp::schemars::schema_for!(ContractsParams),
+            rmcp::schemars::schema_for!(AttackSurfaceParams),
+            rmcp::schemars::schema_for!(VerifyBoundariesParams),
+            rmcp::schemars::schema_for!(FeaturesParams),
+            // P2
+            rmcp::schemars::schema_for!(IndexParams),
+            rmcp::schemars::schema_for!(DocsParams),
+            rmcp::schemars::schema_for!(LicenseScanParams),
+            rmcp::schemars::schema_for!(FlagHygieneParams),
+            rmcp::schemars::schema_for!(ApiDiffParams),
+            rmcp::schemars::schema_for!(ComplianceExportParams),
+            rmcp::schemars::schema_for!(ApiCoverageParams),
+            rmcp::schemars::schema_for!(ServiceMapParams),
+            rmcp::schemars::schema_for!(SchemaCheckParams),
+            rmcp::schemars::schema_for!(TestDataParams),
         ] {
             let json = serde_json::to_value(&schema).unwrap();
             assert!(json.get("type").is_some() || json.get("$schema").is_some());
@@ -421,6 +1168,25 @@ mod tests {
         assert!(required_names.contains(&"lang"));
         // strategy is optional -- should NOT be in required
         assert!(!required_names.contains(&"strategy"));
+    }
+
+    #[test]
+    fn diff_params_required_fields() {
+        let schema = serde_json::to_value(rmcp::schemars::schema_for!(DiffParams)).unwrap();
+        let required = schema.get("required").unwrap().as_array().unwrap();
+        let required_names: Vec<&str> = required.iter().map(|v| v.as_str().unwrap()).collect();
+        assert!(required_names.contains(&"target"));
+        assert!(required_names.contains(&"lang"));
+        assert!(required_names.contains(&"base"));
+    }
+
+    #[test]
+    fn api_diff_params_required_fields() {
+        let schema = serde_json::to_value(rmcp::schemars::schema_for!(ApiDiffParams)).unwrap();
+        let required = schema.get("required").unwrap().as_array().unwrap();
+        let required_names: Vec<&str> = required.iter().map(|v| v.as_str().unwrap()).collect();
+        assert!(required_names.contains(&"old_spec"));
+        assert!(required_names.contains(&"new_spec"));
     }
 
     #[test]

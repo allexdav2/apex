@@ -4,6 +4,10 @@ All notable changes to APEX will be documented in this file.
 
 ## [Unreleased]
 
+### Added
+- `apex integrate` subcommand for zero-config MCP setup (Claude Code, Cursor, Windsurf)
+- 27 new MCP tools (33 total) — full CLI coverage via MCP protocol
+
 ## [0.2.1] — 2026-03-16
 
 ### Fixed

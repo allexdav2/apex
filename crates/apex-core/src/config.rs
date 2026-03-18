@@ -22,6 +22,10 @@ pub struct ApexConfig {
     pub detect: DetectConfig,
     pub threat_model: ThreatModelConfig,
     pub analyze: AnalyzeConfig,
+    pub index: IndexConfig,
+    pub reach: ReachConfig,
+    pub cpg: CpgConfig,
+    pub synth: SynthConfig,
 }
 
 impl ApexConfig {
@@ -127,6 +131,16 @@ pub struct FuzzConfig {
     pub seed_len_max: usize,
     /// MOpt scheduler settings.
     pub scheduler: SchedulerConfig,
+    /// Particle Swarm Optimization settings.
+    pub pso: PsoConfig,
+    /// Fox optimizer settings.
+    pub fox: FoxConfig,
+    /// Semantic scoring weights.
+    pub semantic: SemanticConfig,
+    /// Thompson sampling beta distribution cap. Default: 50.0.
+    pub beta_cap: f64,
+    /// CmpLog ring buffer max entries. Default: 256.
+    pub cmplog_ring_max: usize,
 }
 
 impl Default for FuzzConfig {
@@ -138,6 +152,11 @@ impl Default for FuzzConfig {
             seed_len_min: 1,
             seed_len_max: 64,
             scheduler: SchedulerConfig::default(),
+            pso: PsoConfig::default(),
+            fox: FoxConfig::default(),
+            semantic: SemanticConfig::default(),
+            beta_cap: 50.0,
+            cmplog_ring_max: 256,
         }
     }
 }
@@ -156,6 +175,72 @@ impl Default for SchedulerConfig {
         SchedulerConfig {
             floor: 0.01,
             alpha: 0.1,
+        }
+    }
+}
+
+/// Particle Swarm Optimization tuning.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(default)]
+pub struct PsoConfig {
+    /// Inertia weight. Default: 0.7.
+    pub w: f64,
+    /// Cognitive coefficient. Default: 1.5.
+    pub c1: f64,
+    /// Social coefficient. Default: 1.5.
+    pub c2: f64,
+    /// Minimum mutation probability. Default: 0.01.
+    pub prob_min: f64,
+}
+
+impl Default for PsoConfig {
+    fn default() -> Self {
+        PsoConfig {
+            w: 0.7,
+            c1: 1.5,
+            c2: 1.5,
+            prob_min: 0.01,
+        }
+    }
+}
+
+/// Fox optimizer tuning.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(default)]
+pub struct FoxConfig {
+    /// Mutation probability. Default: 0.5.
+    pub mutation_rate: f64,
+    /// Exploration vs exploitation ratio. Default: 0.5.
+    pub exploration_rate: f64,
+    /// Learning rate. Default: 0.1.
+    pub alpha: f64,
+}
+
+impl Default for FoxConfig {
+    fn default() -> Self {
+        FoxConfig {
+            mutation_rate: 0.5,
+            exploration_rate: 0.5,
+            alpha: 0.1,
+        }
+    }
+}
+
+/// Semantic scoring weights for the fuzzer scheduler.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(default)]
+pub struct SemanticConfig {
+    /// Weight applied to branch-coverage score. Default: 1.0.
+    pub branch_weight: f64,
+    /// Weight applied to semantic-similarity score. Default: 0.5.
+    pub semantic_weight: f64,
+}
+
+impl Default for SemanticConfig {
+    fn default() -> Self {
+        SemanticConfig {
+            branch_weight: 1.0,
+            semantic_weight: 0.5,
         }
     }
 }
@@ -199,6 +284,8 @@ pub struct AgentConfig {
     /// When `None`, a 30-minute cap (1800s) is used by default to prevent
     /// runaway loops caused by per-iteration timeout * iteration-count math.
     pub deadline_secs: Option<u64>,
+    /// Coverage monitor sliding-window size for trend detection. Default: 10.
+    pub monitor_window_size: usize,
 }
 
 impl Default for AgentConfig {
@@ -210,6 +297,7 @@ impl Default for AgentConfig {
             source_context_lines: 15,
             max_files_per_round: 3,
             deadline_secs: None,
+            monitor_window_size: 10,
         }
     }
 }
@@ -265,12 +353,49 @@ impl Default for SymbolicConfig {
 pub struct InstrumentConfig {
     /// Coverage bitmap size (edges). Default: 65_536.
     pub bitmap_size: usize,
+    /// Language-specific compile and test timeouts.
+    pub timeouts: InstrumentTimeouts,
 }
 
 impl Default for InstrumentConfig {
     fn default() -> Self {
         InstrumentConfig {
             bitmap_size: 65_536,
+            timeouts: InstrumentTimeouts::default(),
+        }
+    }
+}
+
+/// Per-language instrumentation timeout values (milliseconds).
+#[derive(Debug, Clone, Deserialize)]
+#[serde(default)]
+pub struct InstrumentTimeouts {
+    /// C/C++ compile timeout (ms). Default: 300_000.
+    pub c_compile_ms: u64,
+    /// C/C++ test run timeout (ms). Default: 120_000.
+    pub c_test_ms: u64,
+    /// C/C++ gcov collection timeout (ms). Default: 60_000.
+    pub c_gcov_ms: u64,
+    /// C#/.NET instrumentation timeout (ms). Default: 600_000.
+    pub csharp_ms: u64,
+    /// Swift coverage test timeout (ms). Default: 600_000.
+    pub swift_test_ms: u64,
+    /// Swift codecov path-resolution timeout (ms). Default: 60_000.
+    pub swift_codecov_ms: u64,
+    /// JVM (Java/Kotlin) build timeout (ms). Default: 600_000.
+    pub jvm_build_ms: u64,
+}
+
+impl Default for InstrumentTimeouts {
+    fn default() -> Self {
+        InstrumentTimeouts {
+            c_compile_ms: 300_000,
+            c_test_ms: 120_000,
+            c_gcov_ms: 60_000,
+            csharp_ms: 600_000,
+            swift_test_ms: 600_000,
+            swift_codecov_ms: 60_000,
+            jvm_build_ms: 600_000,
         }
     }
 }
@@ -310,6 +435,12 @@ pub struct DetectConfig {
     #[serde(default = "default_detect_severity")]
     pub severity_threshold: String,
     pub per_detector_timeout_secs: Option<u64>,
+    /// Secret scan Shannon entropy threshold. Default: 5.0.
+    pub entropy_threshold: f64,
+    /// Max subprocess concurrency for the detector pipeline. Default: 4.
+    pub max_subprocess_concurrency: usize,
+    /// Lines of source context captured around each finding. Default: 3.
+    pub context_window: usize,
 }
 
 impl Default for DetectConfig {
@@ -318,6 +449,9 @@ impl Default for DetectConfig {
             enabled: Vec::new(),
             severity_threshold: "low".into(),
             per_detector_timeout_secs: None,
+            entropy_threshold: 5.0,
+            max_subprocess_concurrency: 4,
+            context_window: 3,
         }
     }
 }
@@ -385,6 +519,90 @@ impl Default for AnalyzeConfig {
 }
 
 // ---------------------------------------------------------------------------
+// Index
+// ---------------------------------------------------------------------------
+
+/// Source file indexing limits (`[index]` in apex.toml).
+#[derive(Debug, Clone, Deserialize)]
+#[serde(default)]
+pub struct IndexConfig {
+    /// Maximum number of source files to scan. Default: 10_000.
+    pub max_source_files: usize,
+    /// Maximum bytes read per source file. Default: 1_048_576 (1 MB).
+    pub max_source_file_bytes: usize,
+}
+
+impl Default for IndexConfig {
+    fn default() -> Self {
+        IndexConfig {
+            max_source_files: 10_000,
+            max_source_file_bytes: 1_048_576,
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Reach
+// ---------------------------------------------------------------------------
+
+/// Call-graph reachability analysis settings (`[reach]` in apex.toml).
+#[derive(Debug, Clone, Deserialize)]
+#[serde(default)]
+pub struct ReachConfig {
+    /// Maximum call graph traversal depth. Default: 20.
+    pub max_depth: usize,
+}
+
+impl Default for ReachConfig {
+    fn default() -> Self {
+        ReachConfig { max_depth: 20 }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// CPG
+// ---------------------------------------------------------------------------
+
+/// Code Property Graph query limits (`[cpg]` in apex.toml).
+#[derive(Debug, Clone, Deserialize)]
+#[serde(default)]
+pub struct CpgConfig {
+    /// Maximum rows returned by CPG queries. Default: 100_000.
+    pub max_query_rows: usize,
+}
+
+impl Default for CpgConfig {
+    fn default() -> Self {
+        CpgConfig {
+            max_query_rows: 100_000,
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Synth
+// ---------------------------------------------------------------------------
+
+/// Test synthesis LLM prompt settings (`[synth]` in apex.toml).
+#[derive(Debug, Clone, Deserialize)]
+#[serde(default)]
+pub struct SynthConfig {
+    /// Maximum test candidates generated per prompt chunk. Default: 20.
+    pub chunk_size: usize,
+    /// Maximum uncovered branches included per LLM prompt. Default: 20.
+    pub max_branches_in_prompt: usize,
+}
+
+impl Default for SynthConfig {
+    fn default() -> Self {
+        SynthConfig {
+            chunk_size: 20,
+            max_branches_in_prompt: 20,
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
 
@@ -408,6 +626,56 @@ mod tests {
         assert_eq!(cfg.logging.level, "info");
         assert_eq!(cfg.detect.severity_threshold, "low");
         assert!(cfg.detect.per_detector_timeout_secs.is_none());
+
+        // New fields — instrument timeouts
+        assert_eq!(cfg.instrument.timeouts.c_compile_ms, 300_000);
+        assert_eq!(cfg.instrument.timeouts.c_test_ms, 120_000);
+        assert_eq!(cfg.instrument.timeouts.c_gcov_ms, 60_000);
+        assert_eq!(cfg.instrument.timeouts.csharp_ms, 600_000);
+        assert_eq!(cfg.instrument.timeouts.swift_test_ms, 600_000);
+        assert_eq!(cfg.instrument.timeouts.swift_codecov_ms, 60_000);
+        assert_eq!(cfg.instrument.timeouts.jvm_build_ms, 600_000);
+
+        // New fields — index
+        assert_eq!(cfg.index.max_source_files, 10_000);
+        assert_eq!(cfg.index.max_source_file_bytes, 1_048_576);
+
+        // New fields — detect
+        assert!((cfg.detect.entropy_threshold - 5.0).abs() < f64::EPSILON);
+        assert_eq!(cfg.detect.max_subprocess_concurrency, 4);
+        assert_eq!(cfg.detect.context_window, 3);
+
+        // New fields — fuzz PSO
+        assert!((cfg.fuzz.pso.w - 0.7).abs() < f64::EPSILON);
+        assert!((cfg.fuzz.pso.c1 - 1.5).abs() < f64::EPSILON);
+        assert!((cfg.fuzz.pso.c2 - 1.5).abs() < f64::EPSILON);
+        assert!((cfg.fuzz.pso.prob_min - 0.01).abs() < f64::EPSILON);
+
+        // New fields — fuzz Fox
+        assert!((cfg.fuzz.fox.mutation_rate - 0.5).abs() < f64::EPSILON);
+        assert!((cfg.fuzz.fox.exploration_rate - 0.5).abs() < f64::EPSILON);
+        assert!((cfg.fuzz.fox.alpha - 0.1).abs() < f64::EPSILON);
+
+        // New fields — fuzz Semantic
+        assert!((cfg.fuzz.semantic.branch_weight - 1.0).abs() < f64::EPSILON);
+        assert!((cfg.fuzz.semantic.semantic_weight - 0.5).abs() < f64::EPSILON);
+
+        // New fields — fuzz misc
+        assert!((cfg.fuzz.beta_cap - 50.0).abs() < f64::EPSILON);
+        assert_eq!(cfg.fuzz.cmplog_ring_max, 256);
+
+        // New fields — agent
+        assert_eq!(cfg.agent.monitor_window_size, 10);
+
+        // New fields — reach
+        assert_eq!(cfg.reach.max_depth, 20);
+
+        // New fields — cpg
+        assert_eq!(cfg.cpg.max_query_rows, 100_000);
+
+        // New fields — synth
+        assert_eq!(cfg.synth.chunk_size, 20);
+        assert_eq!(cfg.synth.max_branches_in_prompt, 20);
     }
 
     #[test]
@@ -445,10 +713,27 @@ mutations_per_input = 16
 stall_iterations = 100
 seed_len_min = 4
 seed_len_max = 128
+beta_cap = 100.0
+cmplog_ring_max = 512
 
 [fuzz.scheduler]
 floor = 0.02
 alpha = 0.2
+
+[fuzz.pso]
+w = 0.8
+c1 = 2.0
+c2 = 2.0
+prob_min = 0.05
+
+[fuzz.fox]
+mutation_rate = 0.3
+exploration_rate = 0.7
+alpha = 0.2
+
+[fuzz.semantic]
+branch_weight = 2.0
+semantic_weight = 1.0
 
 [concolic]
 max_rounds = 10
@@ -459,6 +744,7 @@ max_rounds = 5
 max_refinement_rounds = 5
 source_context_lines = 25
 max_files_per_round = 5
+monitor_window_size = 20
 
 [sandbox]
 process_timeout_ms = 5000
@@ -471,21 +757,75 @@ max_depth = 128
 [instrument]
 bitmap_size = 131072
 
+[instrument.timeouts]
+c_compile_ms = 180000
+c_test_ms = 90000
+c_gcov_ms = 30000
+csharp_ms = 300000
+swift_test_ms = 300000
+swift_codecov_ms = 30000
+jvm_build_ms = 480000
+
 [logging]
 level = "debug"
 format = "json"
+
+[detect]
+entropy_threshold = 4.5
+max_subprocess_concurrency = 8
+context_window = 5
+
+[index]
+max_source_files = 50000
+max_source_file_bytes = 2097152
+
+[reach]
+max_depth = 30
+
+[cpg]
+max_query_rows = 200000
+
+[synth]
+chunk_size = 10
+max_branches_in_prompt = 15
 "#;
         let cfg = ApexConfig::parse_toml(toml).unwrap();
         assert_eq!(cfg.coverage.target, 0.95);
         assert_eq!(cfg.fuzz.corpus_max, 20000);
         assert_eq!(cfg.fuzz.scheduler.floor, 0.02);
+        assert!((cfg.fuzz.beta_cap - 100.0).abs() < f64::EPSILON);
+        assert_eq!(cfg.fuzz.cmplog_ring_max, 512);
+        assert!((cfg.fuzz.pso.w - 0.8).abs() < f64::EPSILON);
+        assert!((cfg.fuzz.pso.c1 - 2.0).abs() < f64::EPSILON);
+        assert!((cfg.fuzz.pso.prob_min - 0.05).abs() < f64::EPSILON);
+        assert!((cfg.fuzz.fox.mutation_rate - 0.3).abs() < f64::EPSILON);
+        assert!((cfg.fuzz.fox.exploration_rate - 0.7).abs() < f64::EPSILON);
+        assert!((cfg.fuzz.semantic.branch_weight - 2.0).abs() < f64::EPSILON);
+        assert!((cfg.fuzz.semantic.semantic_weight - 1.0).abs() < f64::EPSILON);
         assert_eq!(cfg.concolic.max_rounds, 10);
         assert_eq!(cfg.agent.stall_threshold, 20);
+        assert_eq!(cfg.agent.monitor_window_size, 20);
         assert_eq!(cfg.sandbox.process_timeout_ms, 5000);
         assert_eq!(cfg.symbolic.max_depth, 128);
         assert_eq!(cfg.instrument.bitmap_size, 131072);
+        assert_eq!(cfg.instrument.timeouts.c_compile_ms, 180000);
+        assert_eq!(cfg.instrument.timeouts.c_test_ms, 90000);
+        assert_eq!(cfg.instrument.timeouts.c_gcov_ms, 30000);
+        assert_eq!(cfg.instrument.timeouts.csharp_ms, 300000);
+        assert_eq!(cfg.instrument.timeouts.swift_test_ms, 300000);
+        assert_eq!(cfg.instrument.timeouts.swift_codecov_ms, 30000);
+        assert_eq!(cfg.instrument.timeouts.jvm_build_ms, 480000);
         assert_eq!(cfg.logging.level, "debug");
         assert_eq!(cfg.logging.format, "json");
+        assert!((cfg.detect.entropy_threshold - 4.5).abs() < f64::EPSILON);
+        assert_eq!(cfg.detect.max_subprocess_concurrency, 8);
+        assert_eq!(cfg.detect.context_window, 5);
+        assert_eq!(cfg.index.max_source_files, 50000);
+        assert_eq!(cfg.index.max_source_file_bytes, 2097152);
+        assert_eq!(cfg.reach.max_depth, 30);
+        assert_eq!(cfg.cpg.max_query_rows, 200000);
+        assert_eq!(cfg.synth.chunk_size, 10);
+        assert_eq!(cfg.synth.max_branches_in_prompt, 15);
     }
 
     #[test]
@@ -718,5 +1058,71 @@ omit_patterns = ["vendor", "third_party"]
         assert!(cfg.coverage.omit_patterns.contains(&"target".into()));
         assert!(cfg.coverage.omit_patterns.contains(&"dist".into()));
         assert!(cfg.coverage.omit_patterns.contains(&"build".into()));
+    }
+
+    // -----------------------------------------------------------------------
+    // New section smoke tests
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn index_config_defaults() {
+        let cfg = IndexConfig::default();
+        assert_eq!(cfg.max_source_files, 10_000);
+        assert_eq!(cfg.max_source_file_bytes, 1_048_576);
+    }
+
+    #[test]
+    fn reach_config_defaults() {
+        let cfg = ReachConfig::default();
+        assert_eq!(cfg.max_depth, 20);
+    }
+
+    #[test]
+    fn cpg_config_defaults() {
+        let cfg = CpgConfig::default();
+        assert_eq!(cfg.max_query_rows, 100_000);
+    }
+
+    #[test]
+    fn synth_config_defaults() {
+        let cfg = SynthConfig::default();
+        assert_eq!(cfg.chunk_size, 20);
+        assert_eq!(cfg.max_branches_in_prompt, 20);
+    }
+
+    #[test]
+    fn pso_config_defaults() {
+        let cfg = PsoConfig::default();
+        assert!((cfg.w - 0.7).abs() < f64::EPSILON);
+        assert!((cfg.c1 - 1.5).abs() < f64::EPSILON);
+        assert!((cfg.c2 - 1.5).abs() < f64::EPSILON);
+        assert!((cfg.prob_min - 0.01).abs() < f64::EPSILON);
+    }
+
+    #[test]
+    fn fox_config_defaults() {
+        let cfg = FoxConfig::default();
+        assert!((cfg.mutation_rate - 0.5).abs() < f64::EPSILON);
+        assert!((cfg.exploration_rate - 0.5).abs() < f64::EPSILON);
+        assert!((cfg.alpha - 0.1).abs() < f64::EPSILON);
+    }
+
+    #[test]
+    fn semantic_config_defaults() {
+        let cfg = SemanticConfig::default();
+        assert!((cfg.branch_weight - 1.0).abs() < f64::EPSILON);
+        assert!((cfg.semantic_weight - 0.5).abs() < f64::EPSILON);
+    }
+
+    #[test]
+    fn instrument_timeouts_defaults() {
+        let cfg = InstrumentTimeouts::default();
+        assert_eq!(cfg.c_compile_ms, 300_000);
+        assert_eq!(cfg.c_test_ms, 120_000);
+        assert_eq!(cfg.c_gcov_ms, 60_000);
+        assert_eq!(cfg.csharp_ms, 600_000);
+        assert_eq!(cfg.swift_test_ms, 600_000);
+        assert_eq!(cfg.swift_codecov_ms, 60_000);
+        assert_eq!(cfg.jvm_build_ms, 600_000);
     }
 }

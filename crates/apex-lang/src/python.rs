@@ -494,11 +494,12 @@ mod tests {
             .withf(|spec| spec.program == PythonRunner::<MockCmd>::resolve_python())
             .times(1)
             .returning(|_| Ok(CommandOutput::failure(1, b"ModuleNotFoundError".to_vec())));
-        // pip3 install coverage pytest
+        // uv pip install or pip3 install coverage pytest
         mock.expect_run_command()
             .withf(|spec| {
-                spec.program == PythonRunner::<MockCmd>::resolve_pip()
-                    && spec.args.contains(&"coverage".to_string())
+                spec.args.contains(&"coverage".to_string())
+                    && (spec.program == PythonRunner::<MockCmd>::resolve_pip()
+                        || spec.program == "uv")
             })
             .times(1)
             .returning(|_| Ok(CommandOutput::success(b"".to_vec())));
@@ -518,9 +519,13 @@ mod tests {
             .withf(|spec| spec.program == PythonRunner::<MockCmd>::resolve_python())
             .times(1)
             .returning(|_| Ok(CommandOutput::failure(1, b"ModuleNotFoundError".to_vec())));
-        // pip3 install coverage pytest also fails
+        // uv pip install or pip3 install also fails
         mock.expect_run_command()
-            .withf(|spec| spec.program == PythonRunner::<MockCmd>::resolve_pip())
+            .withf(|spec| {
+                spec.args.contains(&"coverage".to_string())
+                    && (spec.program == PythonRunner::<MockCmd>::resolve_pip()
+                        || spec.program == "uv")
+            })
             .times(1)
             .returning(|_| Ok(CommandOutput::failure(1, b"Permission denied".to_vec())));
 
@@ -824,9 +829,13 @@ mod tests {
             .withf(|spec| spec.program == PythonRunner::<MockCmd>::resolve_python())
             .times(1)
             .returning(|_| Ok(CommandOutput::failure(1, b"ModuleNotFoundError".to_vec())));
-        // pip3 install coverage pytest fails with spawn error
+        // uv pip install or pip3 install coverage pytest fails with spawn error
         mock.expect_run_command()
-            .withf(|spec| spec.program == PythonRunner::<MockCmd>::resolve_pip())
+            .withf(|spec| {
+                spec.args.contains(&"coverage".to_string())
+                    && (spec.program == PythonRunner::<MockCmd>::resolve_pip()
+                        || spec.program == "uv")
+            })
             .times(1)
             .returning(|_| {
                 Err(ApexError::Subprocess {

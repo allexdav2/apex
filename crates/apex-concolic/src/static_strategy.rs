@@ -62,7 +62,7 @@ impl Strategy for StaticConcolicStrategy {
     }
 
     async fn suggest_inputs(&self, ctx: &ExplorationContext) -> Result<Vec<InputSeed>> {
-        let source_path = ctx.target.path.to_string_lossy().to_string();
+        let source_path = ctx.target.root.to_string_lossy().to_string();
         let source = match std::fs::read_to_string(&source_path) {
             Ok(s) => s,
             Err(_) => return Ok(vec![]),

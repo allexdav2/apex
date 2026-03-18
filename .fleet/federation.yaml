@@ -1,0 +1,12 @@
+schema_version: 1
+repo: sahajamoth/apex
+captain: apex
+
+partners:
+  - repo: fleet-plugins/fleet
+    captain: fleet
+    description: "Fleet plugin — meta-agent fleet management for codebases"
+
+labels:
+  - fleet:request
+  - fleet:from-apex

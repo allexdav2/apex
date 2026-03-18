@@ -58,7 +58,15 @@ def main():
                      f"--data-file={DATA_FILE}",
                      f"--source={source_dir}",
                      f"--omit={OMIT_PATTERNS}"]
-    run_result = subprocess.run(coverage_args + cmd, capture_output=False)
+
+    # If the test command is a Python module (e.g. "pytest"), use -m flag
+    # so coverage doesn't try to find it as a file in CWD.
+    if cmd and not os.path.exists(cmd[0]):
+        coverage_args.extend(["-m"] + cmd)
+    else:
+        coverage_args.extend(cmd)
+
+    run_result = subprocess.run(coverage_args, capture_output=False)
 
     # Export to JSON
     subprocess.run(

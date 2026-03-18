@@ -207,9 +207,18 @@ impl PythonInstrumentor {
         );
 
         // Run: python3 apex_instrument.py <test_cmd...>
-        // Prefer `uv run python3` when uv is available (handles PEP 668 envs).
+        // Prefer `uv run --with coverage --with pytest python3` when uv is available
+        // so that coverage.py is guaranteed importable (handles PEP 668 envs).
         let spec = if let Some(uv) = resolve_uv() {
-            let mut args = vec!["run".to_string(), "python3".to_string()];
+            let mut args = vec![
+                "run".to_string(),
+                "--with".to_string(),
+                "coverage".to_string(),
+                "--with".to_string(),
+                "pytest".to_string(),
+                "--".to_string(),
+                "python3".to_string(),
+            ];
             args.push(script_path.to_string_lossy().to_string());
             args.extend(test_cmd);
             CommandSpec::new(&uv, &target.root).args(args)

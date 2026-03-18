@@ -4,6 +4,10 @@ All notable changes to APEX will be documented in this file.
 
 ## [Unreleased]
 
+### Changed
+- **Language-specific timeouts wired to `InstrumentTimeouts` config** — hardcoded timeout `const` values in `apex-instrument` (C, C#, Swift, Java) and `apex-lang` (C#, Swift, Java, Kotlin) are now driven by `ApexConfig::instrument.timeouts`; each instrumentor and lang runner struct gains a `timeouts: InstrumentTimeouts` field and a `with_timeouts()` builder for overrides; defaults match the previous hardcoded values (`[instrument.timeouts]` section in `apex.toml`)
+- `InstrumentTimeouts` in `apex-core` gains two new fields: `csharp_restore_ms` (default 300 000 ms) and `swift_resolve_ms` (default 300 000 ms), covering `dotnet restore` and `swift package resolve` respectively
+
 ## [0.3.0] — 2026-03-18
 
 ### Added

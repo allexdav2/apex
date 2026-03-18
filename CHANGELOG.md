@@ -5,6 +5,7 @@ All notable changes to APEX will be documented in this file.
 ## [Unreleased]
 
 ### Added
+- **uv-first Python toolchain** — `apex-lang`, `apex-instrument`, and `apex-sandbox` now detect `uv` at runtime and prefer `uv run python3` for test execution and `uv pip install --system` for dependency installation; graceful fallback to bare `python3`/`pip3` when uv is absent
 - **`apex integrate` subcommand** — auto-writes MCP server config for Claude Code, Cursor, and Windsurf with --editor, --global, --dry-run flags and config merging
 - **33 total MCP tools** — full CLI coverage via MCP protocol (was 6, added 27: complexity, dead-code, risk, hotpaths, test-optimize, test-prioritize, blast-radius, secret-scan, data-flow, diff, regression-check, lint, flaky-detect, contracts, attack-surface, verify-boundaries, features, index, docs, license-scan, flag-hygiene, api-diff, compliance-export, api-coverage, service-map, schema-check, test-data)
 - **Scripted test harness** — `ScriptedSandbox` and `ScriptedStrategy` mocks for deterministic orchestrator loop testing

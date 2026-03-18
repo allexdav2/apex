@@ -4,7 +4,14 @@
 use apex_core::types::BranchId;
 
 /// Build a prompt asking an LLM to generate targeted seed inputs.
-pub fn build_seed_prompt(uncovered: &[BranchId], target_format: &str) -> String {
+///
+/// `max_branches` caps how many uncovered branches are included in the prompt
+/// (corresponds to `SynthConfig::max_branches_in_prompt`).
+pub fn build_seed_prompt(
+    uncovered: &[BranchId],
+    target_format: &str,
+    max_branches: usize,
+) -> String {
     let mut prompt = String::new();
     prompt.push_str(&format!(
         "You are a fuzzing seed generator. Generate test inputs in {target_format} format \
@@ -18,14 +25,14 @@ pub fn build_seed_prompt(uncovered: &[BranchId], target_format: &str) -> String 
         );
     } else {
         prompt.push_str("Target these uncovered branches:\n");
-        for b in uncovered.iter().take(20) {
+        for b in uncovered.iter().take(max_branches) {
             prompt.push_str(&format!(
                 "- file_id={}, line {}, direction {}\n",
                 b.file_id, b.line, b.direction
             ));
         }
-        if uncovered.len() > 20 {
-            prompt.push_str(&format!("  ... and {} more\n", uncovered.len() - 20));
+        if uncovered.len() > max_branches {
+            prompt.push_str(&format!("  ... and {} more\n", uncovered.len() - max_branches));
         }
     }
 
@@ -92,7 +99,7 @@ mod tests {
     #[test]
     fn build_seed_prompt_includes_format() {
         let uncovered = vec![BranchId::new(1, 10, 0, 0), BranchId::new(1, 20, 0, 1)];
-        let prompt = build_seed_prompt(&uncovered, "JSON");
+        let prompt = build_seed_prompt(&uncovered, "JSON", 20);
         assert!(prompt.contains("JSON"));
         assert!(prompt.contains("line 10"));
         assert!(prompt.contains("line 20"));
@@ -100,8 +107,20 @@ mod tests {
 
     #[test]
     fn build_seed_prompt_empty_uncovered() {
-        let prompt = build_seed_prompt(&[], "binary");
+        let prompt = build_seed_prompt(&[], "binary", 20);
         assert!(prompt.contains("no specific"));
+    }
+
+    #[test]
+    fn build_seed_prompt_respects_max_branches() {
+        // 5 uncovered branches but max_branches=3 — only first 3 listed, overflow mentioned.
+        let uncovered: Vec<BranchId> = (0..5).map(|i| BranchId::new(1, i * 10, 0, 0)).collect();
+        let prompt = build_seed_prompt(&uncovered, "JSON", 3);
+        assert!(prompt.contains("line 0"));
+        assert!(prompt.contains("line 10"));
+        assert!(prompt.contains("line 20"));
+        assert!(!prompt.contains("line 30"));
+        assert!(prompt.contains("2 more"));
     }
 
     #[test]

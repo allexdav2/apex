@@ -12,11 +12,14 @@ use std::{collections::HashMap, path::PathBuf, sync::Arc, time::Instant};
 use tracing::{info, warn};
 
 const STALL_THRESHOLD: u64 = 10;
+const DEFAULT_MONITOR_WINDOW: usize = 10;
 
 pub struct OrchestratorConfig {
     pub coverage_target: f64,
     pub deadline_secs: Option<u64>,
     pub stall_threshold: u64,
+    /// Sliding-window size for the coverage growth monitor.
+    pub monitor_window_size: usize,
 }
 
 impl Default for OrchestratorConfig {
@@ -25,6 +28,7 @@ impl Default for OrchestratorConfig {
             coverage_target: 1.0,
             deadline_secs: None,
             stall_threshold: STALL_THRESHOLD,
+            monitor_window_size: DEFAULT_MONITOR_WINDOW,
         }
     }
 }
@@ -60,7 +64,7 @@ impl AgentCluster {
             target,
             file_paths: HashMap::new(),
             ledger: Arc::new(BugLedger::new()),
-            monitor: Mutex::new(CoverageMonitor::new(10)),
+            monitor: Mutex::new(CoverageMonitor::new(DEFAULT_MONITOR_WINDOW)),
             driller_escalation: None,
         }
     }
@@ -71,6 +75,7 @@ impl AgentCluster {
     }
 
     pub fn with_config(mut self, config: OrchestratorConfig) -> Self {
+        self.monitor = Mutex::new(CoverageMonitor::new(config.monitor_window_size));
         self.config = config;
         self
     }
@@ -315,6 +320,7 @@ mod tests {
             coverage_target: 0.75,
             deadline_secs: Some(300),
             stall_threshold: 5,
+    monitor_window_size: DEFAULT_MONITOR_WINDOW,
         };
         let cluster = AgentCluster::new(oracle, sandbox, test_target()).with_config(custom_cfg);
         assert!((cluster.config.coverage_target - 0.75).abs() < f64::EPSILON);
@@ -399,6 +405,7 @@ mod tests {
             coverage_target: 1.0,
             deadline_secs: None,
             stall_threshold: STALL_THRESHOLD,
+    monitor_window_size: DEFAULT_MONITOR_WINDOW,
         };
         assert!((cfg.coverage_target - 1.0).abs() < f64::EPSILON);
     }
@@ -409,6 +416,7 @@ mod tests {
             coverage_target: 0.0,
             deadline_secs: None,
             stall_threshold: 0,
+    monitor_window_size: DEFAULT_MONITOR_WINDOW,
         };
         assert!((cfg.coverage_target - 0.0).abs() < f64::EPSILON);
         assert_eq!(cfg.stall_threshold, 0);
@@ -420,6 +428,7 @@ mod tests {
             coverage_target: 0.9,
             deadline_secs: Some(60),
             stall_threshold: STALL_THRESHOLD,
+    monitor_window_size: DEFAULT_MONITOR_WINDOW,
         };
         assert_eq!(cfg.deadline_secs, Some(60));
     }
@@ -430,6 +439,7 @@ mod tests {
             coverage_target: 0.9,
             deadline_secs: Some(0),
             stall_threshold: STALL_THRESHOLD,
+    monitor_window_size: DEFAULT_MONITOR_WINDOW,
         };
         assert_eq!(cfg.deadline_secs, Some(0));
     }
@@ -440,6 +450,7 @@ mod tests {
             coverage_target: 0.9,
             deadline_secs: None,
             stall_threshold: 42,
+    monitor_window_size: DEFAULT_MONITOR_WINDOW,
         };
         assert_eq!(cfg.stall_threshold, 42);
     }
@@ -478,6 +489,7 @@ mod tests {
             coverage_target: 0.5,
             deadline_secs: Some(120),
             stall_threshold: 3,
+    monitor_window_size: DEFAULT_MONITOR_WINDOW,
         };
         let cluster = AgentCluster::new(oracle, sandbox, test_target())
             .with_strategy(Box::new(DummyStrategy))
@@ -517,11 +529,13 @@ mod tests {
             coverage_target: 0.5,
             deadline_secs: Some(10),
             stall_threshold: 1,
+    monitor_window_size: DEFAULT_MONITOR_WINDOW,
         };
         let cfg2 = OrchestratorConfig {
             coverage_target: 0.99,
             deadline_secs: None,
             stall_threshold: 50,
+    monitor_window_size: DEFAULT_MONITOR_WINDOW,
         };
         let cluster = AgentCluster::new(oracle, sandbox, test_target())
             .with_config(cfg1)
@@ -587,6 +601,7 @@ mod tests {
                 coverage_target: 0.5,
                 deadline_secs: None,
                 stall_threshold: STALL_THRESHOLD,
+    monitor_window_size: DEFAULT_MONITOR_WINDOW,
             });
         cluster.run().await.unwrap();
     }
@@ -603,6 +618,7 @@ mod tests {
                 coverage_target: 1.0,
                 deadline_secs: Some(0),
                 stall_threshold: STALL_THRESHOLD,
+    monitor_window_size: DEFAULT_MONITOR_WINDOW,
             });
         cluster.run().await.unwrap();
     }
@@ -619,6 +635,7 @@ mod tests {
                 coverage_target: 1.0,
                 deadline_secs: Some(1), // safety net
                 stall_threshold: 2,
+    monitor_window_size: DEFAULT_MONITOR_WINDOW,
             });
         cluster.run().await.unwrap();
     }
@@ -658,6 +675,7 @@ mod tests {
                 coverage_target: 1.0,
                 deadline_secs: Some(1),
                 stall_threshold: 2,
+    monitor_window_size: DEFAULT_MONITOR_WINDOW,
             });
         cluster.run().await.unwrap();
     }
@@ -752,6 +770,7 @@ mod tests {
                 coverage_target: 0.9,
                 deadline_secs: Some(5),
                 stall_threshold: 100,
+    monitor_window_size: DEFAULT_MONITOR_WINDOW,
             });
 
         cluster.run().await.unwrap();
@@ -796,6 +815,7 @@ mod tests {
                 coverage_target: 1.0,
                 deadline_secs: Some(2),
                 stall_threshold: 3,
+    monitor_window_size: DEFAULT_MONITOR_WINDOW,
             });
 
         cluster.run().await.unwrap();
@@ -836,6 +856,7 @@ mod tests {
                 coverage_target: 0.9,
                 deadline_secs: Some(5),
                 stall_threshold: 100,
+    monitor_window_size: DEFAULT_MONITOR_WINDOW,
             });
 
         cluster.run().await.unwrap();
@@ -872,6 +893,7 @@ mod tests {
                 coverage_target: 1.0,
                 deadline_secs: Some(1),
                 stall_threshold: 2,
+    monitor_window_size: DEFAULT_MONITOR_WINDOW,
             });
 
         // Should not panic — strategy errors are filtered out
@@ -952,6 +974,7 @@ mod tests {
                 coverage_target: 1.0,
                 deadline_secs: Some(5),
                 stall_threshold: 2,
+    monitor_window_size: DEFAULT_MONITOR_WINDOW,
             });
 
         // Must complete without panic and return Ok.
@@ -994,6 +1017,7 @@ mod tests {
                 coverage_target: 1.0,
                 deadline_secs: None,
                 stall_threshold: 2,
+    monitor_window_size: DEFAULT_MONITOR_WINDOW,
             });
 
         cluster.run().await.unwrap();
@@ -1041,6 +1065,7 @@ mod tests {
                 coverage_target: 1.0,
                 deadline_secs: None,
                 stall_threshold: 3,
+    monitor_window_size: DEFAULT_MONITOR_WINDOW,
             });
 
         cluster.run().await.unwrap();
@@ -1082,6 +1107,7 @@ mod tests {
                 coverage_target: 1.0,
                 deadline_secs: Some(5),
                 stall_threshold: 2,
+    monitor_window_size: DEFAULT_MONITOR_WINDOW,
             });
 
         cluster.run().await.unwrap();
@@ -1123,6 +1149,7 @@ mod tests {
                 coverage_target: 0.9,
                 deadline_secs: None, // <-- the None branch under test
                 stall_threshold: 100,
+    monitor_window_size: DEFAULT_MONITOR_WINDOW,
             });
 
         cluster.run().await.unwrap();
@@ -1142,6 +1169,7 @@ mod tests {
                 coverage_target: 1.0,
                 deadline_secs: None,
                 stall_threshold: 1,
+    monitor_window_size: DEFAULT_MONITOR_WINDOW,
             },
         );
 
@@ -1228,6 +1256,7 @@ mod tests {
                 coverage_target: 1.0,
                 deadline_secs: Some(5),
                 stall_threshold: 2,
+    monitor_window_size: DEFAULT_MONITOR_WINDOW,
             });
 
         cluster.run().await.unwrap();
@@ -1311,6 +1340,7 @@ mod tests {
                 coverage_target: 1.0,
                 deadline_secs: Some(5),
                 stall_threshold: 2,
+    monitor_window_size: DEFAULT_MONITOR_WINDOW,
             });
 
         cluster.run().await.unwrap();
@@ -1360,6 +1390,7 @@ mod tests {
                 coverage_target: 0.9,
                 deadline_secs: Some(5),
                 stall_threshold: 100,
+    monitor_window_size: DEFAULT_MONITOR_WINDOW,
             });
 
         cluster.run().await.unwrap();
@@ -1413,6 +1444,7 @@ mod tests {
                 coverage_target: 0.9,
                 deadline_secs: Some(5),
                 stall_threshold: 100,
+    monitor_window_size: DEFAULT_MONITOR_WINDOW,
             });
 
         cluster.run().await.unwrap();
@@ -1469,6 +1501,7 @@ mod tests {
                 coverage_target: 1.0,
                 deadline_secs: Some(0), // immediate deadline
                 stall_threshold: 100,
+    monitor_window_size: DEFAULT_MONITOR_WINDOW,
             });
         cluster.run().await.unwrap();
     }
@@ -1504,6 +1537,7 @@ mod tests {
                 coverage_target: 1.0,
                 deadline_secs: Some(10),
                 stall_threshold: 3,
+    monitor_window_size: DEFAULT_MONITOR_WINDOW,
             });
         cluster.run().await.unwrap();
     }
@@ -1635,6 +1669,7 @@ mod tests {
                 coverage_target: 1.0,
                 deadline_secs: Some(5),
                 stall_threshold: 2,
+    monitor_window_size: DEFAULT_MONITOR_WINDOW,
             });
 
         cluster.run().await.unwrap();
@@ -1698,6 +1733,7 @@ mod tests {
             coverage_target: 0.8,
             deadline_secs: None,
             stall_threshold: 5,
+    monitor_window_size: DEFAULT_MONITOR_WINDOW,
         };
         let oracle = Arc::new(CoverageOracle::new());
         let cluster =
@@ -1750,6 +1786,7 @@ mod tests {
                 coverage_target: 0.0,
                 deadline_secs: None,
                 stall_threshold: 100,
+    monitor_window_size: DEFAULT_MONITOR_WINDOW,
             },
         );
         cluster.run().await.unwrap();
@@ -1769,6 +1806,7 @@ mod tests {
                 coverage_target: 0.5,
                 deadline_secs: None,
                 stall_threshold: 100,
+    monitor_window_size: DEFAULT_MONITOR_WINDOW,
             });
         cluster.run().await.unwrap();
         assert_eq!(oracle.covered_count(), 1);
@@ -1827,6 +1865,7 @@ mod tests {
                 coverage_target: 0.9,
                 deadline_secs: Some(5),
                 stall_threshold: 100,
+    monitor_window_size: DEFAULT_MONITOR_WINDOW,
             });
         cluster.run().await.unwrap();
         assert_eq!(oracle.coverage_percent(), 100.0);
@@ -1868,6 +1907,7 @@ mod tests {
                 coverage_target: 0.9,
                 deadline_secs: Some(5),
                 stall_threshold: 100,
+    monitor_window_size: DEFAULT_MONITOR_WINDOW,
             });
         cluster.run().await.unwrap();
         assert_eq!(oracle.coverage_percent(), 100.0);
@@ -1945,6 +1985,7 @@ mod tests {
                 coverage_target: 1.0,
                 deadline_secs: Some(5),
                 stall_threshold: 3,
+    monitor_window_size: DEFAULT_MONITOR_WINDOW,
             });
         cluster.run().await.unwrap();
     }
@@ -2019,6 +2060,7 @@ mod tests {
                 coverage_target: 1.0,
                 deadline_secs: Some(5),
                 stall_threshold: 2,
+    monitor_window_size: DEFAULT_MONITOR_WINDOW,
             });
         cluster.run().await.unwrap();
         let summary = cluster.bug_summary();
@@ -2095,6 +2137,7 @@ mod tests {
                 coverage_target: 1.0,
                 deadline_secs: Some(5),
                 stall_threshold: 2,
+    monitor_window_size: DEFAULT_MONITOR_WINDOW,
             });
         cluster.run().await.unwrap();
         let summary = cluster.bug_summary();
@@ -2137,6 +2180,7 @@ mod tests {
                 coverage_target: 1.0,
                 deadline_secs: None,
                 stall_threshold: 2,
+    monitor_window_size: DEFAULT_MONITOR_WINDOW,
             });
         cluster.run().await.unwrap();
         assert_eq!(cluster.bug_summary().total, 0);
@@ -2184,6 +2228,7 @@ mod tests {
                 coverage_target: 0.9,
                 deadline_secs: Some(5),
                 stall_threshold: 100,
+    monitor_window_size: DEFAULT_MONITOR_WINDOW,
             });
         cluster.run().await.unwrap();
         assert_eq!(oracle.coverage_percent(), 100.0);
@@ -2224,6 +2269,7 @@ mod tests {
                 coverage_target: 1.1, // above 100% to skip coverage_target check
                 deadline_secs: None,
                 stall_threshold: 100,
+    monitor_window_size: DEFAULT_MONITOR_WINDOW,
             },
         );
         cluster.run().await.unwrap();
@@ -2247,6 +2293,7 @@ mod tests {
                 coverage_target: 1.0,
                 deadline_secs: Some(0),
                 stall_threshold: 100,
+    monitor_window_size: DEFAULT_MONITOR_WINDOW,
             },
         );
         cluster.run().await.unwrap();
@@ -2270,6 +2317,7 @@ mod tests {
                 coverage_target: 1.0,
                 deadline_secs: None,
                 stall_threshold: 1,
+    monitor_window_size: DEFAULT_MONITOR_WINDOW,
             },
         );
         cluster.run().await.unwrap();
@@ -2316,6 +2364,7 @@ mod tests {
                 coverage_target: 0.9,
                 deadline_secs: Some(5),
                 stall_threshold: 100,
+    monitor_window_size: DEFAULT_MONITOR_WINDOW,
             });
         cluster.run().await.unwrap();
     }
@@ -2369,6 +2418,7 @@ mod tests {
                 coverage_target: 1.0,
                 deadline_secs: Some(5),
                 stall_threshold: 2,
+    monitor_window_size: DEFAULT_MONITOR_WINDOW,
             });
         cluster.run().await.unwrap();
     }
@@ -2448,6 +2498,7 @@ mod tests {
                 coverage_target: 1.0,
                 deadline_secs: Some(5),
                 stall_threshold: 2,
+    monitor_window_size: DEFAULT_MONITOR_WINDOW,
             });
         cluster.run().await.unwrap();
     }
@@ -2502,6 +2553,7 @@ mod tests {
                 coverage_target: 1.0,
                 deadline_secs: Some(5),
                 stall_threshold: 2,
+    monitor_window_size: DEFAULT_MONITOR_WINDOW,
             });
         cluster.run().await.unwrap();
         assert!(cluster.bug_summary().total > 0);
@@ -2589,6 +2641,7 @@ mod tests {
                 coverage_target: 0.9,
                 deadline_secs: Some(10),
                 stall_threshold: 100,
+    monitor_window_size: DEFAULT_MONITOR_WINDOW,
             });
         cluster.run().await.unwrap();
         assert_eq!(oracle.covered_count(), 2);
@@ -2672,6 +2725,7 @@ mod tests {
                 coverage_target: 0.9,
                 deadline_secs: Some(5),
                 stall_threshold: 100,
+    monitor_window_size: DEFAULT_MONITOR_WINDOW,
             });
         cluster.run().await.unwrap();
         assert_eq!(oracle.covered_count(), 1);
@@ -2728,6 +2782,7 @@ mod tests {
                 coverage_target: 0.9,
                 deadline_secs: Some(5),
                 stall_threshold: 100,
+    monitor_window_size: DEFAULT_MONITOR_WINDOW,
             });
         cluster.run().await.unwrap();
         // Both strategies should have been called at least once.
@@ -2817,6 +2872,7 @@ mod tests {
                 coverage_target: 0.9,
                 deadline_secs: Some(5),
                 stall_threshold: 3,
+    monitor_window_size: DEFAULT_MONITOR_WINDOW,
             });
         cluster.run().await.unwrap();
         assert_eq!(oracle.covered_count(), 1);
@@ -2834,6 +2890,7 @@ mod tests {
                 coverage_target: 1.0,
                 deadline_secs: None,
                 stall_threshold: 1,
+    monitor_window_size: DEFAULT_MONITOR_WINDOW,
             },
         );
         cluster.run().await.unwrap();
@@ -2917,6 +2974,7 @@ mod tests {
                 coverage_target: 0.6, // 3 of 5 = 60%
                 deadline_secs: Some(10),
                 stall_threshold: 100,
+    monitor_window_size: DEFAULT_MONITOR_WINDOW,
             });
         cluster.run().await.unwrap();
         assert!(oracle.covered_count() >= 3);
@@ -2954,6 +3012,7 @@ mod tests {
                 coverage_target: 1.0,
                 deadline_secs: None,
                 stall_threshold: 2,
+    monitor_window_size: DEFAULT_MONITOR_WINDOW,
             });
         cluster.run().await.unwrap();
     }
@@ -2988,6 +3047,7 @@ mod tests {
                 coverage_target: 1.0,
                 deadline_secs: None,
                 stall_threshold: 2,
+    monitor_window_size: DEFAULT_MONITOR_WINDOW,
             });
         cluster.run().await.unwrap();
     }
@@ -3034,6 +3094,7 @@ mod tests {
                 coverage_target: 1.0,
                 deadline_secs: None,
                 stall_threshold: 5,
+    monitor_window_size: DEFAULT_MONITOR_WINDOW,
             });
         cluster.run().await.unwrap();
         // With stall_threshold=5, sandbox produces no coverage, so stall increments
@@ -3077,6 +3138,7 @@ mod tests {
                 coverage_target: 1.0,
                 deadline_secs: None,
                 stall_threshold: 2,
+    monitor_window_size: DEFAULT_MONITOR_WINDOW,
             });
         cluster.run().await.unwrap();
     }
@@ -3181,6 +3243,7 @@ mod tests {
                 coverage_target: 1.0,
                 deadline_secs: None,
                 stall_threshold: 3,
+    monitor_window_size: DEFAULT_MONITOR_WINDOW,
             });
         cluster.run().await.unwrap();
         // Multiple distinct crashes should each be recorded (different locations).
@@ -3247,6 +3310,7 @@ mod tests {
                 coverage_target: 1.0,
                 deadline_secs: None,
                 stall_threshold: 2,
+    monitor_window_size: DEFAULT_MONITOR_WINDOW,
             });
         cluster.run().await.unwrap();
         // Same crash location → deduped to 1 bug even with multiple results.
@@ -3276,6 +3340,7 @@ mod tests {
                 coverage_target: 0.5,
                 deadline_secs: Some(60),
                 stall_threshold: 5,
+    monitor_window_size: DEFAULT_MONITOR_WINDOW,
             },
         );
         assert_eq!(cluster.monitor_action(), MonitorAction::Normal);
@@ -3288,6 +3353,7 @@ mod tests {
             coverage_target: 1.0,
             deadline_secs: None,
             stall_threshold: u64::MAX,
+    monitor_window_size: DEFAULT_MONITOR_WINDOW,
         };
         assert_eq!(cfg.stall_threshold, u64::MAX);
     }
@@ -3299,6 +3365,7 @@ mod tests {
             coverage_target: 1.0,
             deadline_secs: Some(u64::MAX),
             stall_threshold: 10,
+    monitor_window_size: DEFAULT_MONITOR_WINDOW,
         };
         assert_eq!(cfg.deadline_secs, Some(u64::MAX));
     }
@@ -3388,6 +3455,7 @@ mod tests {
                 coverage_target: 0.9,
                 deadline_secs: Some(5),
                 stall_threshold: 3,
+    monitor_window_size: DEFAULT_MONITOR_WINDOW,
             });
         cluster.run().await.unwrap();
         assert_eq!(oracle.covered_count(), 1);
@@ -3461,6 +3529,7 @@ mod tests {
                 coverage_target: 1.0,
                 deadline_secs: None,
                 stall_threshold: 5,
+    monitor_window_size: DEFAULT_MONITOR_WINDOW,
             },
         );
 
@@ -3536,6 +3605,7 @@ mod tests {
                 coverage_target: 1.0,
                 deadline_secs: Some(5), // safety net — test should exit via stall, not deadline
                 stall_threshold: 0,     // BUG: 0 >= 0 is always true
+                monitor_window_size: DEFAULT_MONITOR_WINDOW,
             });
 
         cluster.run().await.unwrap();
@@ -3591,6 +3661,7 @@ mod tests {
                 coverage_target: 2.0, // BUG: impossible target
                 deadline_secs: None,
                 stall_threshold: 3,
+    monitor_window_size: DEFAULT_MONITOR_WINDOW,
             });
 
         cluster.run().await.unwrap();
@@ -3622,6 +3693,7 @@ mod tests {
                 coverage_target: 1.0,
                 deadline_secs: Some(5), // safety net — test should exit via stall, not deadline
                 stall_threshold: 0,
+    monitor_window_size: DEFAULT_MONITOR_WINDOW,
             },
         );
 
@@ -3646,6 +3718,7 @@ mod tests {
                 coverage_target: 1.0,
                 deadline_secs: Some(10), // safety net — test should exit via stall, not deadline
                 stall_threshold: 5,
+    monitor_window_size: DEFAULT_MONITOR_WINDOW,
             },
         );
 
@@ -3721,6 +3794,7 @@ mod tests {
                 coverage_target: 0.9,
                 deadline_secs: Some(5),
                 stall_threshold: 100,
+    monitor_window_size: DEFAULT_MONITOR_WINDOW,
             });
 
         cluster.run().await.unwrap();
@@ -3780,6 +3854,7 @@ mod tests {
                 coverage_target: 1.0,
                 deadline_secs: None,
                 stall_threshold: 3,
+    monitor_window_size: DEFAULT_MONITOR_WINDOW,
             });
 
         cluster.run().await.unwrap();
@@ -3836,6 +3911,7 @@ mod tests {
                 coverage_target: 1.0,
                 deadline_secs: None,
                 stall_threshold: 2,
+    monitor_window_size: DEFAULT_MONITOR_WINDOW,
             });
 
         cluster.run().await.unwrap();
@@ -3895,6 +3971,7 @@ mod tests {
                 coverage_target: 0.0, // "don't care" about coverage
                 deadline_secs: None,
                 stall_threshold: 100,
+    monitor_window_size: DEFAULT_MONITOR_WINDOW,
             });
 
         cluster.run().await.unwrap();
@@ -3962,6 +4039,7 @@ mod tests {
                 coverage_target: 1.0,
                 deadline_secs: None,
                 stall_threshold: 2,
+    monitor_window_size: DEFAULT_MONITOR_WINDOW,
             });
 
         cluster.run().await.unwrap();
@@ -4181,6 +4259,7 @@ mod tests {
                 coverage_target: 0.5,
                 deadline_secs: None,
                 stall_threshold: 100,
+    monitor_window_size: DEFAULT_MONITOR_WINDOW,
             },
         );
         cluster.run().await.unwrap();
@@ -4203,6 +4282,7 @@ mod tests {
                 coverage_target: 1.0,
                 deadline_secs: Some(0),
                 stall_threshold: 100,
+    monitor_window_size: DEFAULT_MONITOR_WINDOW,
             },
         );
         // deadline_secs=0 fires on every iteration; run() must return Ok.
@@ -4247,6 +4327,7 @@ mod tests {
                 coverage_target: 0.9,
                 deadline_secs: Some(5),
                 stall_threshold: 100,
+    monitor_window_size: DEFAULT_MONITOR_WINDOW,
             });
         cluster.run().await.unwrap();
         // branch1 was reported as new in the scripted result → oracle should have it covered.
@@ -4278,6 +4359,7 @@ mod tests {
                 coverage_target: 1.0,
                 deadline_secs: Some(5),
                 stall_threshold: 2,
+    monitor_window_size: DEFAULT_MONITOR_WINDOW,
             });
         cluster.run().await.unwrap();
         assert!(cluster.ledger.count() > 0, "expected a bug to be recorded");
@@ -4305,6 +4387,7 @@ mod tests {
                 coverage_target: 1.0,
                 deadline_secs: None,
                 stall_threshold: 3,
+    monitor_window_size: DEFAULT_MONITOR_WINDOW,
             });
         cluster.run().await.unwrap();
         // No new branches produced → oracle coverage unchanged.
@@ -4335,6 +4418,7 @@ mod tests {
                 coverage_target: 1.0,
                 deadline_secs: None,
                 stall_threshold: 3,
+    monitor_window_size: DEFAULT_MONITOR_WINDOW,
             });
         // Must not panic; all sandbox errors are logged and swallowed.
         cluster.run().await.unwrap();

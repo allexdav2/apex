@@ -4,6 +4,9 @@ All notable changes to APEX will be documented in this file.
 
 ## [Unreleased]
 
+### Changed
+- **Wire config parameters** — replaced hardcoded constants with config reads: `OrchestratorConfig::monitor_window_size` now drives `CoverageMonitor` window (was `10`), synth chunk sizes use per-synthesizer `chunk_size` field defaulting to existing values (20 or 10), `build_seed_prompt` accepts `max_branches` parameter (was hardcoded 20); `apex-cli` passes `cfg.agent.monitor_window_size` to orchestrator
+
 ## [0.3.0] — 2026-03-18
 
 ### Added

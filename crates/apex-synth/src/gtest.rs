@@ -8,13 +8,20 @@ use tracing::info;
 
 pub struct CppTestSynthesizer {
     output_dir: PathBuf,
+    chunk_size: usize,
 }
 
 impl CppTestSynthesizer {
     pub fn new(output_dir: impl Into<PathBuf>) -> Self {
         Self {
             output_dir: output_dir.into(),
+            chunk_size: 10,
         }
+    }
+
+    pub fn with_chunk_size(mut self, chunk_size: usize) -> Self {
+        self.chunk_size = chunk_size;
+        self
     }
 
     fn generate_file_content(candidates: &[&TestCandidate]) -> String {
@@ -65,7 +72,7 @@ impl TestSynthesizer for CppTestSynthesizer {
             }
         }
 
-        let chunk_size = 10;
+        let chunk_size = self.chunk_size;
         let mut outputs = Vec::new();
 
         for chunk in unique.chunks(chunk_size) {

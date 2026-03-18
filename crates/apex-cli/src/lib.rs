@@ -1044,6 +1044,7 @@ async fn run_agent_cluster(
         // for typical defaults and was never the user's intent.
         deadline_secs: cfg.agent.deadline_secs.or(Some(1800)),
         stall_threshold: cfg.fuzz.stall_iterations as u64,
+        monitor_window_size: cfg.agent.monitor_window_size,
     };
     cluster = cluster.with_config(orch_config);
 

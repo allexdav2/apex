@@ -4,6 +4,8 @@ All notable changes to APEX will be documented in this file.
 
 ## [Unreleased]
 
+## [0.3.0] — 2026-03-18
+
 ### Added
 - **Concurrent subprocess detectors** — `DetectorPipeline::run_all` now runs subprocess detectors (e.g. dep-audit) concurrently with a semaphore (max 4) instead of sequentially, reducing audit wall time when multiple subprocess detectors are enabled
 - **HUNT+INTEL integration (`hunt_hints` module)** — `apex-detect` now exposes `HuntHints`, `HuntHintConfig`, and `AnalysisReport::hunt_hints()` to convert security findings into priority boosts for the hunt phase; uncovered branches within a configurable line window of a finding receive a severity-scaled boost so the orchestrator explores security-adjacent code first

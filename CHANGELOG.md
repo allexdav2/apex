@@ -5,6 +5,12 @@ All notable changes to APEX will be documented in this file.
 ## [Unreleased]
 
 ### Added
+- **`apex integrate` subcommand** — auto-writes MCP server config for Claude Code, Cursor, and Windsurf with --editor, --global, --dry-run flags and config merging
+- **33 total MCP tools** — full CLI coverage via MCP protocol (was 6, added 27: complexity, dead-code, risk, hotpaths, test-optimize, test-prioritize, blast-radius, secret-scan, data-flow, diff, regression-check, lint, flaky-detect, contracts, attack-surface, verify-boundaries, features, index, docs, license-scan, flag-hygiene, api-diff, compliance-export, api-coverage, service-map, schema-check, test-data)
+- **Scripted test harness** — `ScriptedSandbox` and `ScriptedStrategy` mocks for deterministic orchestrator loop testing
+- **7 orchestrator loop tests** covering all exit conditions
+- **UDS RPC test infrastructure** — worker tests converted from TCP to Unix domain sockets
+- **Fixture project integration tests** — tiny Python project for end-to-end CLI pipeline tests
 - **Dependency audit for C# (.NET)** — `dotnet list package --vulnerable --include-transitive` parser with tabular output support; graceful fallback when `dotnet` is absent
 - **Dependency audit for Ruby** — `bundler-audit check` parser with block-format (Name/Version/Advisory/Criticality/Title/Solution); graceful fallback when `bundler-audit` is absent
 - **Dependency audit for Swift** — `swift-audit check` stub; reports Info finding when tool is not installed

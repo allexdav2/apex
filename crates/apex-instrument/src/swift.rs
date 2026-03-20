@@ -2,7 +2,6 @@ use apex_core::{
     command::{CommandRunner, CommandSpec, RealCommandRunner},
     config::InstrumentTimeouts,
     error::{ApexError, Result},
-    hash::fnv1a_hash,
     traits::Instrumentor,
     types::{BranchId, InstrumentedTarget, Target},
 };
@@ -11,7 +10,9 @@ use std::{
     collections::HashMap,
     path::{Path, PathBuf},
 };
-use tracing::{debug, info};
+use tracing::{debug, info, warn};
+
+use crate::llvm_coverage::{parse_llvm_cov_export, FileFilter};
 
 pub struct SwiftInstrumentor<R: CommandRunner = RealCommandRunner> {
     runner: R,
@@ -49,93 +50,28 @@ impl<R: CommandRunner> SwiftInstrumentor<R> {
 
 /// Parse llvm-cov JSON export into branch entries.
 ///
-/// The JSON format (from `llvm-cov export`) contains:
-/// ```json
-/// { "data": [{ "files": [{ "filename": "...", "segments": [[line, col, count, ...], ...] }] }] }
-/// ```
+/// Delegates to the unified [`crate::llvm_coverage::parse_llvm_cov_export`] parser.
+/// This fixes the previous dual-direction bug where every segment produced 2 BranchIds
+/// (direction=0 and direction=1), inflating branch counts by 2x.
 pub fn parse_llvm_cov_json(
     content: &str,
     target_root: &Path,
 ) -> (Vec<BranchId>, Vec<BranchId>, HashMap<u64, PathBuf>) {
-    let mut all_branches = Vec::new();
-    let mut executed_branches = Vec::new();
-    let mut file_paths: HashMap<u64, PathBuf> = HashMap::new();
-
-    // Minimal JSON parsing using serde_json::Value
-    let Ok(root) = serde_json::from_str::<serde_json::Value>(content) else {
-        return (all_branches, executed_branches, file_paths);
+    let filter = FileFilter {
+        require_under_root: false,
+        skip_test_files: false,
     };
-
-    let Some(data) = root.get("data").and_then(|d| d.as_array()) else {
-        return (all_branches, executed_branches, file_paths);
-    };
-
-    for entry in data {
-        let Some(files) = entry.get("files").and_then(|f| f.as_array()) else {
-            continue;
-        };
-
-        for file in files {
-            let Some(filename) = file.get("filename").and_then(|f| f.as_str()) else {
-                continue;
-            };
-            let Some(segments) = file.get("segments").and_then(|s| s.as_array()) else {
-                continue;
-            };
-
-            let rel_path = derive_relative_path(filename, target_root);
-            let file_id = fnv1a_hash(&rel_path);
-            file_paths
-                .entry(file_id)
-                .or_insert_with(|| PathBuf::from(&rel_path));
-
-            for segment in segments {
-                let Some(seg) = segment.as_array() else {
-                    continue;
-                };
-                if seg.len() < 3 {
-                    continue;
-                }
-
-                let Some(line) = seg[0].as_u64() else {
-                    continue;
-                };
-                let Some(col) = seg[1].as_u64() else {
-                    continue;
-                };
-                let Some(count) = seg[2].as_u64() else {
-                    continue;
-                };
-
-                let start_line = line as u32;
-                let start_col = col as u16;
-
-                let branch_covered = BranchId::new(file_id, start_line, start_col, 0);
-                let branch_uncovered = BranchId::new(file_id, start_line, start_col, 1);
-
-                all_branches.push(branch_covered.clone());
-                all_branches.push(branch_uncovered.clone());
-
-                if count > 0 {
-                    executed_branches.push(branch_covered);
-                } else {
-                    executed_branches.push(branch_uncovered);
-                }
-            }
+    match parse_llvm_cov_export(content.as_bytes(), target_root, &filter) {
+        Ok(result) => (
+            result.branch_ids,
+            result.executed_branch_ids,
+            result.file_paths,
+        ),
+        Err(e) => {
+            warn!("failed to parse llvm-cov JSON: {e}");
+            (Vec::new(), Vec::new(), HashMap::new())
         }
     }
-
-    (all_branches, executed_branches, file_paths)
-}
-
-/// Derive a relative path from an absolute coverage path.
-fn derive_relative_path(coverage_path: &str, target_root: &Path) -> String {
-    let path = Path::new(coverage_path);
-    if let Ok(rel) = path.strip_prefix(target_root) {
-        return rel.to_string_lossy().to_string();
-    }
-    // Fallback: use basename segments
-    coverage_path.to_string()
 }
 
 #[async_trait]
@@ -215,21 +151,24 @@ impl<R: CommandRunner> Instrumentor for SwiftInstrumentor<R> {
 mod tests {
     use super::*;
 
+    // Updated fixture: 6-field segments (with is_gap=false) matching the unified parser's
+    // requirements. The old fixture used 5-field segments which the unified parser correctly
+    // skips (requires has_count, is_region_entry, AND is_gap fields).
     const FIXTURE_LLVM_COV: &str = r#"{
         "data": [{
             "files": [
                 {
                     "filename": "/src/main.swift",
                     "segments": [
-                        [10, 5, 3, true, true],
-                        [14, 5, 0, true, true],
-                        [20, 10, 1, true, true]
+                        [10, 5, 3, true, true, false],
+                        [14, 5, 0, true, true, false],
+                        [20, 10, 1, true, true, false]
                     ]
                 },
                 {
                     "filename": "/src/helper.swift",
                     "segments": [
-                        [5, 3, 0, true, true]
+                        [5, 3, 0, true, true, false]
                     ]
                 }
             ]
@@ -241,9 +180,12 @@ mod tests {
         let tmp = tempfile::tempdir().unwrap();
         let (all, executed, file_paths) = parse_llvm_cov_json(FIXTURE_LLVM_COV, tmp.path());
 
-        // 4 segments -> 4 * 2 directions = 8 branches total
-        assert_eq!(all.len(), 8);
-        assert_eq!(executed.len(), 4);
+        // 4 segments -> 4 branches (1 per segment, direction=0 only)
+        // Previously was 8 due to dual-direction bug
+        assert_eq!(all.len(), 4);
+        // 2 segments have count > 0 (count=3, count=1)
+        // Previously was 4 because the old parser also "executed" direction=1 for count=0
+        assert_eq!(executed.len(), 2);
         assert_eq!(file_paths.len(), 2);
     }
 
@@ -252,9 +194,12 @@ mod tests {
         let tmp = tempfile::tempdir().unwrap();
         let (_, executed, _) = parse_llvm_cov_json(FIXTURE_LLVM_COV, tmp.path());
 
-        let dirs: Vec<u8> = executed.iter().map(|b| b.direction).collect();
-        // count=3 -> dir 0, count=0 -> dir 1, count=1 -> dir 0, count=0 -> dir 1
-        assert_eq!(dirs, vec![0, 1, 0, 1]);
+        // All executed branches have direction=0 (unified parser uses direction=0 only)
+        for b in &executed {
+            assert_eq!(b.direction, 0, "all branches should have direction=0");
+        }
+        // count=3 -> executed, count=0 -> not executed, count=1 -> executed
+        assert_eq!(executed.len(), 2);
     }
 
     #[test]
@@ -278,37 +223,14 @@ mod tests {
 
     #[test]
     fn parse_llvm_cov_line_col() {
-        let json = r#"{"data": [{"files": [{"filename": "a.swift", "segments": [[42, 7, 5, true, true]]}]}]}"#;
+        let json = r#"{"data": [{"files": [{"filename": "a.swift", "segments": [[42, 7, 5, true, true, false]]}]}]}"#;
         let tmp = tempfile::tempdir().unwrap();
         let (all, _, _) = parse_llvm_cov_json(json, tmp.path());
-        assert_eq!(all.len(), 2);
+        // 1 branch per segment (was 2 with old dual-direction parser)
+        assert_eq!(all.len(), 1);
         assert_eq!(all[0].line, 42);
         assert_eq!(all[0].col, 7);
-    }
-
-    #[test]
-    fn derive_relative_path_strips_prefix() {
-        let root = Path::new("/project");
-        let result = derive_relative_path("/project/Sources/main.swift", root);
-        assert_eq!(result, "Sources/main.swift");
-    }
-
-    // --- New tests targeting uncovered regions ---
-
-    // Target: derive_relative_path — no prefix match returns original path
-    #[test]
-    fn derive_relative_path_no_match_returns_original() {
-        let root = Path::new("/project");
-        let result = derive_relative_path("/other/Sources/main.swift", root);
-        assert_eq!(result, "/other/Sources/main.swift");
-    }
-
-    // Target: derive_relative_path — relative path unchanged when no prefix
-    #[test]
-    fn derive_relative_path_relative_unchanged() {
-        let root = Path::new("/project");
-        let result = derive_relative_path("Sources/main.swift", root);
-        assert_eq!(result, "Sources/main.swift");
+        assert_eq!(all[0].direction, 0);
     }
 
     // Target: parse_llvm_cov_json — missing "data" key returns empty
@@ -332,7 +254,8 @@ mod tests {
         assert!(file_paths.is_empty());
     }
 
-    // Target: parse_llvm_cov_json — entry missing "files" key is skipped
+    // Target: parse_llvm_cov_json — entry missing "files" key returns empty
+    // (unified parser returns Err, wrapper maps to empty)
     #[test]
     fn parse_llvm_cov_entry_missing_files_key() {
         let json = r#"{"data": [{"summary": {}}]}"#;
@@ -343,10 +266,10 @@ mod tests {
         assert!(file_paths.is_empty());
     }
 
-    // Target: parse_llvm_cov_json — file entry missing "filename" is skipped
+    // Target: parse_llvm_cov_json — file entry missing "filename" returns empty
     #[test]
     fn parse_llvm_cov_file_missing_filename() {
-        let json = r#"{"data": [{"files": [{"segments": [[10, 5, 1, true, true]]}]}]}"#;
+        let json = r#"{"data": [{"files": [{"segments": [[10, 5, 1, true, true, false]]}]}]}"#;
         let tmp = tempfile::tempdir().unwrap();
         let (all, executed, file_paths) = parse_llvm_cov_json(json, tmp.path());
         assert!(all.is_empty());
@@ -354,28 +277,29 @@ mod tests {
         assert!(file_paths.is_empty());
     }
 
-    // Target: parse_llvm_cov_json — file entry missing "segments" is skipped
+    // Target: parse_llvm_cov_json — file entry missing "segments" returns empty
     #[test]
     fn parse_llvm_cov_file_missing_segments() {
         let json = r#"{"data": [{"files": [{"filename": "foo.swift"}]}]}"#;
         let tmp = tempfile::tempdir().unwrap();
-        let (all, executed, file_paths) = parse_llvm_cov_json(json, tmp.path());
-        // file_paths may or may not be populated — but no branches
+        let (all, executed, _file_paths) = parse_llvm_cov_json(json, tmp.path());
         assert!(all.is_empty());
         assert!(executed.is_empty());
     }
 
-    // Target: parse_llvm_cov_json — segment that is not an array is skipped
+    // Target: parse_llvm_cov_json — segment that is not an array causes parse error
+    // The unified parser returns Err (stricter than the old parser which skipped),
+    // and the wrapper maps Err to empty results.
     #[test]
     fn parse_llvm_cov_segment_not_array() {
-        let json = r#"{"data": [{"files": [{"filename": "a.swift", "segments": ["bad", [10, 5, 1, true, true]]}]}]}"#;
+        let json = r#"{"data": [{"files": [{"filename": "a.swift", "segments": ["bad", [10, 5, 1, true, true, false]]}]}]}"#;
         let tmp = tempfile::tempdir().unwrap();
         let (all, _, _) = parse_llvm_cov_json(json, tmp.path());
-        // Only the valid segment produces branches
-        assert_eq!(all.len(), 2);
+        // Unified parser errors on non-array segment, wrapper returns empty
+        assert!(all.is_empty());
     }
 
-    // Target: parse_llvm_cov_json — segment with fewer than 3 elements is skipped
+    // Target: parse_llvm_cov_json — segment with fewer than 6 elements is skipped
     #[test]
     fn parse_llvm_cov_segment_too_short() {
         let json = r#"{"data": [{"files": [{"filename": "a.swift", "segments": [[10, 5]]}]}]}"#;
@@ -384,53 +308,38 @@ mod tests {
         assert!(all.is_empty());
     }
 
-    // Target: parse_llvm_cov_json — segment where line is not u64 is skipped
+    // Target: 5-field segments are now skipped (require 6 fields)
     #[test]
-    fn parse_llvm_cov_segment_line_not_u64() {
-        let json = r#"{"data": [{"files": [{"filename": "a.swift", "segments": [["bad", 5, 1, true, true]]}]}]}"#;
+    fn parse_llvm_cov_five_field_segment_skipped() {
+        let json = r#"{"data": [{"files": [{"filename": "a.swift", "segments": [[10, 5, 1, true, true]]}]}]}"#;
         let tmp = tempfile::tempdir().unwrap();
         let (all, _, _) = parse_llvm_cov_json(json, tmp.path());
+        // Unified parser requires 6 fields — 5-field segments are skipped
         assert!(all.is_empty());
     }
 
-    // Target: parse_llvm_cov_json — segment where col is not u64 is skipped
+    // Target: count=0 is NOT executed (no direction=1 trick)
     #[test]
-    fn parse_llvm_cov_segment_col_not_u64() {
-        let json = r#"{"data": [{"files": [{"filename": "a.swift", "segments": [[10, "bad", 1, true, true]]}]}]}"#;
+    fn parse_llvm_cov_zero_count_not_executed() {
+        let json = r#"{"data": [{"files": [{"filename": "a.swift", "segments": [[1, 1, 0, true, true, false]]}]}]}"#;
         let tmp = tempfile::tempdir().unwrap();
-        let (all, _, _) = parse_llvm_cov_json(json, tmp.path());
-        assert!(all.is_empty());
-    }
-
-    // Target: parse_llvm_cov_json — segment where count is not u64 is skipped
-    #[test]
-    fn parse_llvm_cov_segment_count_not_u64() {
-        let json = r#"{"data": [{"files": [{"filename": "a.swift", "segments": [[10, 5, "bad", true, true]]}]}]}"#;
-        let tmp = tempfile::tempdir().unwrap();
-        let (all, _, _) = parse_llvm_cov_json(json, tmp.path());
-        assert!(all.is_empty());
-    }
-
-    // Target: parse_llvm_cov_json — count=0 produces direction=1 in executed
-    #[test]
-    fn parse_llvm_cov_zero_count_direction_one() {
-        let json = r#"{"data": [{"files": [{"filename": "a.swift", "segments": [[1, 1, 0, true, true]]}]}]}"#;
-        let tmp = tempfile::tempdir().unwrap();
-        let (_, executed, _) = parse_llvm_cov_json(json, tmp.path());
-        assert_eq!(executed.len(), 1);
-        assert_eq!(executed[0].direction, 1);
+        let (all, executed, _) = parse_llvm_cov_json(json, tmp.path());
+        // 1 branch total (direction=0), 0 executed (count=0 means not executed)
+        assert_eq!(all.len(), 1);
+        assert_eq!(executed.len(), 0);
     }
 
     // Target: parse_llvm_cov_json — multiple data entries both processed
     #[test]
     fn parse_llvm_cov_multiple_data_entries() {
         let json = r#"{"data": [
-            {"files": [{"filename": "a.swift", "segments": [[1, 1, 1, true, true]]}]},
-            {"files": [{"filename": "b.swift", "segments": [[2, 2, 0, true, true]]}]}
+            {"files": [{"filename": "a.swift", "segments": [[1, 1, 1, true, true, false]]}]},
+            {"files": [{"filename": "b.swift", "segments": [[2, 2, 0, true, true, false]]}]}
         ]}"#;
         let tmp = tempfile::tempdir().unwrap();
         let (all, _, file_paths) = parse_llvm_cov_json(json, tmp.path());
-        assert_eq!(all.len(), 4);
+        // 2 branches (1 per segment, was 4 with dual-direction)
+        assert_eq!(all.len(), 2);
         assert_eq!(file_paths.len(), 2);
     }
 
@@ -438,23 +347,23 @@ mod tests {
     #[test]
     fn parse_llvm_cov_duplicate_filename_same_file_id() {
         let json = r#"{"data": [{"files": [
-            {"filename": "/src/a.swift", "segments": [[1, 1, 1, true, true]]},
-            {"filename": "/src/a.swift", "segments": [[2, 1, 0, true, true]]}
+            {"filename": "/src/a.swift", "segments": [[1, 1, 1, true, true, false]]},
+            {"filename": "/src/a.swift", "segments": [[2, 1, 0, true, true, false]]}
         ]}]}"#;
         let root = Path::new("/src");
         let (all, _, file_paths) = parse_llvm_cov_json(json, root);
-        assert_eq!(all[0].file_id, all[2].file_id);
-        // entry().or_insert_with() means only one entry in file_paths
+        assert_eq!(all[0].file_id, all[1].file_id);
         assert_eq!(file_paths.len(), 1);
     }
 
     // Target: parse_llvm_cov_json — unicode filename
     #[test]
     fn parse_llvm_cov_unicode_filename() {
-        let json = "{\"data\": [{\"files\": [{\"filename\": \"/src/\u{6587}\u{4ef6}.swift\", \"segments\": [[1, 1, 2, true, true]]}]}]}";
+        let json = "{\"data\": [{\"files\": [{\"filename\": \"/src/\u{6587}\u{4ef6}.swift\", \"segments\": [[1, 1, 2, true, true, false]]}]}]}";
         let root = Path::new("/src");
         let (all, _, file_paths) = parse_llvm_cov_json(json, root);
-        assert_eq!(all.len(), 2);
+        // 1 branch (was 2 with dual-direction)
+        assert_eq!(all.len(), 1);
         assert_eq!(file_paths.len(), 1);
     }
 
@@ -466,5 +375,28 @@ mod tests {
         let (all, executed, _) = parse_llvm_cov_json(json, tmp.path());
         assert!(all.is_empty());
         assert!(executed.is_empty());
+    }
+
+    // Target: integer booleans (LLVM version compat)
+    #[test]
+    fn parse_llvm_cov_integer_booleans() {
+        let json = r#"{"data": [{"files": [{"filename": "a.swift", "segments": [[10, 5, 3, 1, 1, 0]]}]}]}"#;
+        let tmp = tempfile::tempdir().unwrap();
+        let (all, executed, _) = parse_llvm_cov_json(json, tmp.path());
+        assert_eq!(all.len(), 1);
+        assert_eq!(executed.len(), 1);
+    }
+
+    // Target: gap regions are skipped
+    #[test]
+    fn parse_llvm_cov_gap_region_skipped() {
+        let json = r#"{"data": [{"files": [{"filename": "a.swift", "segments": [
+            [1, 1, 5, true, true, true],
+            [2, 1, 5, true, true, false]
+        ]}]}]}"#;
+        let tmp = tempfile::tempdir().unwrap();
+        let (all, _, _) = parse_llvm_cov_json(json, tmp.path());
+        // Only the non-gap segment
+        assert_eq!(all.len(), 1);
     }
 }

@@ -21,6 +21,8 @@ use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use tracing::{debug, info, warn};
 
+use crate::llvm_coverage::{parse_llvm_cov_export, FileFilter};
+
 /// Coverage instrumentor for C and C++ projects.
 ///
 /// Supports two compilation paths:
@@ -438,79 +440,30 @@ async fn compile_and_run_llvm_cov(
     Ok((all, executed, file_paths, build_dir.to_path_buf()))
 }
 
-/// Interpret a JSON value as a boolean: supports both `true`/`false` literals
-/// and integer `0`/`1` (different LLVM versions use different encodings).
-fn json_truthy(v: &serde_json::Value) -> bool {
-    v.as_bool().unwrap_or_else(|| v.as_u64().unwrap_or(0) != 0)
-}
-
 /// Parse `llvm-cov export` JSON output into branch data.
 ///
-/// The JSON structure has `data[].files[].segments[]` where each segment is
-/// `[line, col, count, has_count, is_region_entry, is_gap_region]`.
+/// Delegates to the unified [`crate::llvm_coverage::parse_llvm_cov_export`] parser.
+/// C/C++ files outside target_root are included (no root-filter) so that
+/// system-relative paths from clang still produce branches.
 pub fn parse_llvm_cov_json(
     json_str: &str,
     target_root: &Path,
 ) -> (Vec<BranchId>, Vec<BranchId>, HashMap<u64, PathBuf>) {
-    let mut all_branches = Vec::new();
-    let mut executed_branches = Vec::new();
-    let mut file_paths: HashMap<u64, PathBuf> = HashMap::new();
-
-    let Ok(json) = serde_json::from_str::<serde_json::Value>(json_str) else {
-        warn!("failed to parse llvm-cov JSON");
-        return (all_branches, executed_branches, file_paths);
+    let filter = FileFilter {
+        require_under_root: false,
+        skip_test_files: false,
     };
-
-    let Some(data_arr) = json.get("data").and_then(|d| d.as_array()) else {
-        return (all_branches, executed_branches, file_paths);
-    };
-
-    for data in data_arr {
-        let Some(files) = data.get("files").and_then(|f| f.as_array()) else {
-            continue;
-        };
-        for file in files {
-            let Some(filename) = file.get("filename").and_then(|f| f.as_str()) else {
-                continue;
-            };
-            let rel = Path::new(filename)
-                .strip_prefix(target_root)
-                .unwrap_or(Path::new(filename));
-            let file_id = fnv1a_hash(&rel.to_string_lossy());
-            file_paths.insert(file_id, rel.to_path_buf());
-
-            // Parse segments: each is [line, col, count, has_count, is_region_entry, is_gap]
-            // In LLVM JSON, has_count and is_region_entry can be bools or ints.
-            let Some(segments) = file.get("segments").and_then(|s| s.as_array()) else {
-                continue;
-            };
-            for seg in segments {
-                let Some(seg_arr) = seg.as_array() else {
-                    continue;
-                };
-                if seg_arr.len() < 5 {
-                    continue;
-                }
-                let line = seg_arr[0].as_u64().unwrap_or(0) as u32;
-                let col = seg_arr[1].as_u64().unwrap_or(0) as u16;
-                let count = seg_arr[2].as_u64().unwrap_or(0);
-                let has_count = json_truthy(&seg_arr[3]);
-                let is_region_entry = json_truthy(&seg_arr[4]);
-
-                if !has_count || !is_region_entry {
-                    continue;
-                }
-
-                let branch = BranchId::new(file_id, line, col, 0);
-                all_branches.push(branch.clone());
-                if count > 0 {
-                    executed_branches.push(branch);
-                }
-            }
+    match parse_llvm_cov_export(json_str.as_bytes(), target_root, &filter) {
+        Ok(result) => (
+            result.branch_ids,
+            result.executed_branch_ids,
+            result.file_paths,
+        ),
+        Err(e) => {
+            warn!("failed to parse llvm-cov JSON: {e}");
+            (Vec::new(), Vec::new(), HashMap::new())
         }
     }
-
-    (all_branches, executed_branches, file_paths)
 }
 
 /// gcc/gcov path: compile with `--coverage`, run binary, run `gcov`,
@@ -1009,13 +962,7 @@ mod tests {
         assert_eq!(executed.len(), 1);
     }
 
-    #[test]
-    fn json_truthy_handles_both_types() {
-        assert!(json_truthy(&serde_json::Value::Bool(true)));
-        assert!(!json_truthy(&serde_json::Value::Bool(false)));
-        assert!(json_truthy(&serde_json::json!(1)));
-        assert!(!json_truthy(&serde_json::json!(0)));
-    }
+    // json_truthy is now tested in llvm_coverage::tests::json_truthy_handles_both_types
 
     #[test]
     fn is_apple_clang_does_not_panic() {

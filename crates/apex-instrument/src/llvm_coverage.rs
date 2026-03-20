@@ -1,379 +1,118 @@
 //! Unified LLVM source-based coverage backend.
 //!
 //! All compiled languages that use LLVM (C, C++, Rust, Swift) produce the
-//! same `llvm-cov export --format=json` output. This module provides:
+//! same `llvm-cov export --format=json` output. This module provides a single
+//! JSON parser (`parse_llvm_cov_export`) so language-specific instrumentors
+//! don't need to duplicate parsing logic.
 //!
-//! 1. A single JSON parser ([`parse_llvm_cov_export`])
-//! 2. Tool resolution ([`resolve_llvm_tools`])
-//! 3. A unified pipeline struct ([`LlvmCoverageBackend`])
-//!
-//! ## Segment filtering
+//! ## Segment layout
 //!
 //! Each segment is `[line, col, count, has_count, is_region_entry, is_gap_region]`.
-//! We keep only segments where `has_count=true AND is_region_entry=true AND is_gap=false`.
-//! This matches the Rust parser (the most correct of the three legacy parsers).
+//! We filter to segments where `has_count=true AND is_region_entry=true AND is_gap=false`.
+//! This matches the Rust parser semantics (the most precise of the three original parsers).
 //!
-//! ## Bool/int compatibility
-//!
-//! Different LLVM versions encode booleans as `true`/`false` or `0`/`1`.
-//! The [`json_truthy`] helper handles both encodings uniformly.
+//! Boolean fields may be encoded as `true`/`false` or `0`/`1` depending on the LLVM
+//! version, so we use [`json_truthy`] for compatibility.
 
 use apex_core::{
-    error::{ApexError, Result},
     hash::fnv1a_hash as fnv1a,
     types::BranchId,
 };
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
-// ---------------------------------------------------------------------------
-// LlvmTools — resolved tool paths
-// ---------------------------------------------------------------------------
-
-/// Resolved paths (or commands) for LLVM coverage tools.
-#[derive(Debug, Clone)]
-pub struct LlvmTools {
-    /// Command to invoke llvm-profdata, e.g. `"llvm-profdata"` or `"xcrun llvm-profdata"`.
-    pub profdata: String,
-    /// Command to invoke llvm-cov, e.g. `"llvm-cov"` or `"xcrun llvm-cov"`.
-    pub llvm_cov: String,
+/// Parsed output from `llvm-cov export --format=json`.
+pub struct ParsedCoverage {
+    /// All coverable branches (one per region-entry segment).
+    pub branch_ids: Vec<BranchId>,
+    /// Branches with execution count > 0.
+    pub executed_branch_ids: Vec<BranchId>,
+    /// Map from file_id to relative path.
+    pub file_paths: HashMap<u64, PathBuf>,
 }
 
-/// Resolve LLVM tool paths by checking (in order):
-///
-/// 1. `LLVM_PROFDATA` / `LLVM_COV` environment variables (explicit override)
-/// 2. `llvm-profdata` / `llvm-cov` directly on PATH
-/// 3. `xcrun llvm-profdata` / `xcrun llvm-cov` (macOS Xcode / CommandLineTools)
-///
-/// Returns an error if neither tool can be found.
-pub fn resolve_llvm_tools() -> Result<LlvmTools> {
-    let profdata = resolve_single_tool("LLVM_PROFDATA", "llvm-profdata")?;
-    let llvm_cov = resolve_single_tool("LLVM_COV", "llvm-cov")?;
-    Ok(LlvmTools { profdata, llvm_cov })
+/// Controls which files are included during parsing.
+pub struct FileFilter {
+    /// Skip files whose absolute path is not under `target_root`.
+    pub require_under_root: bool,
+    /// Skip test files (tests/, *_test.rs, *_tests.rs, etc.).
+    pub skip_test_files: bool,
 }
 
-/// Resolve a single LLVM tool by env var, PATH, or xcrun.
-fn resolve_single_tool(env_var: &str, tool_name: &str) -> Result<String> {
-    // 1. Environment variable override
-    if let Ok(path) = std::env::var(env_var) {
-        if !path.is_empty() {
-            return Ok(path);
+impl Default for FileFilter {
+    fn default() -> Self {
+        FileFilter {
+            require_under_root: true,
+            skip_test_files: false,
         }
-    }
-
-    // 2. Direct on PATH
-    if tool_on_path(tool_name) {
-        return Ok(tool_name.to_string());
-    }
-
-    // 3. xcrun (macOS)
-    if tool_on_path("xcrun") && xcrun_has_tool(tool_name) {
-        return Ok(format!("xcrun {tool_name}"));
-    }
-
-    Err(ApexError::Instrumentation(format!(
-        "{tool_name} not found. Set {env_var} or ensure {tool_name} is on PATH. \
-         On macOS, install Xcode CommandLineTools: xcode-select --install"
-    )))
-}
-
-/// Check if a tool exists on PATH via `which`.
-fn tool_on_path(name: &str) -> bool {
-    std::process::Command::new("which")
-        .arg(name)
-        .stdout(std::process::Stdio::null())
-        .stderr(std::process::Stdio::null())
-        .status()
-        .map(|s| s.success())
-        .unwrap_or(false)
-}
-
-/// Check if xcrun can find a tool.
-fn xcrun_has_tool(name: &str) -> bool {
-    std::process::Command::new("xcrun")
-        .args(["--find", name])
-        .stdout(std::process::Stdio::null())
-        .stderr(std::process::Stdio::null())
-        .status()
-        .map(|s| s.success())
-        .unwrap_or(false)
-}
-
-// ---------------------------------------------------------------------------
-// LlvmCoverageBackend — unified pipeline
-// ---------------------------------------------------------------------------
-
-/// Unified LLVM source-based coverage pipeline for C/C++/Rust/Swift.
-///
-/// Manages output paths for profraw, profdata, and JSON files. Language-specific
-/// compilation and test execution is handled externally; this struct handles
-/// merge, export, and parsing.
-pub struct LlvmCoverageBackend {
-    /// Root directory of the target project.
-    pub target_root: PathBuf,
-    /// Resolved LLVM tool paths.
-    pub tools: LlvmTools,
-    /// Directory where `.profraw` files are collected.
-    pub profraw_dir: PathBuf,
-    /// Path for the merged `.profdata` file.
-    pub profdata_path: PathBuf,
-    /// Path for the exported JSON coverage report.
-    pub json_path: PathBuf,
-}
-
-impl LlvmCoverageBackend {
-    /// Create a new backend for the given target root.
-    ///
-    /// Resolves LLVM tools and sets up output paths under `<target>/.apex/`.
-    pub fn new(target: &Path) -> Result<Self> {
-        let tools = resolve_llvm_tools()?;
-        let apex_dir = target.join(".apex");
-        Ok(Self {
-            target_root: target.to_path_buf(),
-            tools,
-            profraw_dir: apex_dir.join("profraw"),
-            profdata_path: apex_dir.join("coverage.profdata"),
-            json_path: apex_dir.join("coverage").join("llvm-cov.json"),
-        })
-    }
-
-    /// Create a backend with pre-resolved tools (useful for testing).
-    pub fn with_tools(target: &Path, tools: LlvmTools) -> Self {
-        let apex_dir = target.join(".apex");
-        Self {
-            target_root: target.to_path_buf(),
-            tools,
-            profraw_dir: apex_dir.join("profraw"),
-            profdata_path: apex_dir.join("coverage.profdata"),
-            json_path: apex_dir.join("coverage").join("llvm-cov.json"),
-        }
-    }
-
-    /// Merge `.profraw` files into a single `.profdata` file.
-    ///
-    /// Runs: `llvm-profdata merge -sparse <profraw_dir>/*.profraw -o <profdata_path>`
-    pub async fn merge_profraw(&self) -> Result<()> {
-        std::fs::create_dir_all(&self.profraw_dir).map_err(|e| {
-            ApexError::Instrumentation(format!("create profraw dir: {e}"))
-        })?;
-
-        // Collect .profraw files
-        let profraw_files: Vec<PathBuf> = std::fs::read_dir(&self.profraw_dir)
-            .map_err(|e| ApexError::Instrumentation(format!("read profraw dir: {e}")))?
-            .filter_map(|e| e.ok())
-            .map(|e| e.path())
-            .filter(|p| p.extension().is_some_and(|ext| ext == "profraw"))
-            .collect();
-
-        if profraw_files.is_empty() {
-            return Err(ApexError::Instrumentation(
-                "no .profraw files found in profraw directory".into(),
-            ));
-        }
-
-        // Build command: handle "xcrun llvm-profdata" as two tokens
-        let (program, prefix_args) = split_command(&self.tools.profdata);
-
-        let profraw_strs: Vec<String> = profraw_files
-            .iter()
-            .map(|p| p.to_string_lossy().into_owned())
-            .collect();
-
-        let mut args: Vec<&str> = prefix_args.iter().map(|s| s.as_str()).collect();
-        args.push("merge");
-        args.push("-sparse");
-        for s in &profraw_strs {
-            args.push(s);
-        }
-        args.push("-o");
-        let profdata_str = self.profdata_path.to_string_lossy().into_owned();
-        args.push(&profdata_str);
-
-        if let Some(parent) = self.profdata_path.parent() {
-            std::fs::create_dir_all(parent).ok();
-        }
-
-        let output = tokio::process::Command::new(program)
-            .args(&args)
-            .output()
-            .await
-            .map_err(|e| ApexError::Instrumentation(format!("llvm-profdata merge: {e}")))?;
-
-        if !output.status.success() {
-            let stderr = String::from_utf8_lossy(&output.stderr);
-            return Err(ApexError::Instrumentation(format!(
-                "llvm-profdata merge failed (exit {}): {}",
-                output.status.code().unwrap_or(-1),
-                stderr
-            )));
-        }
-
-        Ok(())
-    }
-
-    /// Export coverage as JSON using `llvm-cov export`.
-    ///
-    /// Runs: `llvm-cov export <binary> -instr-profile=<profdata> --format=text`
-    pub async fn export_json(&self, binary_path: &Path) -> Result<()> {
-        let (program, prefix_args) = split_command(&self.tools.llvm_cov);
-
-        let profdata_str = format!("-instr-profile={}", self.profdata_path.display());
-        let binary_str = binary_path.to_string_lossy().into_owned();
-
-        let mut args: Vec<&str> = prefix_args.iter().map(|s| s.as_str()).collect();
-        args.extend(["export", &binary_str, &profdata_str, "--format=text"]);
-
-        let output = tokio::process::Command::new(program)
-            .args(&args)
-            .current_dir(&self.target_root)
-            .output()
-            .await
-            .map_err(|e| ApexError::Instrumentation(format!("llvm-cov export: {e}")))?;
-
-        if !output.status.success() {
-            let stderr = String::from_utf8_lossy(&output.stderr);
-            return Err(ApexError::Instrumentation(format!(
-                "llvm-cov export failed (exit {}): {}",
-                output.status.code().unwrap_or(-1),
-                stderr
-            )));
-        }
-
-        if let Some(parent) = self.json_path.parent() {
-            std::fs::create_dir_all(parent).ok();
-        }
-
-        std::fs::write(&self.json_path, &output.stdout).map_err(|e| {
-            ApexError::Instrumentation(format!("write coverage JSON: {e}"))
-        })?;
-
-        Ok(())
-    }
-
-    /// Parse the exported JSON into branch IDs.
-    ///
-    /// Reads `self.json_path` and delegates to [`parse_llvm_cov_export`].
-    #[allow(clippy::type_complexity)]
-    pub fn parse(
-        &self,
-    ) -> std::result::Result<
-        (Vec<BranchId>, Vec<BranchId>, HashMap<u64, PathBuf>),
-        Box<dyn std::error::Error + Send + Sync>,
-    > {
-        let json = std::fs::read_to_string(&self.json_path)?;
-        parse_llvm_cov_export(&json, &self.target_root)
     }
 }
 
-/// Split a command string like `"xcrun llvm-profdata"` into program + prefix args.
-fn split_command(cmd: &str) -> (&str, Vec<String>) {
-    let parts: Vec<&str> = cmd.split_whitespace().collect();
-    if parts.len() <= 1 {
-        (cmd.trim(), Vec::new())
-    } else {
-        (
-            parts[0],
-            parts[1..].iter().map(|s| s.to_string()).collect(),
-        )
-    }
-}
-
-// ---------------------------------------------------------------------------
-// Unified JSON parser
-// ---------------------------------------------------------------------------
-
-/// Interpret a JSON value as a boolean, supporting both `true`/`false` literals
+/// Interpret a JSON value as a boolean: supports both `true`/`false` literals
 /// and integer `0`/`1` (different LLVM versions use different encodings).
-pub fn json_truthy(val: &serde_json::Value) -> bool {
-    match val {
-        serde_json::Value::Bool(b) => *b,
-        serde_json::Value::Number(n) => n.as_i64().unwrap_or(0) != 0,
-        _ => false,
-    }
+fn json_truthy(v: &serde_json::Value) -> bool {
+    v.as_bool().unwrap_or_else(|| v.as_u64().unwrap_or(0) != 0)
 }
 
-/// Parse `llvm-cov export --format=json` output into branch coverage data.
+/// Parse `llvm-cov export --format=json` output.
 ///
-/// The JSON schema (identical for C, C++, Rust, and Swift):
+/// The JSON schema is the same for C, C++, Rust, and Swift:
 /// ```json
-/// {
-///   "data": [{
-///     "files": [{
-///       "filename": "src/main.rs",
-///       "segments": [
-///         [line, col, count, has_count, is_region_entry, is_gap_region]
-///       ]
-///     }]
-///   }]
-/// }
+/// { "data": [{ "files": [{ "filename": "...", "segments": [...] }] }] }
 /// ```
 ///
-/// ## Filtering
-///
-/// Only segments with all 6 fields where `has_count=true AND is_region_entry=true
-/// AND is_gap=false` are treated as coverable units. Each such segment maps to
-/// a single `BranchId` with `direction=0`.
-///
-/// - `count > 0` means executed
-/// - `count == 0` means coverable but not executed
-///
-/// ## Compatibility
-///
-/// Boolean fields may be encoded as `true`/`false` or `0`/`1` depending on
-/// LLVM version. The [`json_truthy`] helper handles both.
-///
-/// ## File filtering
-///
-/// Files whose absolute path does not start with `target_root` are skipped
-/// (e.g. stdlib, external deps).
-#[allow(clippy::type_complexity)]
+/// Each segment is `[line, col, count, has_count, is_region_entry, is_gap_region]`.
+/// We filter to segments where has_count=true AND is_region_entry=true AND is_gap=false.
 pub fn parse_llvm_cov_export(
-    json_str: &str,
+    bytes: &[u8],
     target_root: &Path,
-) -> std::result::Result<
-    (Vec<BranchId>, Vec<BranchId>, HashMap<u64, PathBuf>),
-    Box<dyn std::error::Error + Send + Sync>,
-> {
-    let v: serde_json::Value = serde_json::from_str(json_str)?;
+    filter: &FileFilter,
+) -> std::result::Result<ParsedCoverage, Box<dyn std::error::Error + Send + Sync>> {
+    let v: serde_json::Value = serde_json::from_slice(bytes)?;
 
     let mut branch_ids: Vec<BranchId> = Vec::new();
     let mut executed_ids: Vec<BranchId> = Vec::new();
     let mut file_paths: HashMap<u64, PathBuf> = HashMap::new();
 
-    let data = v["data"]
-        .as_array()
-        .ok_or("missing or invalid 'data' array")?;
-
+    let data = v["data"].as_array().ok_or("missing data array")?;
     for entry in data {
-        let files = entry["files"]
-            .as_array()
-            .ok_or("missing or invalid 'files' array")?;
-
+        let files = entry["files"].as_array().ok_or("missing files array")?;
         for file in files {
-            let filename = file["filename"]
-                .as_str()
-                .ok_or("missing or invalid 'filename'")?;
+            let filename = file["filename"].as_str().ok_or("missing filename")?;
 
-            // Skip files outside the target root (stdlib, deps, etc.)
+            // Derive relative path from absolute filename
             let abs = Path::new(filename);
             let rel = match abs.strip_prefix(target_root) {
                 Ok(r) => r.to_path_buf(),
-                Err(_) => continue,
+                Err(_) => {
+                    if filter.require_under_root {
+                        continue;
+                    }
+                    PathBuf::from(filename)
+                }
             };
+
+            // Skip test files
+            if filter.skip_test_files {
+                let rel_str = rel.to_string_lossy();
+                if rel_str.starts_with("tests/")
+                    || rel_str.contains("/tests/")
+                    || rel_str.ends_with("_test.rs")
+                    || rel_str.ends_with("_tests.rs")
+                {
+                    continue;
+                }
+            }
 
             let fid = fnv1a(&rel.to_string_lossy());
             file_paths.entry(fid).or_insert_with(|| rel.clone());
 
-            let segments = file["segments"]
-                .as_array()
-                .ok_or("missing or invalid 'segments' array")?;
-
+            let segments = file["segments"].as_array().ok_or("missing segments")?;
             for seg in segments {
-                let arr = seg.as_array().ok_or("segment is not an array")?;
+                let arr = seg.as_array().ok_or("segment not array")?;
                 if arr.len() < 6 {
                     continue;
                 }
-
                 let line = arr[0].as_u64().unwrap_or(0) as u32;
                 let col = arr[1].as_u64().unwrap_or(0).min(u16::MAX as u64) as u16;
                 let count = arr[2].as_u64().unwrap_or(0);
@@ -394,119 +133,23 @@ pub fn parse_llvm_cov_export(
         }
     }
 
-    // Deduplicate (stable order within each file).
+    // Deduplicate.
     branch_ids.sort_by_key(|b| (b.file_id, b.line, b.col));
     branch_ids.dedup();
     executed_ids.sort_by_key(|b| (b.file_id, b.line, b.col));
     executed_ids.dedup();
 
-    Ok((branch_ids, executed_ids, file_paths))
+    Ok(ParsedCoverage {
+        branch_ids,
+        executed_branch_ids: executed_ids,
+        file_paths,
+    })
 }
-
-// ---------------------------------------------------------------------------
-// Tests
-// ---------------------------------------------------------------------------
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    // -- json_truthy ---------------------------------------------------------
-
-    #[test]
-    fn json_truthy_with_bool_true() {
-        assert!(json_truthy(&serde_json::Value::Bool(true)));
-    }
-
-    #[test]
-    fn json_truthy_with_bool_false() {
-        assert!(!json_truthy(&serde_json::Value::Bool(false)));
-    }
-
-    #[test]
-    fn json_truthy_with_int_one() {
-        assert!(json_truthy(&serde_json::json!(1)));
-    }
-
-    #[test]
-    fn json_truthy_with_int_zero() {
-        assert!(!json_truthy(&serde_json::json!(0)));
-    }
-
-    #[test]
-    fn json_truthy_with_negative_int() {
-        // -1 is truthy (non-zero)
-        assert!(json_truthy(&serde_json::json!(-1)));
-    }
-
-    #[test]
-    fn json_truthy_with_null() {
-        assert!(!json_truthy(&serde_json::Value::Null));
-    }
-
-    #[test]
-    fn json_truthy_with_string() {
-        assert!(!json_truthy(&serde_json::json!("true")));
-    }
-
-    // -- resolve_llvm_tools --------------------------------------------------
-
-    #[test]
-    fn resolve_llvm_tools_finds_tools_or_returns_clear_error() {
-        // On most dev machines at least one path will work.
-        // If neither is available, the error should mention what's missing.
-        match resolve_llvm_tools() {
-            Ok(tools) => {
-                assert!(!tools.profdata.is_empty());
-                assert!(!tools.llvm_cov.is_empty());
-            }
-            Err(e) => {
-                let msg = format!("{e}");
-                assert!(
-                    msg.contains("not found"),
-                    "error should say 'not found', got: {msg}"
-                );
-            }
-        }
-    }
-
-    #[test]
-    fn resolve_single_tool_respects_env_var() {
-        // Temporarily set an env var
-        std::env::set_var("TEST_LLVM_TOOL_OVERRIDE", "/custom/llvm-profdata");
-        let result = resolve_single_tool("TEST_LLVM_TOOL_OVERRIDE", "llvm-profdata");
-        std::env::remove_var("TEST_LLVM_TOOL_OVERRIDE");
-        assert_eq!(result.unwrap(), "/custom/llvm-profdata");
-    }
-
-    #[test]
-    fn resolve_single_tool_empty_env_var_skipped() {
-        std::env::set_var("TEST_LLVM_EMPTY_VAR", "");
-        let result = resolve_single_tool("TEST_LLVM_EMPTY_VAR", "nonexistent_tool_xyz_99999");
-        std::env::remove_var("TEST_LLVM_EMPTY_VAR");
-        // Should fail because the tool doesn't exist and env var is empty
-        assert!(result.is_err());
-    }
-
-    // -- split_command -------------------------------------------------------
-
-    #[test]
-    fn split_command_single_word() {
-        let (prog, args) = split_command("llvm-profdata");
-        assert_eq!(prog, "llvm-profdata");
-        assert!(args.is_empty());
-    }
-
-    #[test]
-    fn split_command_xcrun_prefix() {
-        let (prog, args) = split_command("xcrun llvm-profdata");
-        assert_eq!(prog, "xcrun");
-        assert_eq!(args, vec!["llvm-profdata"]);
-    }
-
-    // -- parse_llvm_cov_export -----------------------------------------------
-
-    /// Minimal realistic LLVM coverage JSON fixture.
     fn sample_json(root: &str) -> String {
         format!(
             r#"{{
@@ -549,488 +192,241 @@ mod tests {
         let tmp = tempfile::tempdir().unwrap();
         let root = tmp.path();
         let json = sample_json(root.to_str().unwrap());
+        let filter = FileFilter {
+            require_under_root: true,
+            skip_test_files: true,
+        };
 
-        let (all, exec, fps) = parse_llvm_cov_export(&json, root).unwrap();
-
-        // main.rs: line 5 (covered), line 8 (uncovered), line 12 (covered)
-        //   line 15: !has_count -> skip
-        //   line 20: !is_region_entry -> skip
-        //   line 25: is_gap -> skip
-        // lib.rs: line 3 (covered), line 7 (uncovered)
-        // ops.rs: external -> skip
-        assert_eq!(all.len(), 5);
-        assert_eq!(exec.len(), 3); // lines 5, 12, 3
-        assert_eq!(fps.len(), 2); // main.rs, lib.rs
+        let result = parse_llvm_cov_export(json.as_bytes(), root, &filter).unwrap();
+        assert_eq!(result.branch_ids.len(), 5);
+        assert_eq!(result.executed_branch_ids.len(), 3);
+        assert_eq!(result.file_paths.len(), 2);
     }
 
     #[test]
-    fn parse_skips_external_files() {
+    fn skips_external_files() {
         let tmp = tempfile::tempdir().unwrap();
         let root = tmp.path();
         let json = sample_json(root.to_str().unwrap());
+        let filter = FileFilter {
+            require_under_root: true,
+            skip_test_files: false,
+        };
 
-        let (_, _, fps) = parse_llvm_cov_export(&json, root).unwrap();
-
-        for path in fps.values() {
+        let result = parse_llvm_cov_export(json.as_bytes(), root, &filter).unwrap();
+        for path in result.file_paths.values() {
             let s = path.to_string_lossy();
             assert!(!s.contains("ops.rs"), "should skip external file: {s}");
         }
     }
 
     #[test]
-    fn parse_deduplication() {
+    fn deduplication() {
         let tmp = tempfile::tempdir().unwrap();
         let root = tmp.path();
         let json = format!(
-            r#"{{
-  "data": [{{
-    "files": [{{
-      "filename": "{root}/src/dup.rs",
-      "segments": [
-        [1, 1, 5, true, true, false],
-        [1, 1, 5, true, true, false]
-      ]
-    }}]
-  }}]
-}}"#,
+            r#"{{"data": [{{"files": [{{"filename": "{root}/src/dup.rs", "segments": [[1, 1, 5, true, true, false], [1, 1, 5, true, true, false]]}}]}}]}}"#,
             root = root.to_str().unwrap()
         );
-
-        let (all, exec, _) = parse_llvm_cov_export(&json, root).unwrap();
-        assert_eq!(all.len(), 1);
-        assert_eq!(exec.len(), 1);
+        let filter = FileFilter::default();
+        let result = parse_llvm_cov_export(json.as_bytes(), root, &filter).unwrap();
+        assert_eq!(result.branch_ids.len(), 1);
+        assert_eq!(result.executed_branch_ids.len(), 1);
     }
 
     #[test]
-    fn parse_empty_data() {
+    fn empty_data() {
         let json = r#"{"data": [{"files": []}]}"#;
-        let (all, exec, fps) =
-            parse_llvm_cov_export(json, Path::new("/nonexistent")).unwrap();
-        assert_eq!(all.len(), 0);
-        assert_eq!(exec.len(), 0);
-        assert_eq!(fps.len(), 0);
+        let filter = FileFilter::default();
+        let result = parse_llvm_cov_export(json.as_bytes(), Path::new("/nonexistent"), &filter).unwrap();
+        assert_eq!(result.branch_ids.len(), 0);
+        assert_eq!(result.executed_branch_ids.len(), 0);
+        assert_eq!(result.file_paths.len(), 0);
     }
 
     #[test]
-    fn parse_gap_region_skipped() {
+    fn short_segment_skipped() {
         let tmp = tempfile::tempdir().unwrap();
         let root = tmp.path();
         let json = format!(
-            r#"{{
-  "data": [{{
-    "files": [{{
-      "filename": "{}/src/gap.rs",
-      "segments": [
-        [1, 1, 5, true, true, true],
-        [2, 1, 5, true, true, false]
-      ]
-    }}]
-  }}]
-}}"#,
-            root.display()
+            r#"{{"data": [{{"files": [{{"filename": "{root}/src/s.rs", "segments": [[1, 2, 3, true, true]]}}]}}]}}"#,
+            root = root.to_str().unwrap()
         );
-        let (all, exec, _) = parse_llvm_cov_export(&json, root).unwrap();
-        assert_eq!(all.len(), 1, "gap region should be skipped");
-        assert_eq!(exec.len(), 1);
+        let filter = FileFilter::default();
+        let result = parse_llvm_cov_export(json.as_bytes(), root, &filter).unwrap();
+        assert_eq!(result.branch_ids.len(), 0);
     }
 
     #[test]
-    fn parse_not_region_entry_skipped() {
+    fn invalid_json_returns_error() {
+        let filter = FileFilter::default();
+        let result = parse_llvm_cov_export(b"not json", Path::new("/tmp"), &filter);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn integer_booleans() {
         let tmp = tempfile::tempdir().unwrap();
         let root = tmp.path();
         let json = format!(
-            r#"{{
-  "data": [{{
-    "files": [{{
-      "filename": "{}/src/noentry.rs",
-      "segments": [
-        [1, 1, 5, true, false, false],
-        [2, 1, 5, false, true, false]
-      ]
-    }}]
-  }}]
-}}"#,
-            root.display()
+            r#"{{"data": [{{"files": [{{"filename": "{root}/src/i.c", "segments": [[10, 5, 3, 1, 1, 0]]}}]}}]}}"#,
+            root = root.to_str().unwrap()
         );
-        let (all, _, _) = parse_llvm_cov_export(&json, root).unwrap();
-        assert_eq!(all.len(), 0);
+        let filter = FileFilter::default();
+        let result = parse_llvm_cov_export(json.as_bytes(), root, &filter).unwrap();
+        assert_eq!(result.branch_ids.len(), 1);
+        assert_eq!(result.executed_branch_ids.len(), 1);
     }
 
     #[test]
-    fn parse_short_segment_skipped() {
+    fn gap_region_skipped() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path();
+        let json = format!(
+            r#"{{"data": [{{"files": [{{"filename": "{root}/src/g.rs", "segments": [[1, 1, 5, true, true, true], [2, 1, 5, true, true, false]]}}]}}]}}"#,
+            root = root.to_str().unwrap()
+        );
+        let filter = FileFilter::default();
+        let result = parse_llvm_cov_export(json.as_bytes(), root, &filter).unwrap();
+        assert_eq!(result.branch_ids.len(), 1);
+        assert_eq!(result.executed_branch_ids.len(), 1);
+    }
+
+    #[test]
+    fn skip_test_files() {
         let tmp = tempfile::tempdir().unwrap();
         let root = tmp.path();
         let json = format!(
             r#"{{
   "data": [{{
-    "files": [{{
-      "filename": "{root}/src/short.rs",
-      "segments": [[1, 2, 3, true, true]]
-    }}]
+    "files": [
+      {{"filename": "{root}/src/lib.rs", "segments": [[1, 1, 5, true, true, false]]}},
+      {{"filename": "{root}/tests/integration.rs", "segments": [[1, 1, 3, true, true, false]]}},
+      {{"filename": "{root}/src/foo_test.rs", "segments": [[1, 1, 2, true, true, false]]}},
+      {{"filename": "{root}/src/bar_tests.rs", "segments": [[1, 1, 1, true, true, false]]}}
+    ]
   }}]
 }}"#,
             root = root.to_str().unwrap()
         );
-
-        let (all, _, _) = parse_llvm_cov_export(&json, root).unwrap();
-        assert_eq!(all.len(), 0, "5-field segment should be skipped (need 6)");
+        let filter = FileFilter {
+            require_under_root: true,
+            skip_test_files: true,
+        };
+        let result = parse_llvm_cov_export(json.as_bytes(), root, &filter).unwrap();
+        assert_eq!(result.file_paths.len(), 1);
+        assert_eq!(result.branch_ids.len(), 1);
     }
 
     #[test]
-    fn parse_integer_booleans() {
-        // Some LLVM versions use 0/1 instead of true/false
+    fn direction_always_zero() {
         let tmp = tempfile::tempdir().unwrap();
         let root = tmp.path();
         let json = format!(
-            r#"{{
-  "data": [{{
-    "files": [{{
-      "filename": "{}/src/intbool.rs",
-      "segments": [
-        [10, 5, 3, 1, 1, 0],
-        [15, 1, 0, 1, 1, 0],
-        [20, 1, 5, 0, 1, 0],
-        [25, 1, 5, 1, 0, 0],
-        [30, 1, 5, 1, 1, 1]
-      ]
-    }}]
-  }}]
-}}"#,
-            root.display()
+            r#"{{"data": [{{"files": [{{"filename": "{root}/src/d.swift", "segments": [[1, 1, 0, true, true, false], [2, 1, 5, true, true, false]]}}]}}]}}"#,
+            root = root.to_str().unwrap()
         );
-
-        let (all, exec, _) = parse_llvm_cov_export(&json, root).unwrap();
-        // Only lines 10 and 15 pass all filters (has_count=1, is_entry=1, is_gap=0)
-        assert_eq!(all.len(), 2);
-        assert_eq!(exec.len(), 1); // only line 10 has count > 0
+        let filter = FileFilter::default();
+        let result = parse_llvm_cov_export(json.as_bytes(), root, &filter).unwrap();
+        for b in &result.branch_ids {
+            assert_eq!(b.direction, 0, "all branches should have direction=0");
+        }
     }
 
     #[test]
-    fn parse_all_zero_counts() {
+    fn json_truthy_handles_both_types() {
+        assert!(json_truthy(&serde_json::Value::Bool(true)));
+        assert!(!json_truthy(&serde_json::Value::Bool(false)));
+        assert!(json_truthy(&serde_json::json!(1)));
+        assert!(!json_truthy(&serde_json::json!(0)));
+    }
+
+    #[test]
+    fn not_region_entry_skipped() {
         let tmp = tempfile::tempdir().unwrap();
         let root = tmp.path();
         let json = format!(
-            r#"{{
-  "data": [{{
-    "files": [{{
-      "filename": "{}/src/zero.rs",
-      "segments": [
-        [1, 1, 0, true, true, false],
-        [5, 1, 0, true, true, false]
-      ]
-    }}]
-  }}]
-}}"#,
-            root.display()
+            r#"{{"data": [{{"files": [{{"filename": "{root}/src/n.rs", "segments": [[1, 1, 5, true, false, false], [2, 1, 5, false, true, false]]}}]}}]}}"#,
+            root = root.to_str().unwrap()
         );
-        let (all, exec, fps) = parse_llvm_cov_export(&json, root).unwrap();
-        assert_eq!(all.len(), 2);
-        assert_eq!(exec.len(), 0);
-        assert_eq!(fps.len(), 1);
+        let filter = FileFilter::default();
+        let result = parse_llvm_cov_export(json.as_bytes(), root, &filter).unwrap();
+        assert_eq!(result.branch_ids.len(), 0);
     }
 
     #[test]
-    fn parse_multiple_data_entries() {
+    fn col_clamped_to_u16_max() {
         let tmp = tempfile::tempdir().unwrap();
         let root = tmp.path();
         let json = format!(
-            r#"{{
-  "data": [
-    {{
-      "files": [{{
-        "filename": "{root}/src/a.rs",
-        "segments": [[1, 1, 1, true, true, false]]
-      }}]
-    }},
-    {{
-      "files": [{{
-        "filename": "{root}/src/b.rs",
-        "segments": [[2, 1, 0, true, true, false]]
-      }}]
-    }}
-  ]
-}}"#,
-            root = root.display()
+            r#"{{"data": [{{"files": [{{"filename": "{root}/src/c.rs", "segments": [[1, 70000, 1, true, true, false]]}}]}}]}}"#,
+            root = root.to_str().unwrap()
         );
-        let (all, exec, fps) = parse_llvm_cov_export(&json, root).unwrap();
-        assert_eq!(all.len(), 2);
-        assert_eq!(exec.len(), 1);
-        assert_eq!(fps.len(), 2);
+        let filter = FileFilter::default();
+        let result = parse_llvm_cov_export(json.as_bytes(), root, &filter).unwrap();
+        assert_eq!(result.branch_ids[0].col, 65535);
     }
 
     #[test]
-    fn parse_col_preserved() {
+    fn multiple_data_entries() {
         let tmp = tempfile::tempdir().unwrap();
         let root = tmp.path();
         let json = format!(
-            r#"{{
-  "data": [{{
-    "files": [{{
-      "filename": "{}/src/col.rs",
-      "segments": [[10, 42, 1, true, true, false]]
-    }}]
-  }}]
-}}"#,
-            root.display()
+            r#"{{"data": [
+  {{"files": [{{"filename": "{root}/src/a.rs", "segments": [[1, 1, 1, true, true, false]]}}]}},
+  {{"files": [{{"filename": "{root}/src/b.rs", "segments": [[2, 1, 0, true, true, false]]}}]}}
+]}}"#,
+            root = root.to_str().unwrap()
         );
-        let (all, _, _) = parse_llvm_cov_export(&json, root).unwrap();
-        assert_eq!(all.len(), 1);
-        assert_eq!(all[0].line, 10);
-        assert_eq!(all[0].col, 42);
-        assert_eq!(all[0].direction, 0);
+        let filter = FileFilter::default();
+        let result = parse_llvm_cov_export(json.as_bytes(), root, &filter).unwrap();
+        assert_eq!(result.branch_ids.len(), 2);
+        assert_eq!(result.executed_branch_ids.len(), 1);
+        assert_eq!(result.file_paths.len(), 2);
     }
 
     #[test]
-    fn parse_col_clamped_to_u16_max() {
-        let tmp = tempfile::tempdir().unwrap();
-        let root = tmp.path();
-        let json = format!(
-            r#"{{
-  "data": [{{
-    "files": [{{
-      "filename": "{}/src/bigcol.rs",
-      "segments": [[1, 70000, 1, true, true, false]]
-    }}]
-  }}]
-}}"#,
-            root.display()
-        );
-        let (all, _, _) = parse_llvm_cov_export(&json, root).unwrap();
-        assert_eq!(all.len(), 1);
-        assert_eq!(all[0].col, u16::MAX);
-    }
-
-    #[test]
-    fn parse_invalid_json() {
-        let result = parse_llvm_cov_export("not json", Path::new("/tmp"));
+    fn missing_data_key_errors() {
+        let filter = FileFilter::default();
+        let result = parse_llvm_cov_export(br#"{"not_data": []}"#, Path::new("/tmp"), &filter);
         assert!(result.is_err());
     }
 
     #[test]
-    fn parse_missing_data_key() {
-        let result = parse_llvm_cov_export(r#"{"not_data": []}"#, Path::new("/tmp"));
-        assert!(result.is_err());
-    }
-
-    #[test]
-    fn parse_missing_files_key() {
-        let result =
-            parse_llvm_cov_export(r#"{"data": [{"not_files": []}]}"#, Path::new("/tmp"));
-        assert!(result.is_err());
-    }
-
-    #[test]
-    fn parse_missing_filename() {
+    fn missing_files_key_errors() {
+        let filter = FileFilter::default();
         let result = parse_llvm_cov_export(
-            r#"{"data": [{"files": [{"no_filename": true, "segments": []}]}]}"#,
+            br#"{"data": [{"not_files": []}]}"#,
             Path::new("/tmp"),
+            &filter,
         );
         assert!(result.is_err());
     }
 
     #[test]
-    fn parse_missing_segments() {
-        let tmp = tempfile::tempdir().unwrap();
-        let root = tmp.path();
-        let json = format!(
-            r#"{{"data": [{{"files": [{{"filename": "{}/src/a.rs"}}]}}]}}"#,
-            root.display()
+    fn missing_filename_errors() {
+        let filter = FileFilter::default();
+        let result = parse_llvm_cov_export(
+            br#"{"data": [{"files": [{"no_filename": true, "segments": []}]}]}"#,
+            Path::new("/tmp"),
+            &filter,
         );
-        let result = parse_llvm_cov_export(&json, root);
         assert!(result.is_err());
     }
 
     #[test]
-    fn parse_segment_not_array() {
+    fn require_under_root_false_includes_external() {
         let tmp = tempfile::tempdir().unwrap();
         let root = tmp.path();
         let json = format!(
-            r#"{{
-  "data": [{{
-    "files": [{{
-      "filename": "{}/src/bad.rs",
-      "segments": ["not_an_array"]
-    }}]
-  }}]
-}}"#,
-            root.display()
+            r#"{{"data": [{{"files": [{{"filename": "/external/lib.c", "segments": [[1, 1, 5, true, true, false]]}}]}}]}}"#,
         );
-        let result = parse_llvm_cov_export(&json, root);
-        assert!(result.is_err());
-    }
-
-    #[test]
-    fn parse_empty_segments() {
-        let tmp = tempfile::tempdir().unwrap();
-        let root = tmp.path();
-        let json = format!(
-            r#"{{
-  "data": [{{
-    "files": [{{
-      "filename": "{}/src/empty_seg.rs",
-      "segments": []
-    }}]
-  }}]
-}}"#,
-            root.display()
-        );
-        let (all, exec, fps) = parse_llvm_cov_export(&json, root).unwrap();
-        assert_eq!(all.len(), 0);
-        assert_eq!(exec.len(), 0);
-        // File is registered even with empty segments
-        assert_eq!(fps.len(), 1);
-    }
-
-    #[test]
-    fn parse_file_paths_deduplicated() {
-        let tmp = tempfile::tempdir().unwrap();
-        let root = tmp.path();
-        let json = format!(
-            r#"{{
-  "data": [
-    {{
-      "files": [{{
-        "filename": "{root}/src/same.rs",
-        "segments": [[1, 1, 1, true, true, false]]
-      }}]
-    }},
-    {{
-      "files": [{{
-        "filename": "{root}/src/same.rs",
-        "segments": [[2, 1, 0, true, true, false]]
-      }}]
-    }}
-  ]
-}}"#,
-            root = root.display()
-        );
-        let (all, _, fps) = parse_llvm_cov_export(&json, root).unwrap();
-        assert_eq!(all.len(), 2);
-        assert_eq!(fps.len(), 1);
-    }
-
-    #[test]
-    fn parse_empty_object() {
-        let result = parse_llvm_cov_export("{}", Path::new("/tmp"));
-        assert!(result.is_err());
-    }
-
-    // -- LlvmCoverageBackend ------------------------------------------------
-
-    #[test]
-    fn backend_with_tools_sets_paths() {
-        let tools = LlvmTools {
-            profdata: "llvm-profdata".to_string(),
-            llvm_cov: "llvm-cov".to_string(),
+        let filter = FileFilter {
+            require_under_root: false,
+            skip_test_files: false,
         };
-        let backend = LlvmCoverageBackend::with_tools(Path::new("/my/project"), tools);
-
-        assert_eq!(backend.target_root, PathBuf::from("/my/project"));
-        assert_eq!(
-            backend.profraw_dir,
-            PathBuf::from("/my/project/.apex/profraw")
-        );
-        assert_eq!(
-            backend.profdata_path,
-            PathBuf::from("/my/project/.apex/coverage.profdata")
-        );
-        assert_eq!(
-            backend.json_path,
-            PathBuf::from("/my/project/.apex/coverage/llvm-cov.json")
-        );
-    }
-
-    #[test]
-    fn backend_parse_reads_json_file() {
-        let tmp = tempfile::tempdir().unwrap();
-        let root = tmp.path();
-
-        let tools = LlvmTools {
-            profdata: "llvm-profdata".to_string(),
-            llvm_cov: "llvm-cov".to_string(),
-        };
-        let backend = LlvmCoverageBackend::with_tools(root, tools);
-
-        // Write a coverage JSON file at the expected path
-        std::fs::create_dir_all(backend.json_path.parent().unwrap()).unwrap();
-        let json = sample_json(root.to_str().unwrap());
-        std::fs::write(&backend.json_path, &json).unwrap();
-
-        let (all, exec, fps) = backend.parse().unwrap();
-        assert_eq!(all.len(), 5);
-        assert_eq!(exec.len(), 3);
-        assert_eq!(fps.len(), 2);
-    }
-
-    #[test]
-    fn backend_parse_missing_file_errors() {
-        let tools = LlvmTools {
-            profdata: "llvm-profdata".to_string(),
-            llvm_cov: "llvm-cov".to_string(),
-        };
-        let backend =
-            LlvmCoverageBackend::with_tools(Path::new("/nonexistent/project"), tools);
-
-        let result = backend.parse();
-        assert!(result.is_err());
-    }
-
-    #[test]
-    fn parse_mixed_bool_and_int_encoding() {
-        // Mix of bool and int encoding in the same file (shouldn't happen but
-        // the parser should handle it gracefully).
-        let tmp = tempfile::tempdir().unwrap();
-        let root = tmp.path();
-        let json = format!(
-            r#"{{
-  "data": [{{
-    "files": [{{
-      "filename": "{}/src/mixed.rs",
-      "segments": [
-        [1, 1, 5, true, true, false],
-        [2, 1, 3, 1, 1, 0],
-        [3, 1, 0, true, 1, false],
-        [4, 1, 0, 1, true, 0]
-      ]
-    }}]
-  }}]
-}}"#,
-            root.display()
-        );
-        let (all, exec, _) = parse_llvm_cov_export(&json, root).unwrap();
-        assert_eq!(all.len(), 4);
-        assert_eq!(exec.len(), 2); // lines 1 and 2 have count > 0
-    }
-
-    #[test]
-    fn parse_direction_always_zero() {
-        // Verify the unified parser always uses direction=0 (no dual-direction)
-        let tmp = tempfile::tempdir().unwrap();
-        let root = tmp.path();
-        let json = format!(
-            r#"{{
-  "data": [{{
-    "files": [{{
-      "filename": "{}/src/dir.rs",
-      "segments": [
-        [1, 1, 5, true, true, false],
-        [2, 1, 0, true, true, false]
-      ]
-    }}]
-  }}]
-}}"#,
-            root.display()
-        );
-        let (all, exec, _) = parse_llvm_cov_export(&json, root).unwrap();
-
-        for bid in &all {
-            assert_eq!(bid.direction, 0, "all branches should have direction=0");
-        }
-        for bid in &exec {
-            assert_eq!(bid.direction, 0, "executed branches should have direction=0");
-        }
-        // Uncovered line (count=0) should NOT appear in executed
-        assert_eq!(all.len(), 2);
-        assert_eq!(exec.len(), 1);
+        let result = parse_llvm_cov_export(json.as_bytes(), root, &filter).unwrap();
+        assert_eq!(result.branch_ids.len(), 1);
+        assert_eq!(result.file_paths.len(), 1);
     }
 }

@@ -1120,7 +1120,6 @@ fn preflight_check(
     lang: Language,
     target: &std::path::Path,
 ) -> std::result::Result<apex_core::traits::PreflightInfo, apex_core::error::ApexError> {
-    use apex_core::traits::LanguageRunner;
     let runner_check = |r: &dyn apex_core::traits::LanguageRunner| r.preflight_check(target);
     match lang {
         Language::Python => runner_check(&PythonRunner::new()),

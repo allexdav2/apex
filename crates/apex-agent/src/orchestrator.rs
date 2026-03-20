@@ -3410,7 +3410,7 @@ mod tests {
 
     #[test]
     fn orchestrator_with_driller_escalation() {
-        use crate::driller::{DrillerEscalation, DrillerStrategy, StuckDetector};
+        use crate::driller::{DrillerEscalation, DrillerStrategy};
         use apex_symbolic::traits::Solver;
 
         struct NoopSolver;
@@ -3429,7 +3429,7 @@ mod tests {
         }
 
         let solver = Arc::new(std::sync::Mutex::new(NoopSolver));
-        let strategy = Arc::new(std::sync::Mutex::new(DrillerStrategy::new(solver, 10)));
+        let strategy = Arc::new(DrillerStrategy::new(solver, 10));
         let escalation = DrillerEscalation::new(strategy, 5, 0);
 
         let oracle = Arc::new(CoverageOracle::new());

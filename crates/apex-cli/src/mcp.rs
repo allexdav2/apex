@@ -17,7 +17,7 @@ use rmcp::{
     ErrorData as McpError, ServerHandler, ServiceExt,
 };
 
-use std::process::Stdio;
+use std::{process::Stdio, time::Duration};
 use tokio::process::Command;
 
 // ---------------------------------------------------------------------------
@@ -425,20 +425,40 @@ pub(crate) fn validate_target_path(target: &str) -> Result<String, McpError> {
 // Subprocess helper
 // ---------------------------------------------------------------------------
 
+/// Maximum wall-clock time allowed for a single `apex` subprocess invoked via MCP.
+///
+/// Analysis commands (audit, run, index) can be slow on large repos, but 10 minutes
+/// is a reasonable upper bound before we declare the operation hung and return an
+/// error to the AI host rather than blocking the MCP server indefinitely.
+const APEX_COMMAND_TIMEOUT: Duration = Duration::from_secs(600);
+
 /// Run `apex <args...>` as a subprocess, capturing stdout.
 ///
 /// Stderr is inherited so tracing output goes to the MCP host's log.
+/// The call is wrapped in a `tokio::time::timeout` of [`APEX_COMMAND_TIMEOUT`]
+/// so a hung subprocess cannot block the MCP server indefinitely.
 pub(crate) async fn run_apex_command(args: &[&str]) -> Result<String, McpError> {
     let exe = std::env::current_exe()
         .map_err(|e| McpError::internal_error(format!("cannot locate apex binary: {e}"), None))?;
 
-    let output = Command::new(&exe)
+    let child_future = Command::new(&exe)
         .args(args)
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
-        .output()
+        .output();
+
+    let output = tokio::time::timeout(APEX_COMMAND_TIMEOUT, child_future)
         .await
+        .map_err(|_| {
+            McpError::internal_error(
+                format!(
+                    "apex command timed out after {}s",
+                    APEX_COMMAND_TIMEOUT.as_secs()
+                ),
+                None,
+            )
+        })?
         .map_err(|e| McpError::internal_error(format!("failed to spawn apex: {e}"), None))?;
 
     let stdout = String::from_utf8_lossy(&output.stdout).to_string();

@@ -496,7 +496,7 @@ mod tests {
     fn from_config_enables_all_by_default() {
         let cfg = DetectConfig::default();
         let pipeline = DetectorPipeline::from_config(&cfg, Language::Rust);
-        assert_eq!(pipeline.detectors.len(), 37);
+        assert_eq!(pipeline.detectors.len(), 43);
     }
 
     #[test]
@@ -899,7 +899,7 @@ mod tests {
         // Python should get all except unsafe
         let cfg = DetectConfig::default();
         let pipeline = DetectorPipeline::from_config(&cfg, Language::Python);
-        assert_eq!(pipeline.detectors.len(), 30);
+        assert_eq!(pipeline.detectors.len(), 36);
         assert!(pipeline
             .detectors
             .iter()

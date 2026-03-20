@@ -31,6 +31,7 @@ use std::{
     collections::{HashMap, HashSet},
     path::PathBuf,
     sync::Arc,
+    time::Duration,
 };
 use tracing::{debug, info, warn};
 
@@ -2417,28 +2418,40 @@ async fn run_diff(args: DiffArgs) -> Result<()> {
     eprintln!("Building index for base ref '{}'...", args.base);
 
     let worktree_dir = target_path.join(format!(".apex-diff-{}", args.base.replace('/', "-")));
-    let worktree_result = tokio::process::Command::new("git")
-        .args([
-            "worktree",
-            "add",
-            "--",
-            &worktree_dir.to_string_lossy(),
-            &args.base,
-        ])
-        .current_dir(&target_path)
-        .output()
-        .await;
+    // `git worktree add` performs a checkout which may involve object fetching on
+    // remote-backed repos.  Bound it so `apex diff` cannot stall indefinitely.
+    let git_timeout = Duration::from_secs(60);
+    let worktree_result = tokio::time::timeout(
+        git_timeout,
+        tokio::process::Command::new("git")
+            .args([
+                "worktree",
+                "add",
+                "--",
+                &worktree_dir.to_string_lossy(),
+                &args.base,
+            ])
+            .current_dir(&target_path)
+            .output(),
+    )
+    .await;
 
     let _cleanup_worktree = scopeguard_worktree(&target_path, &worktree_dir);
 
     match worktree_result {
-        Ok(output) if output.status.success() => {}
-        Ok(output) => {
+        Ok(Ok(output)) if output.status.success() => {}
+        Ok(Ok(output)) => {
             let stderr = String::from_utf8_lossy(&output.stderr);
             return Err(color_eyre::eyre::eyre!("git worktree add failed: {stderr}"));
         }
-        Err(e) => {
+        Ok(Err(e)) => {
             return Err(color_eyre::eyre::eyre!("git worktree add: {e}"));
+        }
+        Err(_) => {
+            return Err(color_eyre::eyre::eyre!(
+                "git worktree add timed out after {}s",
+                git_timeout.as_secs()
+            ));
         }
     }
 

@@ -47,6 +47,9 @@ pub unsafe extern "C" fn __sanitizer_cov_trace_pc_guard_init(start: *mut u32, st
 
 /// Called at each instrumented edge. Increments the counter for this guard.
 ///
+/// Uses `Release` success ordering so that a subsequent `Acquire` load in
+/// `read_bitmap()` observes the updated counter value across threads.
+///
 /// # Safety
 /// Called by compiler-inserted code. `guard` points to a valid u32.
 #[no_mangle]
@@ -56,7 +59,7 @@ pub unsafe extern "C" fn __sanitizer_cov_trace_pc_guard(guard: *mut u32) {
     }
     let idx = *guard as usize;
     if idx < MAX_EDGES {
-        let _ = COUNTERS[idx].fetch_update(Ordering::Relaxed, Ordering::Relaxed, |v| {
+        let _ = COUNTERS[idx].fetch_update(Ordering::Release, Ordering::Relaxed, |v| {
             if v < 255 {
                 Some(v + 1)
             } else {
@@ -116,15 +119,21 @@ static CMP_BUFFER: [AtomicU8; MAX_CMP_ENTRIES * CMP_ENTRY_SIZE] = {
 static CMP_COUNT: AtomicUsize = AtomicUsize::new(0);
 
 fn record_cmp(arg1: u64, arg2: u64, size: u8) {
+    // Relaxed is sufficient for the index allocation: the entry slot is private
+    // to this call until the last Release store below makes it visible.
     let idx = CMP_COUNT.fetch_add(1, Ordering::Relaxed) % MAX_CMP_ENTRIES;
     let base = idx * CMP_ENTRY_SIZE;
-    CMP_BUFFER[base].store(size, Ordering::Relaxed);
+    // Write arg bytes with Relaxed — all within the same thread, ordered by the
+    // final Release store to the size field which acts as the publish gate.
     let a1 = arg1.to_le_bytes();
     let a2 = arg2.to_le_bytes();
     for i in 0..8 {
         CMP_BUFFER[base + 1 + i].store(a1[i], Ordering::Relaxed);
         CMP_BUFFER[base + 9 + i].store(a2[i], Ordering::Relaxed);
     }
+    // Release-store the size last: a reader that loads this field with Acquire
+    // is guaranteed to observe all the arg byte stores above.
+    CMP_BUFFER[base].store(size, Ordering::Release);
 }
 
 /// # Safety
@@ -156,12 +165,20 @@ pub unsafe extern "C" fn __sanitizer_cov_trace_cmp8(arg1: u64, arg2: u64) {
 }
 
 /// Read the current CMP log. Returns entries recorded since last reset.
+///
+/// Loads `CMP_COUNT` with `Relaxed` (the caller is responsible for
+/// synchronizing with the execution thread before calling, e.g. by joining
+/// the thread or using a channel). The size field of each entry is loaded
+/// with `Acquire` to pair with the `Release` store in `record_cmp`, ensuring
+/// the arg bytes written before that store are visible here.
 pub fn read_cmp_log() -> Vec<CmpLogEntry> {
     let count = CMP_COUNT.load(Ordering::Relaxed).min(MAX_CMP_ENTRIES);
     let mut entries = Vec::with_capacity(count);
     for i in 0..count {
         let base = i * CMP_ENTRY_SIZE;
-        let size = CMP_BUFFER[base].load(Ordering::Relaxed);
+        // Acquire-load the size: pairs with the Release store in record_cmp,
+        // establishing happens-before for the arg byte stores above it.
+        let size = CMP_BUFFER[base].load(Ordering::Acquire);
         if size == 0 {
             continue;
         }
@@ -181,10 +198,15 @@ pub fn read_cmp_log() -> Vec<CmpLogEntry> {
 }
 
 /// Reset the CMP log (between executions).
+///
+/// Stores to `CMP_BUFFER` with `Release` so that a subsequent `Acquire`
+/// load of a size cell in `read_cmp_log` observes zero and skips stale
+/// entries. `CMP_COUNT` is reset with `Release` to pair with future
+/// `Relaxed` fetch_add calls in `record_cmp` that observe the fresh baseline.
 pub fn reset_cmp_log() {
-    CMP_COUNT.store(0, Ordering::Relaxed);
+    CMP_COUNT.store(0, Ordering::Release);
     for cell in CMP_BUFFER.iter() {
-        cell.store(0, Ordering::Relaxed);
+        cell.store(0, Ordering::Release);
     }
 }
 

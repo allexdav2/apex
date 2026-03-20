@@ -152,14 +152,21 @@ impl StuckDetector {
 }
 
 /// Wraps StuckDetector + DrillerStrategy for escalation decisions.
+///
+/// `DrillerStrategy` manages all mutable state via its own internal `Mutex`
+/// guards (`constraints`, `solver`). The outer `Arc<Mutex<…>>` that existed
+/// here was redundant and caused a mutex-across-await hazard: `escalate()`
+/// held the `std::sync::Mutex` guard while calling `suggest_inputs().await`,
+/// risking deadlock when Tokio parks the task. Changed to `Arc<DrillerStrategy>`
+/// — interior mutability is already handled inside `DrillerStrategy`.
 pub struct DrillerEscalation {
     detector: StuckDetector,
-    strategy: Arc<Mutex<DrillerStrategy>>,
+    strategy: Arc<DrillerStrategy>,
 }
 
 impl DrillerEscalation {
     pub fn new(
-        strategy: Arc<Mutex<DrillerStrategy>>,
+        strategy: Arc<DrillerStrategy>,
         plateau_window: usize,
         threshold: usize,
     ) -> Self {
@@ -180,10 +187,12 @@ impl DrillerEscalation {
     }
 
     /// Perform escalation: use DrillerStrategy to generate constraint-solving seeds.
-    #[allow(clippy::await_holding_lock)]
+    ///
+    /// No `std::sync::Mutex` guard is held across the `.await` — `strategy` is
+    /// an `Arc<DrillerStrategy>` and `suggest_inputs` takes `&self`, acquiring
+    /// its own fine-grained locks only for the duration of each synchronous step.
     pub async fn escalate(&mut self, ctx: &ExplorationContext) -> Result<Vec<InputSeed>> {
-        let strategy = self.strategy.lock().unwrap_or_else(|e| e.into_inner());
-        let seeds = strategy.suggest_inputs(ctx).await?;
+        let seeds = self.strategy.suggest_inputs(ctx).await?;
         if !seeds.is_empty() {
             self.detector.reset();
         }
@@ -1142,7 +1151,7 @@ mod tests {
     #[test]
     fn escalation_not_stuck_initially() {
         let solver = Arc::new(Mutex::new(StubSolver::solvable()));
-        let strategy = Arc::new(Mutex::new(DrillerStrategy::new(solver, 10)));
+        let strategy = Arc::new(DrillerStrategy::new(solver, 10));
         let esc = DrillerEscalation::new(strategy, 5, 0);
         assert!(!esc.should_escalate());
     }
@@ -1150,7 +1159,7 @@ mod tests {
     #[test]
     fn escalation_delegates_to_stuck_detector() {
         let solver = Arc::new(Mutex::new(StubSolver::solvable()));
-        let strategy = Arc::new(Mutex::new(DrillerStrategy::new(solver, 10)));
+        let strategy = Arc::new(DrillerStrategy::new(solver, 10));
         let mut esc = DrillerEscalation::new(strategy, 3, 0);
         for i in 0..3 {
             esc.record(i, 50);
@@ -1161,7 +1170,7 @@ mod tests {
     #[test]
     fn escalation_record_forwards_to_detector() {
         let solver = Arc::new(Mutex::new(StubSolver::solvable()));
-        let strategy = Arc::new(Mutex::new(DrillerStrategy::new(solver, 10)));
+        let strategy = Arc::new(DrillerStrategy::new(solver, 10));
         let mut esc = DrillerEscalation::new(strategy, 5, 0);
         // Record fewer than window → not stuck
         esc.record(0, 10);
@@ -1172,7 +1181,7 @@ mod tests {
     #[test]
     fn escalation_becomes_stuck() {
         let solver = Arc::new(Mutex::new(StubSolver::solvable()));
-        let strategy = Arc::new(Mutex::new(DrillerStrategy::new(solver, 10)));
+        let strategy = Arc::new(DrillerStrategy::new(solver, 10));
         let mut esc = DrillerEscalation::new(strategy, 4, 0);
         for i in 0..4 {
             esc.record(i, 100);
@@ -1183,18 +1192,15 @@ mod tests {
     #[tokio::test]
     async fn escalation_resets_on_successful_escalate() {
         let solver = Arc::new(Mutex::new(StubSolver::solvable()));
-        let strategy = Arc::new(Mutex::new(DrillerStrategy::new(solver, 10)));
+        let strategy = Arc::new(DrillerStrategy::new(solver, 10));
 
         // Record a constraint so the solver returns seeds
-        {
-            let s = strategy.lock().unwrap();
-            let branch = BranchId::new(1, 10, 0, 0);
-            s.record_constraints(vec![PathConstraint {
-                branch,
-                smtlib2: "(assert true)".into(),
-                direction_taken: true,
-            }]);
-        }
+        let branch = BranchId::new(1, 10, 0, 0);
+        strategy.record_constraints(vec![PathConstraint {
+            branch,
+            smtlib2: "(assert true)".into(),
+            direction_taken: true,
+        }]);
 
         let mut esc = DrillerEscalation::new(strategy, 3, 0);
         for i in 0..3 {

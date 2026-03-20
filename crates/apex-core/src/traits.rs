@@ -43,7 +43,7 @@ pub trait TestSynthesizer: Send + Sync {
 /// Each language runner populates the fields relevant to its ecosystem.
 /// Callers can inspect `missing_tools` to decide whether to proceed, and
 /// `warnings` for non-fatal issues worth surfacing to the user.
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, serde::Serialize)]
 pub struct PreflightInfo {
     /// Build system detected (e.g. "gradle", "cmake", "poetry").
     pub build_system: Option<String>,
@@ -69,6 +69,11 @@ impl PreflightInfo {
     /// Returns true if any required tools are missing.
     pub fn has_missing_tools(&self) -> bool {
         !self.missing_tools.is_empty()
+    }
+
+    /// Serialize to a JSON string for embedding in agent prompts.
+    pub fn to_json(&self) -> String {
+        serde_json::to_string_pretty(self).unwrap_or_else(|_| "{}".into())
     }
 
     /// Returns a human-readable summary of the preflight check.

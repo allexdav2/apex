@@ -44,6 +44,9 @@ pub enum ApexError {
     #[error("Detector error: {0}")]
     Detect(String),
 
+    #[error("Agent dispatch error: {0}")]
+    AgentDispatch(String),
+
     #[error("{0}")]
     Other(String),
 }

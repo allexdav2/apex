@@ -647,6 +647,49 @@ impl BugSummary {
 }
 
 // ---------------------------------------------------------------------------
+// Agent coverage result (agentic instrumentation pipeline)
+// ---------------------------------------------------------------------------
+
+/// Result returned by a coverage agent via structured JSON markers on stdout.
+///
+/// The agent writes this between `APEX_COVERAGE_RESULT_BEGIN` and
+/// `APEX_COVERAGE_RESULT_END` markers so the CLI can parse it reliably.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AgentCoverageResult {
+    /// Whether the agent succeeded in producing coverage.
+    pub success: bool,
+    /// Directory containing coverage data files.
+    pub coverage_dir: Option<String>,
+    /// Format of the coverage data (lcov, cobertura, jacoco, istanbul, v8,
+    /// llvm-cov-json, go-cover, simplecov, coverlet, llvm-profdata).
+    pub coverage_format: Option<String>,
+    /// Total number of branches in the project.
+    pub total_branches: Option<u64>,
+    /// Number of branches covered.
+    pub covered_branches: Option<u64>,
+    /// Coverage percentage (0.0-100.0).
+    pub coverage_pct: Option<f64>,
+    /// Path to saved test output log.
+    pub test_output_path: Option<String>,
+    /// Number of tests discovered.
+    pub test_count: Option<u64>,
+    /// Number of tests passed.
+    pub test_pass: Option<u64>,
+    /// Number of tests failed.
+    pub test_fail: Option<u64>,
+    /// Number of tests skipped.
+    pub test_skip: Option<u64>,
+    /// Errors encountered and recovery actions taken.
+    #[serde(default)]
+    pub errors_encountered: Vec<String>,
+    /// Tools the agent used (name + version).
+    #[serde(default)]
+    pub tools_used: Vec<String>,
+    /// Wall-clock seconds the agent took.
+    pub duration_secs: Option<u64>,
+}
+
+// ---------------------------------------------------------------------------
 // Path constraints (for symbolic/concolic)
 // ---------------------------------------------------------------------------
 

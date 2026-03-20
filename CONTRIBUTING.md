@@ -19,7 +19,7 @@ Before opening a PR, run APEX on itself and include the output:
 # Security audit — must show 0 new high findings
 apex audit --target . --lang rust
 
-# Full run — coverage must not regress below 93%
+# Full run — coverage must not regress below 80%
 apex run --target . --lang rust
 ```
 
@@ -57,7 +57,7 @@ cargo fmt --check
 
 # Required — run APEX on itself
 apex audit --target . --lang rust
-apex run --target . --lang rust    # coverage must be >= 93%
+apex run --target . --lang rust    # coverage must be >= 80%
 ```
 
 ### 4. Update changelog

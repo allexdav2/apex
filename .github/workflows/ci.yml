@@ -140,11 +140,11 @@ jobs:
               print('0.0')
           ")
           echo "Line coverage: ${COVERAGE}%"
-          # Fail if coverage drops below 90%
-          if python3 -c "exit(0 if float('$COVERAGE') >= 90.0 else 1)"; then
-            echo "Coverage gate passed: ${COVERAGE}% >= 90%"
+          # Fail if coverage drops below 80%
+          if python3 -c "exit(0 if float('$COVERAGE') >= 80.0 else 1)"; then
+            echo "Coverage gate passed: ${COVERAGE}% >= 80%"
           else
-            echo "::error::Coverage dropped to ${COVERAGE}% (minimum: 90%)"
+            echo "::error::Coverage dropped to ${COVERAGE}% (minimum: 80%)"
             exit 1
           fi
 

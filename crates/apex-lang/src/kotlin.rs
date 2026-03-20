@@ -148,8 +148,8 @@ impl<R: CommandRunner> LanguageRunner for KotlinRunner<R> {
                 }
             }
             _ => {
-                let spec = jvm_command("mvn", target, self.timeouts.jvm_build_ms)
-                    .args(["compile", "-q"]);
+                let spec =
+                    jvm_command("mvn", target, self.timeouts.jvm_build_ms).args(["compile", "-q"]);
                 let output = self
                     .runner
                     .run_command(&spec)
@@ -278,8 +278,7 @@ impl<R: CommandRunner> KotlinRunner<R> {
                 } else {
                     "jacocoTestReport"
                 };
-                let spec =
-                    jvm_command(cmd, target, self.timeouts.jvm_build_ms).args([task]);
+                let spec = jvm_command(cmd, target, self.timeouts.jvm_build_ms).args([task]);
                 self.runner
                     .run_command(&spec)
                     .await
@@ -544,8 +543,11 @@ mod tests {
     #[tokio::test]
     async fn collect_coverage_falls_back_to_jacoco_without_kover() {
         let dir = tempfile::tempdir().unwrap();
-        std::fs::write(dir.path().join("build.gradle.kts"), r#"plugins { id("jacoco") }"#)
-            .unwrap();
+        std::fs::write(
+            dir.path().join("build.gradle.kts"),
+            r#"plugins { id("jacoco") }"#,
+        )
+        .unwrap();
 
         let mut mock = MockCmd::new();
         mock.expect_run_command()
@@ -582,7 +584,10 @@ mod tests {
         .unwrap();
         let runner = KotlinRunner::new();
         let info = runner.preflight_check(dir.path()).unwrap();
-        assert!(info.extra.iter().any(|(k, v)| k == "coverage_tool" && v == "kover"));
+        assert!(info
+            .extra
+            .iter()
+            .any(|(k, v)| k == "coverage_tool" && v == "kover"));
     }
 
     #[test]
@@ -595,7 +600,10 @@ mod tests {
         .unwrap();
         let runner = KotlinRunner::new();
         let info = runner.preflight_check(dir.path()).unwrap();
-        assert!(info.extra.iter().any(|(k, v)| k == "coverage_tool" && v == "jacoco"));
+        assert!(info
+            .extra
+            .iter()
+            .any(|(k, v)| k == "coverage_tool" && v == "jacoco"));
     }
 
     #[test]
@@ -608,7 +616,10 @@ mod tests {
         .unwrap();
         let runner = KotlinRunner::new();
         let info = runner.preflight_check(dir.path()).unwrap();
-        assert!(info.extra.iter().any(|(k, v)| k == "multiplatform" && v == "true"));
+        assert!(info
+            .extra
+            .iter()
+            .any(|(k, v)| k == "multiplatform" && v == "true"));
         assert!(info.warnings.iter().any(|w| w.contains("Multiplatform")));
     }
 
@@ -619,7 +630,10 @@ mod tests {
         std::fs::write(dir.path().join("gradlew"), "#!/bin/sh\n").unwrap();
         let runner = KotlinRunner::new();
         let info = runner.preflight_check(dir.path()).unwrap();
-        assert!(info.extra.iter().any(|(k, v)| k == "gradlew" && v == "true"));
+        assert!(info
+            .extra
+            .iter()
+            .any(|(k, v)| k == "gradlew" && v == "true"));
     }
 
     #[test]
@@ -639,13 +653,17 @@ mod tests {
             r#"kotlin("multiplatform")"#,
         )
         .unwrap();
-        assert!(KotlinRunner::<RealCommandRunner>::is_multiplatform(dir.path()));
+        assert!(KotlinRunner::<RealCommandRunner>::is_multiplatform(
+            dir.path()
+        ));
     }
 
     #[test]
     fn is_multiplatform_false() {
         let dir = tempfile::tempdir().unwrap();
         std::fs::write(dir.path().join("build.gradle.kts"), r#"kotlin("jvm")"#).unwrap();
-        assert!(!KotlinRunner::<RealCommandRunner>::is_multiplatform(dir.path()));
+        assert!(!KotlinRunner::<RealCommandRunner>::is_multiplatform(
+            dir.path()
+        ));
     }
 }

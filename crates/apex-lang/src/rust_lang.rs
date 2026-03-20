@@ -91,6 +91,7 @@ impl<R: CommandRunner> LanguageRunner for RustRunner<R> {
         })
     }
 
+    #[allow(clippy::field_reassign_with_default)]
     fn preflight_check(&self, target: &Path) -> Result<PreflightInfo> {
         let mut info = PreflightInfo::default();
         info.build_system = Some("cargo".into());
@@ -100,7 +101,8 @@ impl<R: CommandRunner> LanguageRunner for RustRunner<R> {
         if Self::is_workspace(target) {
             info.extra.push(("project_type".into(), "workspace".into()));
         } else {
-            info.extra.push(("project_type".into(), "single-crate".into()));
+            info.extra
+                .push(("project_type".into(), "single-crate".into()));
         }
 
         // Check cargo
@@ -132,9 +134,8 @@ impl<R: CommandRunner> LanguageRunner for RustRunner<R> {
             info.test_framework = Some("nextest".into());
         } else {
             info.test_framework = Some("cargo-test".into());
-            info.warnings.push(
-                "cargo-nextest not installed; falling back to cargo test".into(),
-            );
+            info.warnings
+                .push("cargo-nextest not installed; falling back to cargo test".into());
         }
 
         // Check if Cargo.lock exists (deps resolved)
@@ -613,7 +614,10 @@ mod tests {
         let runner = RustRunner::new();
         let info = runner.preflight_check(dir.path()).unwrap();
         assert_eq!(info.build_system.as_deref(), Some("cargo"));
-        assert!(info.extra.iter().any(|(k, v)| k == "project_type" && v == "workspace"));
+        assert!(info
+            .extra
+            .iter()
+            .any(|(k, v)| k == "project_type" && v == "workspace"));
     }
 
     #[test]
@@ -626,7 +630,10 @@ mod tests {
         .unwrap();
         let runner = RustRunner::new();
         let info = runner.preflight_check(dir.path()).unwrap();
-        assert!(info.extra.iter().any(|(k, v)| k == "project_type" && v == "single-crate"));
+        assert!(info
+            .extra
+            .iter()
+            .any(|(k, v)| k == "project_type" && v == "single-crate"));
     }
 
     #[test]
@@ -635,7 +642,10 @@ mod tests {
         let runner = RustRunner::new();
         let info = runner.preflight_check(dir.path()).unwrap();
         // Should still detect single-crate (no [workspace] found)
-        assert!(info.extra.iter().any(|(k, v)| k == "project_type" && v == "single-crate"));
+        assert!(info
+            .extra
+            .iter()
+            .any(|(k, v)| k == "project_type" && v == "single-crate"));
     }
 
     #[test]

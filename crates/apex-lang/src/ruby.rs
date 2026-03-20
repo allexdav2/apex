@@ -37,11 +37,7 @@ impl<R: CommandRunner> RubyRunner<R> {
     pub fn resolve_ruby() -> &'static str {
         static RUBY: OnceLock<&'static str> = OnceLock::new();
         RUBY.get_or_init(|| {
-            let candidates: &[&str] = &[
-                "ruby",
-                "/opt/homebrew/bin/ruby",
-                "/usr/local/bin/ruby",
-            ];
+            let candidates: &[&str] = &["ruby", "/opt/homebrew/bin/ruby", "/usr/local/bin/ruby"];
             // Also check rbenv / asdf shims via home dir
             let home_candidates: Vec<String> = if let Some(home) = std::env::var_os("HOME") {
                 let home = std::path::Path::new(&home);
@@ -123,9 +119,7 @@ impl<R: CommandRunner> RubyRunner<R> {
             if let Some(dir) = ruby_path.parent() {
                 let bundle_path = dir.join("bundle");
                 if bundle_path.exists() {
-                    return Box::leak(
-                        bundle_path.to_string_lossy().into_owned().into_boxed_str(),
-                    );
+                    return Box::leak(bundle_path.to_string_lossy().into_owned().into_boxed_str());
                 }
             }
             "bundle"
@@ -332,6 +326,7 @@ impl<R: CommandRunner> LanguageRunner for RubyRunner<R> {
         })
     }
 
+    #[allow(clippy::field_reassign_with_default)]
     fn preflight_check(&self, target: &Path) -> Result<PreflightInfo> {
         let mut info = PreflightInfo::default();
         info.package_manager = Some("bundler".into());
@@ -339,10 +334,8 @@ impl<R: CommandRunner> LanguageRunner for RubyRunner<R> {
         // Detect Ruby version
         let ruby_bin = Self::resolve_ruby();
         if let Some(ver) = Self::ruby_version(ruby_bin) {
-            info.available_tools.push((
-                "ruby".into(),
-                format!("{}.{}", ver.0, ver.1),
-            ));
+            info.available_tools
+                .push(("ruby".into(), format!("{}.{}", ver.0, ver.1)));
             if ver < (3, 0) {
                 info.warnings.push(format!(
                     "Ruby {}.{} detected; APEX requires Ruby >= 3.0",
@@ -393,8 +386,8 @@ impl<R: CommandRunner> LanguageRunner for RubyRunner<R> {
         }
 
         // Check if deps are installed
-        info.deps_installed = target.join("Gemfile.lock").exists()
-            && target.join("vendor").join("bundle").exists();
+        info.deps_installed =
+            target.join("Gemfile.lock").exists() && target.join("vendor").join("bundle").exists();
 
         // Check for mise
         if Self::resolve_mise().is_some() && Self::has_mise_config(target) {
@@ -530,9 +523,7 @@ mod tests {
             .returning(|_| Ok(CommandOutput::success(b"".to_vec())));
         // 3. ruby -e "require 'simplecov'" check
         mock.expect_run_command()
-            .withf(|spec| {
-                spec.program.contains("ruby") && spec.args.contains(&"-e".to_string())
-            })
+            .withf(|spec| spec.program.contains("ruby") && spec.args.contains(&"-e".to_string()))
             .times(1)
             .returning(|_| Ok(CommandOutput::success(b"".to_vec())));
         let runner = RubyRunner::with_runner(mock);
@@ -546,9 +537,7 @@ mod tests {
         let mut mock = MockCmd::new();
         // 1. ruby -e "require 'simplecov'" fails
         mock.expect_run_command()
-            .withf(|spec| {
-                spec.program.contains("ruby") && spec.args.contains(&"-e".to_string())
-            })
+            .withf(|spec| spec.program.contains("ruby") && spec.args.contains(&"-e".to_string()))
             .times(1)
             .returning(|_| {
                 Ok(CommandOutput {
@@ -596,9 +585,7 @@ mod tests {
             .times(1)
             .returning(|_| Ok(CommandOutput::success(b"".to_vec())));
         mock.expect_run_command()
-            .withf(|spec| {
-                spec.program.contains("ruby") && spec.args.contains(&"-e".to_string())
-            })
+            .withf(|spec| spec.program.contains("ruby") && spec.args.contains(&"-e".to_string()))
             .times(1)
             .returning(|_| Ok(CommandOutput::success(b"".to_vec())));
         let runner = RubyRunner::with_runner(mock);
@@ -613,16 +600,14 @@ mod tests {
             "GEM\n  remote: https://rubygems.org/\n  specs:\n    rspec (3.12)\n\nBUNDLED WITH\n   4.0.6\n",
         )
         .unwrap();
-        let version =
-            RubyRunner::<RealCommandRunner>::detect_required_bundler(dir.path());
+        let version = RubyRunner::<RealCommandRunner>::detect_required_bundler(dir.path());
         assert_eq!(version.as_deref(), Some("4.0.6"));
     }
 
     #[test]
     fn detect_required_bundler_no_lockfile() {
         let dir = tempfile::tempdir().unwrap();
-        let version =
-            RubyRunner::<RealCommandRunner>::detect_required_bundler(dir.path());
+        let version = RubyRunner::<RealCommandRunner>::detect_required_bundler(dir.path());
         assert!(version.is_none());
     }
 
@@ -634,8 +619,7 @@ mod tests {
             "GEM\n  specs:\n    rspec (3.12)\n",
         )
         .unwrap();
-        let version =
-            RubyRunner::<RealCommandRunner>::detect_required_bundler(dir.path());
+        let version = RubyRunner::<RealCommandRunner>::detect_required_bundler(dir.path());
         assert!(version.is_none());
     }
 
@@ -654,7 +638,11 @@ mod tests {
     fn preflight_check_rspec_project() {
         let dir = tempfile::tempdir().unwrap();
         std::fs::create_dir(dir.path().join("spec")).unwrap();
-        std::fs::write(dir.path().join("Gemfile"), "source 'https://rubygems.org'\n").unwrap();
+        std::fs::write(
+            dir.path().join("Gemfile"),
+            "source 'https://rubygems.org'\n",
+        )
+        .unwrap();
         let runner = RubyRunner::new();
         let info = runner.preflight_check(dir.path()).unwrap();
         assert_eq!(info.test_framework.as_deref(), Some("RSpec"));
@@ -687,12 +675,12 @@ mod tests {
     #[test]
     fn preflight_check_detects_bundler_version() {
         let dir = tempfile::tempdir().unwrap();
-        std::fs::write(dir.path().join("Gemfile"), "source 'https://rubygems.org'\n").unwrap();
         std::fs::write(
-            dir.path().join("Gemfile.lock"),
-            "BUNDLED WITH\n   2.5.6\n",
+            dir.path().join("Gemfile"),
+            "source 'https://rubygems.org'\n",
         )
         .unwrap();
+        std::fs::write(dir.path().join("Gemfile.lock"), "BUNDLED WITH\n   2.5.6\n").unwrap();
         let runner = RubyRunner::new();
         let info = runner.preflight_check(dir.path()).unwrap();
         assert!(

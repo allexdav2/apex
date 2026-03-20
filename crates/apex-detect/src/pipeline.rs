@@ -77,6 +77,20 @@ impl DetectorPipeline {
         if cfg.enabled.contains(&"session-security".into()) {
             detectors.push(Box::new(SessionSecurityDetector));
         }
+        // P1 concurrency detectors
+        if cfg.enabled.contains(&"mutex-across-await".into()) && lang == Language::Rust {
+            detectors.push(Box::new(MutexAcrossAwaitDetector));
+        }
+        if cfg.enabled.contains(&"open-without-with".into()) && lang == Language::Python {
+            detectors.push(Box::new(OpenWithoutWithDetector));
+        }
+        if cfg.enabled.contains(&"unbounded-queue".into()) {
+            detectors.push(Box::new(UnboundedQueueDetector));
+        }
+        if cfg.enabled.contains(&"ffi-panic".into()) && lang == Language::Rust {
+            detectors.push(Box::new(FfiPanicDetector));
+        }
+
         // Rust self-analysis detectors
         if cfg.enabled.contains(&"discarded-async-result".into()) {
             detectors.push(Box::new(DiscardedAsyncResultDetector));

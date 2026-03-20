@@ -209,7 +209,8 @@ impl<R: CommandRunner> LanguageRunner for JavaScriptRunner<R> {
                 .next()
                 .and_then(|s| s.parse().ok());
             if let Some(m) = major {
-                info.extra.push(("node_major_version".into(), m.to_string()));
+                info.extra
+                    .push(("node_major_version".into(), m.to_string()));
                 if m < 16 {
                     info.warnings.push(format!(
                         "Node.js v{m} detected; V8 coverage requires Node >= 16"
@@ -932,7 +933,10 @@ mod tests {
         std::fs::write(dir.path().join("tsconfig.json"), "{}").unwrap();
         let runner = JavaScriptRunner::new();
         let info = runner.preflight_check(dir.path()).unwrap();
-        assert!(info.extra.iter().any(|(k, v)| k == "typescript" && v == "true"));
+        assert!(info
+            .extra
+            .iter()
+            .any(|(k, v)| k == "typescript" && v == "true"));
     }
 
     #[test]
@@ -941,7 +945,10 @@ mod tests {
         std::fs::write(dir.path().join("lerna.json"), "{}").unwrap();
         let runner = JavaScriptRunner::new();
         let info = runner.preflight_check(dir.path()).unwrap();
-        assert!(info.extra.iter().any(|(k, v)| k == "monorepo" && v == "lerna"));
+        assert!(info
+            .extra
+            .iter()
+            .any(|(k, v)| k == "monorepo" && v == "lerna"));
     }
 
     #[test]
@@ -959,7 +966,10 @@ mod tests {
         std::fs::write(dir.path().join("turbo.json"), "{}").unwrap();
         let runner = JavaScriptRunner::new();
         let info = runner.preflight_check(dir.path()).unwrap();
-        assert!(info.extra.iter().any(|(k, v)| k == "monorepo" && v == "turborepo"));
+        assert!(info
+            .extra
+            .iter()
+            .any(|(k, v)| k == "monorepo" && v == "turborepo"));
     }
 
     #[test]
@@ -968,11 +978,10 @@ mod tests {
         std::fs::write(dir.path().join("pnpm-workspace.yaml"), "").unwrap();
         let runner = JavaScriptRunner::new();
         let info = runner.preflight_check(dir.path()).unwrap();
-        assert!(
-            info.extra
-                .iter()
-                .any(|(k, v)| k == "monorepo" && v == "pnpm-workspaces")
-        );
+        assert!(info
+            .extra
+            .iter()
+            .any(|(k, v)| k == "monorepo" && v == "pnpm-workspaces"));
     }
 
     #[test]
@@ -985,11 +994,10 @@ mod tests {
         .unwrap();
         let runner = JavaScriptRunner::new();
         let info = runner.preflight_check(dir.path()).unwrap();
-        assert!(
-            info.extra
-                .iter()
-                .any(|(k, v)| k == "monorepo" && v == "npm-workspaces")
-        );
+        assert!(info
+            .extra
+            .iter()
+            .any(|(k, v)| k == "monorepo" && v == "npm-workspaces"));
     }
 
     #[test]

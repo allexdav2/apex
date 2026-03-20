@@ -151,6 +151,7 @@ impl<R: CommandRunner> LanguageRunner for SwiftRunner<R> {
         })
     }
 
+    #[allow(clippy::field_reassign_with_default)]
     fn preflight_check(&self, target: &Path) -> Result<PreflightInfo> {
         let mut info = PreflightInfo::default();
         info.build_system = Some("swift-package-manager".into());
@@ -174,16 +175,15 @@ impl<R: CommandRunner> LanguageRunner for SwiftRunner<R> {
         }
 
         // Check if Package.resolved exists (deps resolved)
-        info.deps_installed = target.join("Package.resolved").exists()
-            || target.join(".build").exists();
+        info.deps_installed =
+            target.join("Package.resolved").exists() || target.join(".build").exists();
 
         // Check for code coverage support
         if let Some(ver) = Self::tool_version("xcrun", &["llvm-cov", "--version"]) {
             info.available_tools.push(("llvm-cov".into(), ver));
         } else {
-            info.warnings.push(
-                "llvm-cov not found via xcrun; code coverage may not work".into(),
-            );
+            info.warnings
+                .push("llvm-cov not found via xcrun; code coverage may not work".into());
         }
 
         Ok(info)
@@ -311,10 +311,7 @@ mod tests {
                 spec.program == "swift"
                     && spec.args == ["package", "resolve"]
                     && spec.timeout_ms == InstrumentTimeouts::default().swift_resolve_ms
-                    && spec
-                        .env
-                        .iter()
-                        .any(|(k, _)| k == "SWIFTPM_CACHE_DIR")
+                    && spec.env.iter().any(|(k, _)| k == "SWIFTPM_CACHE_DIR")
             })
             .returning(|_| {
                 Ok(CommandOutput {

@@ -167,7 +167,10 @@ impl<R: CommandRunner> LanguageRunner for CppRunner<R> {
         let start = Instant::now();
 
         let (spec, test_framework) = match Self::detect_build_system(target) {
-            CppBuildSystem::Xmake => (CommandSpec::new("xmake", target).args(["test"]), "xmake-test"),
+            CppBuildSystem::Xmake => (
+                CommandSpec::new("xmake", target).args(["test"]),
+                "xmake-test",
+            ),
             CppBuildSystem::CMake => {
                 if Self::has_googletest(target) {
                     info!("detected GoogleTest; running ctest");
@@ -219,14 +222,16 @@ impl<R: CommandRunner> LanguageRunner for CppRunner<R> {
         let mut info = PreflightInfo::default();
 
         let build_sys = Self::detect_build_system(target);
-        info.build_system = Some(match &build_sys {
-            CppBuildSystem::Xmake => "xmake",
-            CppBuildSystem::CMake => "cmake",
-            CppBuildSystem::Make => "make",
-            CppBuildSystem::Meson => "meson",
-            CppBuildSystem::None => "none",
-        }
-        .into());
+        info.build_system = Some(
+            match &build_sys {
+                CppBuildSystem::Xmake => "xmake",
+                CppBuildSystem::CMake => "cmake",
+                CppBuildSystem::Make => "make",
+                CppBuildSystem::Meson => "meson",
+                CppBuildSystem::None => "none",
+            }
+            .into(),
+        );
 
         // Check compilers
         let which_bin = |name: &str| -> bool {
@@ -238,9 +243,11 @@ impl<R: CommandRunner> LanguageRunner for CppRunner<R> {
         };
 
         if which_bin("clang++") {
-            info.available_tools.push(("clang++".into(), "available".into()));
+            info.available_tools
+                .push(("clang++".into(), "available".into()));
         } else if which_bin("g++") {
-            info.available_tools.push(("g++".into(), "available".into()));
+            info.available_tools
+                .push(("g++".into(), "available".into()));
         } else {
             info.missing_tools.push("clang++ or g++".into());
         }
@@ -273,17 +280,20 @@ impl<R: CommandRunner> LanguageRunner for CppRunner<R> {
                 info.test_framework = Some("make-test".into());
             }
             CppBuildSystem::None => {
-                info.warnings.push("no build system detected for C++ project".into());
+                info.warnings
+                    .push("no build system detected for C++ project".into());
                 info.test_framework = Some("none".into());
             }
         }
 
         // Check coverage tools
         if which_bin("gcov") {
-            info.available_tools.push(("gcov".into(), "available".into()));
+            info.available_tools
+                .push(("gcov".into(), "available".into()));
         }
         if which_bin("llvm-cov") {
-            info.available_tools.push(("llvm-cov".into(), "available".into()));
+            info.available_tools
+                .push(("llvm-cov".into(), "available".into()));
         }
 
         info.deps_installed = target.join("build").exists();

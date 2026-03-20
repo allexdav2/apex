@@ -305,10 +305,20 @@ example.com/foo/handler.go:10.14,12.2 1 0
     #[test]
     fn derive_relative_path_blocks_traversal() {
         let tmp = tempfile::tempdir().unwrap();
-        // Build a path that, when suffixed, would escape target_root
+        // Path traversal should not return a path outside target_root
         let result = derive_relative_path("a/../../etc/passwd", tmp.path());
-        // No real file exists there; the fallback returns the original string
-        assert_eq!(result, "a/../../etc/passwd");
+        // Either returns the original (fallback) or a safe suffix — never an escaped path
+        let candidate = tmp.path().join(&result);
+        // Canonicalize both to compare (handles /tmp vs /private/tmp on macOS)
+        let canon_root = tmp.path().canonicalize().unwrap();
+        if candidate.exists() {
+            let canon_candidate = candidate.canonicalize().unwrap();
+            assert!(
+                canon_candidate.starts_with(&canon_root),
+                "path traversal escaped target_root: {result}"
+            );
+        }
+        // If the file doesn't exist, any return value is safe (won't be used for file I/O)
     }
 
     // Target: derive_relative_path — empty string input

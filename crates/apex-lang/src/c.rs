@@ -122,8 +122,7 @@ impl<R: CommandRunner> LanguageRunner for CRunner<R> {
 
         if target.join("configure").exists() && !target.join("Makefile").exists() {
             info!("running ./configure");
-            let spec = CommandSpec::new("./configure", target)
-                .timeout(build_timeout_ms);
+            let spec = CommandSpec::new("./configure", target).timeout(build_timeout_ms);
             let out = self
                 .runner
                 .run_command(&spec)
@@ -206,14 +205,16 @@ impl<R: CommandRunner> LanguageRunner for CRunner<R> {
 
         // Detect build system
         let build_sys = Self::detect_build_system(target);
-        info.build_system = Some(match &build_sys {
-            BuildSystem::Xmake => "xmake",
-            BuildSystem::CMake => "cmake",
-            BuildSystem::Make => "make",
-            BuildSystem::Autoconf => "autoconf",
-            BuildSystem::None => "none",
-        }
-        .into());
+        info.build_system = Some(
+            match &build_sys {
+                BuildSystem::Xmake => "xmake",
+                BuildSystem::CMake => "cmake",
+                BuildSystem::Make => "make",
+                BuildSystem::Autoconf => "autoconf",
+                BuildSystem::None => "none",
+            }
+            .into(),
+        );
 
         // Check compilers
         if which("clang") {
@@ -232,7 +233,8 @@ impl<R: CommandRunner> LanguageRunner for CRunner<R> {
 
         // Check coverage tools
         if which("gcov") {
-            info.available_tools.push(("gcov".into(), "available".into()));
+            info.available_tools
+                .push(("gcov".into(), "available".into()));
         }
         if which("llvm-profdata") {
             info.available_tools
@@ -267,7 +269,8 @@ impl<R: CommandRunner> LanguageRunner for CRunner<R> {
             }
             BuildSystem::None => {
                 info.warnings.push(
-                    "no build system detected; may be a kernel subsystem or header-only project".into(),
+                    "no build system detected; may be a kernel subsystem or header-only project"
+                        .into(),
                 );
             }
         }
@@ -2022,7 +2025,10 @@ mod tests {
         std::fs::write(dir.path().join("Kconfig"), "").unwrap();
         let runner = CRunner::new();
         let info = runner.preflight_check(dir.path()).unwrap();
-        assert!(info.extra.iter().any(|(k, v)| k == "kernel_subsystem" && v == "true"));
+        assert!(info
+            .extra
+            .iter()
+            .any(|(k, v)| k == "kernel_subsystem" && v == "true"));
         assert!(info.warnings.iter().any(|w| w.contains("kernel")));
     }
 

@@ -40,8 +40,8 @@ impl<R: CommandRunner> GoRunner<R> {
         let content = std::fs::read_to_string(target.join("go.mod")).ok()?;
         for line in content.lines() {
             let trimmed = line.trim();
-            if trimmed.starts_with("module ") {
-                return Some(trimmed["module ".len()..].trim().to_string());
+            if let Some(module) = trimmed.strip_prefix("module ") {
+                return Some(module.trim().to_string());
             }
         }
         None
@@ -106,9 +106,7 @@ impl<R: CommandRunner> LanguageRunner for GoRunner<R> {
         let start = Instant::now();
         let mut args: Vec<String> = vec!["test".into(), "./...".into()];
         args.extend_from_slice(extra_args);
-        let spec = CommandSpec::new("go", target)
-            .args(args)
-            .timeout(600_000); // 10 min — Go test suites can be slow on large projects
+        let spec = CommandSpec::new("go", target).args(args).timeout(600_000); // 10 min — Go test suites can be slow on large projects
         let output = self
             .runner
             .run_command(&spec)
@@ -127,6 +125,7 @@ impl<R: CommandRunner> LanguageRunner for GoRunner<R> {
         })
     }
 
+    #[allow(clippy::field_reassign_with_default)]
     fn preflight_check(&self, target: &Path) -> Result<PreflightInfo> {
         let mut info = PreflightInfo::default();
         info.build_system = Some("go".into());
@@ -148,9 +147,8 @@ impl<R: CommandRunner> LanguageRunner for GoRunner<R> {
         // Detect monorepo
         if Self::is_monorepo(target) {
             info.extra.push(("monorepo".into(), "true".into()));
-            info.warnings.push(
-                "monorepo detected: multiple go.mod files in subdirectories".into(),
-            );
+            info.warnings
+                .push("monorepo detected: multiple go.mod files in subdirectories".into());
         }
 
         // Check if go.sum exists (deps resolved)
@@ -347,7 +345,10 @@ mod tests {
         std::fs::write(sub.join("go.mod"), "module example.com/root/submod\n").unwrap();
         let runner = GoRunner::new();
         let info = runner.preflight_check(dir.path()).unwrap();
-        assert!(info.extra.iter().any(|(k, v)| k == "monorepo" && v == "true"));
+        assert!(info
+            .extra
+            .iter()
+            .any(|(k, v)| k == "monorepo" && v == "true"));
         assert!(info.warnings.iter().any(|w| w.contains("monorepo")));
     }
 
@@ -371,7 +372,11 @@ mod tests {
     #[test]
     fn parse_module_path_valid() {
         let dir = tempfile::tempdir().unwrap();
-        std::fs::write(dir.path().join("go.mod"), "module example.com/foo\n\ngo 1.21\n").unwrap();
+        std::fs::write(
+            dir.path().join("go.mod"),
+            "module example.com/foo\n\ngo 1.21\n",
+        )
+        .unwrap();
         let path = GoRunner::<RealCommandRunner>::parse_module_path(dir.path());
         assert_eq!(path.as_deref(), Some("example.com/foo"));
     }

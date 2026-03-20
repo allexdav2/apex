@@ -83,11 +83,7 @@ impl<R: CommandRunner> CSharpRunner<R> {
         if !output.status.success() {
             return None;
         }
-        Some(
-            String::from_utf8_lossy(&output.stdout)
-                .trim()
-                .to_string(),
-        )
+        Some(String::from_utf8_lossy(&output.stdout).trim().to_string())
     }
 
     /// Detect whether the project has a solution file or just project files.
@@ -207,6 +203,7 @@ impl<R: CommandRunner> LanguageRunner for CSharpRunner<R> {
         })
     }
 
+    #[allow(clippy::field_reassign_with_default)]
     fn preflight_check(&self, target: &Path) -> Result<PreflightInfo> {
         let mut info = PreflightInfo::default();
         info.build_system = Some("dotnet".into());
@@ -224,7 +221,8 @@ impl<R: CommandRunner> LanguageRunner for CSharpRunner<R> {
 
         // Detect project structure
         let (structure, projects) = Self::detect_project_structure(target);
-        info.extra.push(("project_structure".into(), structure.into()));
+        info.extra
+            .push(("project_structure".into(), structure.into()));
         for p in &projects {
             info.extra.push(("project_file".into(), p.clone()));
         }
@@ -253,7 +251,8 @@ impl<R: CommandRunner> LanguageRunner for CSharpRunner<R> {
             info.extra.push(("coverlet".into(), "true".into()));
         } else {
             info.warnings.push(
-                "coverlet not found in project dependencies; code coverage collection may fail".into(),
+                "coverlet not found in project dependencies; code coverage collection may fail"
+                    .into(),
             );
         }
 
@@ -503,7 +502,10 @@ mod tests {
         .unwrap();
         let runner = CSharpRunner::new();
         let info = runner.preflight_check(dir.path()).unwrap();
-        assert!(info.extra.iter().any(|(k, v)| k == "coverlet" && v == "true"));
+        assert!(info
+            .extra
+            .iter()
+            .any(|(k, v)| k == "coverlet" && v == "true"));
     }
 
     #[test]

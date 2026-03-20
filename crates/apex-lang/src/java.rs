@@ -162,8 +162,11 @@ impl<R: CommandRunner> LanguageRunner for JavaRunner<R> {
             jvm_command("./gradlew", target, self.timeouts.jvm_build_ms)
                 .args(["dependencies", "--quiet"])
         } else {
-            jvm_command("mvn", target, self.timeouts.jvm_build_ms)
-                .args(["-q", "dependency:resolve", "-DskipTests"])
+            jvm_command("mvn", target, self.timeouts.jvm_build_ms).args([
+                "-q",
+                "dependency:resolve",
+                "-DskipTests",
+            ])
         };
 
         let result = self
@@ -238,9 +241,8 @@ impl<R: CommandRunner> LanguageRunner for JavaRunner<R> {
                     info.available_tools.push(("gradle".into(), ver));
                 } else {
                     info.missing_tools.push("gradle".into());
-                    info.warnings.push(
-                        "no gradlew wrapper and gradle not on PATH".into(),
-                    );
+                    info.warnings
+                        .push("no gradlew wrapper and gradle not on PATH".into());
                 }
             }
 
@@ -830,14 +832,13 @@ mod tests {
     #[test]
     fn preflight_check_detects_jacoco_in_gradle() {
         let dir = tempfile::tempdir().unwrap();
-        std::fs::write(
-            dir.path().join("build.gradle"),
-            "apply plugin: 'jacoco'\n",
-        )
-        .unwrap();
+        std::fs::write(dir.path().join("build.gradle"), "apply plugin: 'jacoco'\n").unwrap();
         let runner = JavaRunner::new();
         let info = runner.preflight_check(dir.path()).unwrap();
-        assert!(info.extra.iter().any(|(k, v)| k == "jacoco" && v == "configured"));
+        assert!(info
+            .extra
+            .iter()
+            .any(|(k, v)| k == "jacoco" && v == "configured"));
     }
 
     #[test]
@@ -860,9 +861,18 @@ mod tests {
         .unwrap();
         let runner = JavaRunner::new();
         let info = runner.preflight_check(dir.path()).unwrap();
-        assert!(info.extra.iter().any(|(k, v)| k == "multi_module" && v == "true"));
-        assert!(info.extra.iter().any(|(k, v)| k == "subproject" && v == "module-a"));
-        assert!(info.extra.iter().any(|(k, v)| k == "subproject" && v == "module-b"));
+        assert!(info
+            .extra
+            .iter()
+            .any(|(k, v)| k == "multi_module" && v == "true"));
+        assert!(info
+            .extra
+            .iter()
+            .any(|(k, v)| k == "subproject" && v == "module-a"));
+        assert!(info
+            .extra
+            .iter()
+            .any(|(k, v)| k == "subproject" && v == "module-b"));
     }
 
     #[test]
@@ -872,7 +882,10 @@ mod tests {
         std::fs::write(dir.path().join("gradlew"), "#!/bin/sh\n").unwrap();
         let runner = JavaRunner::new();
         let info = runner.preflight_check(dir.path()).unwrap();
-        assert!(info.extra.iter().any(|(k, v)| k == "gradlew" && v == "true"));
+        assert!(info
+            .extra
+            .iter()
+            .any(|(k, v)| k == "gradlew" && v == "true"));
     }
 
     #[test]
@@ -923,19 +936,25 @@ mod tests {
             "<project><plugins><plugin><artifactId>jacoco-maven-plugin</artifactId></plugin></plugins></project>",
         )
         .unwrap();
-        assert!(JavaRunner::<RealCommandRunner>::has_jacoco_plugin(dir.path()));
+        assert!(JavaRunner::<RealCommandRunner>::has_jacoco_plugin(
+            dir.path()
+        ));
     }
 
     #[test]
     fn has_gradle_wrapper_true() {
         let dir = tempfile::tempdir().unwrap();
         std::fs::write(dir.path().join("gradlew"), "#!/bin/sh\n").unwrap();
-        assert!(JavaRunner::<RealCommandRunner>::has_gradle_wrapper(dir.path()));
+        assert!(JavaRunner::<RealCommandRunner>::has_gradle_wrapper(
+            dir.path()
+        ));
     }
 
     #[test]
     fn has_gradle_wrapper_false() {
         let dir = tempfile::tempdir().unwrap();
-        assert!(!JavaRunner::<RealCommandRunner>::has_gradle_wrapper(dir.path()));
+        assert!(!JavaRunner::<RealCommandRunner>::has_gradle_wrapper(
+            dir.path()
+        ));
     }
 }

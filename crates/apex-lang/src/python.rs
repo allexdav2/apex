@@ -1,5 +1,7 @@
 use apex_core::{
-    command::{adaptive_timeout, count_source_files, CommandRunner, CommandSpec, OpKind, RealCommandRunner},
+    command::{
+        adaptive_timeout, count_source_files, CommandRunner, CommandSpec, OpKind, RealCommandRunner,
+    },
     error::{ApexError, Result},
     traits::{LanguageRunner, PreflightInfo, TestRunOutput},
     types::Language,
@@ -102,9 +104,7 @@ impl<R: CommandRunner> PythonRunner<R> {
             .current_dir(target)
             .output();
         match output {
-            Ok(o) if o.status.success() => {
-                String::from_utf8_lossy(&o.stdout).trim() == "yes"
-            }
+            Ok(o) if o.status.success() => String::from_utf8_lossy(&o.stdout).trim() == "yes",
             _ => false,
         }
     }
@@ -126,11 +126,7 @@ impl<R: CommandRunner> PythonRunner<R> {
         );
 
         let python = Self::resolve_python();
-        let spec = CommandSpec::new(python, target).args([
-            "-m",
-            "venv",
-            ".apex-venv",
-        ]);
+        let spec = CommandSpec::new(python, target).args(["-m", "venv", ".apex-venv"]);
         let output = self
             .runner
             .run_command(&spec)
@@ -269,7 +265,9 @@ impl<R: CommandRunner> LanguageRunner for PythonRunner<R> {
 
         match pkg_mgr {
             PackageManager::Uv => {
-                let spec = CommandSpec::new("uv", target).args(["sync"]).timeout(dep_timeout);
+                let spec = CommandSpec::new("uv", target)
+                    .args(["sync"])
+                    .timeout(dep_timeout);
                 let output = self
                     .runner
                     .run_command(&spec)
@@ -283,7 +281,9 @@ impl<R: CommandRunner> LanguageRunner for PythonRunner<R> {
                 }
             }
             PackageManager::Poetry => {
-                let spec = CommandSpec::new("poetry", target).args(["install"]).timeout(dep_timeout);
+                let spec = CommandSpec::new("poetry", target)
+                    .args(["install"])
+                    .timeout(dep_timeout);
                 let output = self
                     .runner
                     .run_command(&spec)
@@ -297,7 +297,9 @@ impl<R: CommandRunner> LanguageRunner for PythonRunner<R> {
                 }
             }
             PackageManager::Pipenv => {
-                let spec = CommandSpec::new("pipenv", target).args(["install", "--dev"]).timeout(dep_timeout);
+                let spec = CommandSpec::new("pipenv", target)
+                    .args(["install", "--dev"])
+                    .timeout(dep_timeout);
                 let output = self
                     .runner
                     .run_command(&spec)
@@ -329,7 +331,9 @@ impl<R: CommandRunner> LanguageRunner for PythonRunner<R> {
                     }
                 } else if target.join("pyproject.toml").exists() || target.join("setup.py").exists()
                 {
-                    let spec = CommandSpec::new(&pip, target).args(["install", "-e", "."]).timeout(dep_timeout);
+                    let spec = CommandSpec::new(&pip, target)
+                        .args(["install", "-e", "."])
+                        .timeout(dep_timeout);
                     let output =
                         self.runner.run_command(&spec).await.map_err(|e| {
                             ApexError::LanguageRunner(format!("pip install -e: {e}"))
@@ -365,8 +369,9 @@ impl<R: CommandRunner> LanguageRunner for PythonRunner<R> {
                     .map_err(|e| ApexError::LanguageRunner(e.to_string()))?
             } else {
                 // Use venv pip if available (handles PEP 668 without uv).
-                let spec =
-                    CommandSpec::new(&pip, target).args(["install", "coverage", "pytest"]).timeout(dep_timeout);
+                let spec = CommandSpec::new(&pip, target)
+                    .args(["install", "coverage", "pytest"])
+                    .timeout(dep_timeout);
                 self.runner
                     .run_command(&spec)
                     .await
@@ -385,8 +390,8 @@ impl<R: CommandRunner> LanguageRunner for PythonRunner<R> {
                         .with_file_name("pip")
                         .to_string_lossy()
                         .into_owned();
-                    let retry_spec = CommandSpec::new(&venv_pip, target)
-                        .args(["install", "coverage", "pytest"]);
+                    let retry_spec =
+                        CommandSpec::new(&venv_pip, target).args(["install", "coverage", "pytest"]);
                     let retry = self
                         .runner
                         .run_command(&retry_spec)
@@ -424,7 +429,9 @@ impl<R: CommandRunner> LanguageRunner for PythonRunner<R> {
             "running Python tests"
         );
 
-        let spec = CommandSpec::new(&cmd_parts[0], target).args(args).timeout(test_timeout);
+        let spec = CommandSpec::new(&cmd_parts[0], target)
+            .args(args)
+            .timeout(test_timeout);
 
         let start = Instant::now();
         let output = self
@@ -448,13 +455,15 @@ impl<R: CommandRunner> LanguageRunner for PythonRunner<R> {
 
         // Detect package manager
         let pkg_mgr = Self::detect_package_manager(target);
-        info.package_manager = Some(match pkg_mgr {
-            PackageManager::Uv => "uv",
-            PackageManager::Poetry => "poetry",
-            PackageManager::Pipenv => "pipenv",
-            PackageManager::Pip => "pip",
-        }
-        .into());
+        info.package_manager = Some(
+            match pkg_mgr {
+                PackageManager::Uv => "uv",
+                PackageManager::Poetry => "poetry",
+                PackageManager::Pipenv => "pipenv",
+                PackageManager::Pip => "pip",
+            }
+            .into(),
+        );
         info.build_system = info.package_manager.clone();
 
         // Detect test framework
@@ -483,7 +492,8 @@ impl<R: CommandRunner> LanguageRunner for PythonRunner<R> {
         // Check for PEP 668
         if Self::is_externally_managed(target) {
             info.warnings.push(
-                "PEP 668 externally-managed Python detected; a venv will be created automatically".into(),
+                "PEP 668 externally-managed Python detected; a venv will be created automatically"
+                    .into(),
             );
             info.extra.push(("pep668".into(), "true".into()));
         }
@@ -499,17 +509,16 @@ impl<R: CommandRunner> LanguageRunner for PythonRunner<R> {
             || target.join("setup.py").exists()
             || target.join("setup.cfg").exists();
         if !has_project_file && target.join("Lib").exists() {
-            info.extra
-                .push(("stdlib_source_dir".into(), "true".into()));
+            info.extra.push(("stdlib_source_dir".into(), "true".into()));
             info.warnings.push(
-                "stdlib source directory detected (no setup.py/pyproject.toml); using --rootdir".into(),
+                "stdlib source directory detected (no setup.py/pyproject.toml); using --rootdir"
+                    .into(),
             );
         }
 
         // Check coverage.py and pytest availability
         if let Some(ref _uv) = Self::resolve_uv() {
-            info.available_tools
-                .push(("uv".into(), "available".into()));
+            info.available_tools.push(("uv".into(), "available".into()));
         }
 
         // Check for requirements.txt or pyproject.toml
@@ -634,10 +643,7 @@ mod tests {
         let mut mock = MockCmd::new();
         // pip3 install -r requirements.txt
         mock.expect_run_command()
-            .withf(|spec| {
-                is_pip_program(&spec.program)
-                    && spec.args.contains(&"-r".to_string())
-            })
+            .withf(|spec| is_pip_program(&spec.program) && spec.args.contains(&"-r".to_string()))
             .times(1)
             .returning(|_| Ok(CommandOutput::success(b"Successfully installed".to_vec())));
         // python3 -c "import coverage"
@@ -659,10 +665,7 @@ mod tests {
 
         let mut mock = MockCmd::new();
         mock.expect_run_command()
-            .withf(|spec| {
-                is_pip_program(&spec.program)
-                    && spec.args.contains(&"-r".to_string())
-            })
+            .withf(|spec| is_pip_program(&spec.program) && spec.args.contains(&"-r".to_string()))
             .times(1)
             .returning(|_| {
                 Ok(CommandOutput::failure(
@@ -691,10 +694,7 @@ mod tests {
         let mut mock = MockCmd::new();
         // pip3 install -e .
         mock.expect_run_command()
-            .withf(|spec| {
-                is_pip_program(&spec.program)
-                    && spec.args.contains(&"-e".to_string())
-            })
+            .withf(|spec| is_pip_program(&spec.program) && spec.args.contains(&"-e".to_string()))
             .times(1)
             .returning(|_| Ok(CommandOutput::success(b"".to_vec())));
         // python3 -c "import coverage" -- coverage already installed
@@ -725,8 +725,7 @@ mod tests {
         mock.expect_run_command()
             .withf(|spec| {
                 spec.args.contains(&"coverage".to_string())
-                    && (is_pip_program(&spec.program)
-                        || spec.program == "uv")
+                    && (is_pip_program(&spec.program) || spec.program == "uv")
             })
             .times(1)
             .returning(|_| Ok(CommandOutput::success(b"".to_vec())));
@@ -751,8 +750,7 @@ mod tests {
         mock.expect_run_command()
             .withf(|spec| {
                 spec.args.contains(&"coverage".to_string())
-                    && (is_pip_program(&spec.program)
-                        || spec.program == "uv")
+                    && (is_pip_program(&spec.program) || spec.program == "uv")
             })
             .times(1)
             .returning(|_| Ok(CommandOutput::failure(1, b"Permission denied".to_vec())));
@@ -909,10 +907,7 @@ mod tests {
         let mut mock = MockCmd::new();
         // pip3 install -e .
         mock.expect_run_command()
-            .withf(|spec| {
-                is_pip_program(&spec.program)
-                    && spec.args.contains(&"-e".to_string())
-            })
+            .withf(|spec| is_pip_program(&spec.program) && spec.args.contains(&"-e".to_string()))
             .times(1)
             .returning(|_| Ok(CommandOutput::success(b"".to_vec())));
         // python3 -c "import coverage" — already installed
@@ -938,10 +933,7 @@ mod tests {
 
         let mut mock = MockCmd::new();
         mock.expect_run_command()
-            .withf(|spec| {
-                is_pip_program(&spec.program)
-                    && spec.args.contains(&"-e".to_string())
-            })
+            .withf(|spec| is_pip_program(&spec.program) && spec.args.contains(&"-e".to_string()))
             .times(1)
             .returning(|_| Ok(CommandOutput::failure(1, b"Permission denied".to_vec())));
 
@@ -960,10 +952,7 @@ mod tests {
 
         let mut mock = MockCmd::new();
         mock.expect_run_command()
-            .withf(|spec| {
-                is_pip_program(&spec.program)
-                    && spec.args.contains(&"-e".to_string())
-            })
+            .withf(|spec| is_pip_program(&spec.program) && spec.args.contains(&"-e".to_string()))
             .times(1)
             .returning(|_| Ok(CommandOutput::failure(1, b"build failed".to_vec())));
 
@@ -983,10 +972,7 @@ mod tests {
 
         let mut mock = MockCmd::new();
         mock.expect_run_command()
-            .withf(|spec| {
-                is_pip_program(&spec.program)
-                    && spec.args.contains(&"-r".to_string())
-            })
+            .withf(|spec| is_pip_program(&spec.program) && spec.args.contains(&"-r".to_string()))
             .times(1)
             .returning(|_| {
                 Err(ApexError::Subprocess {
@@ -1011,10 +997,7 @@ mod tests {
 
         let mut mock = MockCmd::new();
         mock.expect_run_command()
-            .withf(|spec| {
-                is_pip_program(&spec.program)
-                    && spec.args.contains(&"-e".to_string())
-            })
+            .withf(|spec| is_pip_program(&spec.program) && spec.args.contains(&"-e".to_string()))
             .times(1)
             .returning(|_| {
                 Err(ApexError::Subprocess {
@@ -1068,8 +1051,7 @@ mod tests {
         mock.expect_run_command()
             .withf(|spec| {
                 spec.args.contains(&"coverage".to_string())
-                    && (is_pip_program(&spec.program)
-                        || spec.program == "uv")
+                    && (is_pip_program(&spec.program) || spec.program == "uv")
             })
             .times(1)
             .returning(|_| {
@@ -1416,7 +1398,11 @@ mod tests {
     fn preflight_check_uv_project() {
         let dir = tempfile::tempdir().unwrap();
         std::fs::write(dir.path().join("uv.lock"), "").unwrap();
-        std::fs::write(dir.path().join("pyproject.toml"), "[project]\nname = 'foo'\n").unwrap();
+        std::fs::write(
+            dir.path().join("pyproject.toml"),
+            "[project]\nname = 'foo'\n",
+        )
+        .unwrap();
         let runner = PythonRunner::new();
         let info = runner.preflight_check(dir.path()).unwrap();
         // If uv is on PATH, should detect uv; otherwise pip
@@ -1427,7 +1413,11 @@ mod tests {
     fn preflight_check_poetry_project() {
         let dir = tempfile::tempdir().unwrap();
         std::fs::write(dir.path().join("poetry.lock"), "").unwrap();
-        std::fs::write(dir.path().join("pyproject.toml"), "[tool.poetry]\nname = 'foo'\n").unwrap();
+        std::fs::write(
+            dir.path().join("pyproject.toml"),
+            "[tool.poetry]\nname = 'foo'\n",
+        )
+        .unwrap();
         let runner = PythonRunner::new();
         let info = runner.preflight_check(dir.path()).unwrap();
         assert_eq!(info.package_manager.as_deref(), Some("poetry"));
@@ -1451,7 +1441,10 @@ mod tests {
         std::fs::create_dir(dir.path().join("Lib")).unwrap();
         let runner = PythonRunner::new();
         let info = runner.preflight_check(dir.path()).unwrap();
-        assert!(info.extra.iter().any(|(k, v)| k == "stdlib_source_dir" && v == "true"));
+        assert!(info
+            .extra
+            .iter()
+            .any(|(k, v)| k == "stdlib_source_dir" && v == "true"));
         assert!(info.warnings.iter().any(|w| w.contains("stdlib")));
     }
 
@@ -1461,11 +1454,10 @@ mod tests {
         std::fs::write(dir.path().join("pyproject.toml"), "[project]\n").unwrap();
         let runner = PythonRunner::new();
         let info = runner.preflight_check(dir.path()).unwrap();
-        assert!(
-            info.extra
-                .iter()
-                .any(|(k, v)| k == "project_file" && v == "pyproject.toml")
-        );
+        assert!(info
+            .extra
+            .iter()
+            .any(|(k, v)| k == "project_file" && v == "pyproject.toml"));
     }
 
     #[test]
@@ -1474,11 +1466,10 @@ mod tests {
         std::fs::write(dir.path().join("requirements.txt"), "flask\n").unwrap();
         let runner = PythonRunner::new();
         let info = runner.preflight_check(dir.path()).unwrap();
-        assert!(
-            info.extra
-                .iter()
-                .any(|(k, v)| k == "requirements_file" && v == "requirements.txt")
-        );
+        assert!(info
+            .extra
+            .iter()
+            .any(|(k, v)| k == "requirements_file" && v == "requirements.txt"));
     }
 
     #[test]
@@ -1488,7 +1479,9 @@ mod tests {
         let info = runner.preflight_check(dir.path()).unwrap();
         // python3 should be available in CI/dev
         assert!(
-            info.available_tools.iter().any(|(name, _)| name == "python"),
+            info.available_tools
+                .iter()
+                .any(|(name, _)| name == "python"),
             "python should be available: {:?}",
             info.available_tools
         );

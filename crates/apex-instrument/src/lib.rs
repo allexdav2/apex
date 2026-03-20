@@ -9,6 +9,7 @@ pub mod go;
 pub mod java;
 pub mod javascript;
 pub mod llvm;
+pub mod llvm_coverage;
 pub mod python;
 pub mod ruby;
 pub mod rust_cov;

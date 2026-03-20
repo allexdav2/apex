@@ -10,7 +10,6 @@
 use apex_core::{
     command::{CommandRunner, CommandSpec, RealCommandRunner},
     error::{ApexError, Result},
-    hash::fnv1a_hash as fnv1a,
     traits::Instrumentor,
     types::{BranchId, InstrumentedTarget, Target},
 };
@@ -18,7 +17,9 @@ use async_trait::async_trait;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
-use tracing::info;
+use tracing::{info, warn};
+
+use crate::llvm_coverage::{parse_llvm_cov_export, FileFilter};
 
 pub struct RustCovInstrumentor {
     branch_ids: Vec<BranchId>,
@@ -144,9 +145,11 @@ impl Instrumentor for RustCovInstrumentor {
 // JSON parser -- LLVM source-based coverage format
 // ---------------------------------------------------------------------------
 
-/// Segment layout: [line, col, count, has_count, is_region_entry, is_gap_region]
-/// We treat each code-region-entry (has_count && is_region_entry && !is_gap) as
-/// one coverable unit, mapped to a BranchId(file_id, line, col, direction=0).
+/// Parse `llvm-cov export` JSON into branch data.
+///
+/// Delegates to the unified [`crate::llvm_coverage::parse_llvm_cov_export`] parser.
+/// Kept as a public wrapper for backward compatibility (used by `run_coverage_for_test`
+/// and `RustTestSandbox`).
 #[allow(clippy::type_complexity)]
 pub fn parse_llvm_json(
     bytes: &[u8],
@@ -155,71 +158,21 @@ pub fn parse_llvm_json(
     (Vec<BranchId>, Vec<BranchId>, HashMap<u64, PathBuf>),
     Box<dyn std::error::Error + Send + Sync>,
 > {
-    let v: serde_json::Value = serde_json::from_slice(bytes)?;
-
-    let mut branch_ids: Vec<BranchId> = Vec::new();
-    let mut executed_ids: Vec<BranchId> = Vec::new();
-    let mut file_paths: HashMap<u64, PathBuf> = HashMap::new();
-
-    let data = v["data"].as_array().ok_or("missing data array")?;
-    for entry in data {
-        let files = entry["files"].as_array().ok_or("missing files array")?;
-        for file in files {
-            let filename = file["filename"].as_str().ok_or("missing filename")?;
-
-            // Skip files outside the target root (stdlib, deps, etc.)
-            let abs = Path::new(filename);
-            let rel = match abs.strip_prefix(root) {
-                Ok(r) => r.to_path_buf(),
-                Err(_) => continue,
-            };
-
-            // Skip test files — we only want production branch coverage.
-            let rel_str = rel.to_string_lossy();
-            if rel_str.starts_with("tests/")
-                || rel_str.contains("/tests/")
-                || rel_str.ends_with("_test.rs")
-                || rel_str.ends_with("_tests.rs")
-            {
-                continue;
-            }
-
-            let fid = fnv1a(&rel.to_string_lossy());
-            file_paths.entry(fid).or_insert_with(|| rel.clone());
-
-            let segments = file["segments"].as_array().ok_or("missing segments")?;
-            for seg in segments {
-                let arr = seg.as_array().ok_or("segment not array")?;
-                if arr.len() < 6 {
-                    continue;
-                }
-                let line = arr[0].as_u64().unwrap_or(0) as u32;
-                let col = arr[1].as_u64().unwrap_or(0).min(u16::MAX as u64) as u16;
-                let count = arr[2].as_u64().unwrap_or(0);
-                let has_count = arr[3].as_bool().unwrap_or(false);
-                let is_entry = arr[4].as_bool().unwrap_or(false);
-                let is_gap = arr[5].as_bool().unwrap_or(false);
-
-                if !has_count || !is_entry || is_gap {
-                    continue;
-                }
-
-                let bid = BranchId::new(fid, line, col, 0);
-                branch_ids.push(bid.clone());
-                if count > 0 {
-                    executed_ids.push(bid);
-                }
-            }
+    let filter = FileFilter {
+        require_under_root: true,
+        skip_test_files: true,
+    };
+    match parse_llvm_cov_export(bytes, root, &filter) {
+        Ok(result) => Ok((
+            result.branch_ids,
+            result.executed_branch_ids,
+            result.file_paths,
+        )),
+        Err(e) => {
+            warn!("failed to parse llvm-cov JSON: {e}");
+            Err(e)
         }
     }
-
-    // Deduplicate.
-    branch_ids.sort_by_key(|b| (b.file_id, b.line, b.col));
-    branch_ids.dedup();
-    executed_ids.sort_by_key(|b| (b.file_id, b.line, b.col));
-    executed_ids.dedup();
-
-    Ok((branch_ids, executed_ids, file_paths))
 }
 
 // ---------------------------------------------------------------------------
@@ -316,6 +269,7 @@ fn empty_result(target: &Target) -> InstrumentedTarget {
 mod tests {
     use super::*;
     use apex_core::command::CommandOutput;
+    use apex_core::hash::fnv1a_hash as fnv1a;
 
     /// A test-only CommandRunner that returns a configurable output.
     struct FakeRunner {

@@ -206,7 +206,10 @@ impl AgentCluster {
     pub fn monitor_action(&self) -> MonitorAction {
         self.monitor
             .lock()
-            .unwrap_or_else(|e| e.into_inner())
+            .unwrap_or_else(|e| {
+                warn!("CoverageMonitor mutex was poisoned — recovering");
+                e.into_inner()
+            })
             .action()
     }
 }

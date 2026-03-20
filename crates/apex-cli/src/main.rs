@@ -27,5 +27,11 @@ async fn main() -> Result<()> {
         .with_writer(std::io::stderr)
         .init();
 
-    apex_cli::run_cli(cli, &cfg).await
+    tokio::select! {
+        result = apex_cli::run_cli(cli, &cfg) => result,
+        _ = tokio::signal::ctrl_c() => {
+            eprintln!("\nInterrupted — cleaning up...");
+            std::process::exit(130)
+        }
+    }
 }

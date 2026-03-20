@@ -4,6 +4,15 @@ All notable changes to APEX will be documented in this file.
 
 ## [Unreleased]
 
+### Fixed
+- apex-cli: add `tokio::select!` SIGINT handler in `main.rs` — Ctrl+C now exits with code 130 after Drop cleanup
+- apex-sandbox: use `kill_on_drop(true)` on pytest subprocess — prevents zombie processes on timeout
+- apex-sandbox: add 60 s timeout on `coverage json` export step — prevents hangs on stalled export
+- apex-sandbox: add null + zero guard check in `__sanitizer_cov_trace_pc_guard` — prevents null deref on uninitialized guard
+- apex-sandbox: upgrade `reset_bitmap` stores to `Ordering::Release` and `read_bitmap` loads to `Ordering::Acquire` — correct memory ordering for concurrent sancov callbacks
+- apex-agent: log warning when `CoverageMonitor` mutex is recovered from poisoned state in orchestrator
+- apex-agent: release solver mutex between solve calls in `DrillerStrategy` — prevents blocking tokio worker with lock held across I/O
+
 ## [0.3.0] — 2026-03-18
 
 ### Added

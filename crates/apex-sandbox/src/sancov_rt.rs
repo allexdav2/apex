@@ -51,6 +51,9 @@ pub unsafe extern "C" fn __sanitizer_cov_trace_pc_guard_init(start: *mut u32, st
 /// Called by compiler-inserted code. `guard` points to a valid u32.
 #[no_mangle]
 pub unsafe extern "C" fn __sanitizer_cov_trace_pc_guard(guard: *mut u32) {
+    if guard.is_null() || *guard == 0 {
+        return;
+    }
     let idx = *guard as usize;
     if idx < MAX_EDGES {
         let _ = COUNTERS[idx].fetch_update(Ordering::Relaxed, Ordering::Relaxed, |v| {
@@ -64,18 +67,21 @@ pub unsafe extern "C" fn __sanitizer_cov_trace_pc_guard(guard: *mut u32) {
 }
 
 /// Read the current coverage bitmap. Returns a copy of all counters.
+/// Uses `Acquire` ordering to observe stores from `reset_bitmap` (which uses `Release`).
 pub fn read_bitmap() -> [u8; MAX_EDGES] {
     let mut bitmap = [0u8; MAX_EDGES];
     for (i, counter) in COUNTERS.iter().enumerate() {
-        bitmap[i] = counter.load(Ordering::Relaxed);
+        bitmap[i] = counter.load(Ordering::Acquire);
     }
     bitmap
 }
 
 /// Reset all counters to zero (between executions).
+/// Uses `Release` ordering so writes from sancov callbacks that happen before
+/// the reset are visible to any thread that subsequently loads with `Acquire`.
 pub fn reset_bitmap() {
     for counter in COUNTERS.iter() {
-        counter.store(0, Ordering::Relaxed);
+        counter.store(0, Ordering::Release);
     }
 }
 
@@ -451,17 +457,19 @@ mod tests {
         assert_eq!(guards[2], 0xDEAD_BEEF);
     }
 
-    // --- trace_pc_guard boundary: guard == 0 ---
+    // --- trace_pc_guard boundary: guard == 0 (uninitialized sentinel) ---
+    // Guard value 0 is the uninitialized sentinel — it must be skipped, not counted.
 
     #[test]
     #[serial]
-    fn trace_pc_guard_at_index_zero() {
+    fn trace_pc_guard_at_index_zero_is_sentinel_skipped() {
         reset_all();
         let mut guard: u32 = 0;
         unsafe {
             __sanitizer_cov_trace_pc_guard(&mut guard as *mut u32);
         }
-        assert_eq!(COUNTERS[0].load(Ordering::Relaxed), 1);
+        // Sentinel (0) must NOT be counted — null guard check returns early.
+        assert_eq!(COUNTERS[0].load(Ordering::Relaxed), 0);
     }
 
     // --- trace_pc_guard at the last valid index ---

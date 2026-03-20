@@ -71,21 +71,31 @@ impl Strategy for DrillerStrategy {
             .take(self.max_constraints)
             .collect();
 
+        // Build the list of (prefix, smtlib2) pairs while NOT holding the solver
+        // lock — the lock is only acquired per solve call to avoid holding a
+        // std::sync::Mutex across what may be I/O-bound solver work.
+        let solve_tasks: Vec<Vec<String>> = frontier
+            .iter()
+            .map(|pc| {
+                constraints
+                    .iter()
+                    .take_while(|c| c.branch != pc.branch)
+                    .map(|c| c.smtlib2.clone())
+                    .chain(std::iter::once(pc.smtlib2.clone()))
+                    .collect()
+            })
+            .collect();
+
         let mut inputs = Vec::new();
-        let solver = self.solver.lock().map_err(|e| {
-            apex_core::error::ApexError::Agent(format!("solver mutex poisoned: {e}"))
-        })?;
-
-        for pc in &frontier {
-            // Build constraint prefix up to this branch, then negate.
-            let prefix: Vec<String> = constraints
-                .iter()
-                .take_while(|c| c.branch != pc.branch)
-                .map(|c| c.smtlib2.clone())
-                .chain(std::iter::once(pc.smtlib2.clone()))
-                .collect();
-
-            if let Ok(Some(seed)) = solver.solve(&prefix, true) {
+        for prefix in &solve_tasks {
+            // Lock, solve, unlock — do not hold across the full loop.
+            let result = {
+                let solver = self.solver.lock().map_err(|e| {
+                    apex_core::error::ApexError::Agent(format!("solver mutex poisoned: {e}"))
+                })?;
+                solver.solve(prefix, true)
+            };
+            if let Ok(Some(seed)) = result {
                 inputs.push(InputSeed::new(seed.data.to_vec(), SeedOrigin::Symbolic));
             }
         }

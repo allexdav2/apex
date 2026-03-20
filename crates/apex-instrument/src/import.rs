@@ -133,9 +133,19 @@ pub fn load_coverage_file(
             Ok((all, exec, paths))
         }
         CoverageFormat::CoveragePy => parse_coverage_py(&text),
+        CoverageFormat::LlvmCov => {
+            let filter = crate::llvm_coverage::FileFilter::default();
+            let result = crate::llvm_coverage::parse_llvm_cov_export(&content, target_root, &filter)
+                .map_err(|e| ApexError::Instrumentation(format!("llvm-cov JSON: {e}")))?;
+            Ok((result.branch_ids, result.executed_branch_ids, result.file_paths))
+        }
+        CoverageFormat::SimpleCov => {
+            let (all, exec, paths) = crate::ruby::parse_simplecov_json(&text);
+            Ok((all, exec, paths))
+        }
         _ => Err(ApexError::Instrumentation(format!(
             "format {format:?} import not yet implemented \
-             — use lcov, cobertura, go-cover, or coverage.py"
+             — use lcov, cobertura, llvm-cov, go-cover, simplecov, or coverage.py"
         ))),
     }
 }

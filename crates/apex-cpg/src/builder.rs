@@ -49,6 +49,59 @@ impl CpgBuilder for PythonCpgBuilder {
     }
 }
 
+// ─── JavaScript implementation ────────────────────────────────────────────────
+
+/// A [`CpgBuilder`] for JavaScript source files.
+///
+/// Uses a simplified line-based parser that understands `function` declarations,
+/// assignments, calls, and `return` statements — sufficient for taint-flow
+/// analysis without a tree-sitter dependency.
+pub struct JsCpgBuilder;
+
+impl CpgBuilder for JsCpgBuilder {
+    fn build(&self, source: &str, filename: &str) -> Cpg {
+        build_js_cpg(source, filename)
+    }
+
+    fn language(&self) -> Language {
+        Language::JavaScript
+    }
+}
+
+/// Build a CPG from JavaScript source code.
+pub fn build_js_cpg(source: &str, filename: &str) -> Cpg {
+    let mut cpg = Cpg::new();
+    let mut parser = InternalJsParser::new(filename);
+    parser.parse(source, &mut cpg);
+    cpg
+}
+
+// ─── Go implementation ────────────────────────────────────────────────────────
+
+/// A [`CpgBuilder`] for Go source files.
+///
+/// Uses a simplified line-based parser that understands `func` declarations,
+/// assignments, calls, and `return` statements.
+pub struct GoCpgBuilder;
+
+impl CpgBuilder for GoCpgBuilder {
+    fn build(&self, source: &str, filename: &str) -> Cpg {
+        build_go_cpg(source, filename)
+    }
+
+    fn language(&self) -> Language {
+        Language::Go
+    }
+}
+
+/// Build a CPG from Go source code.
+pub fn build_go_cpg(source: &str, filename: &str) -> Cpg {
+    let mut cpg = Cpg::new();
+    let mut parser = InternalGoParser::new(filename);
+    parser.parse(source, &mut cpg);
+    cpg
+}
+
 // ─── Free-function convenience wrapper ────────────────────────────────────────
 
 /// Build a CPG from Python source code.
@@ -437,6 +490,475 @@ fn split_args(args: &str) -> Vec<&str> {
         result.push(&args[start..]);
     }
     result
+}
+
+// ─── JavaScript internal parser ──────────────────────────────────────────────
+
+/// Simplified line-based JavaScript CPG builder.
+///
+/// Recognises:
+/// - `function name(params)` and `const/let/var name = (params) =>` declarations
+/// - `name(args)` call expressions
+/// - `lhs = rhs` assignments
+/// - `if`/`while`/`for` control structures
+/// - `return` statements
+struct InternalJsParser<'a> {
+    filename: &'a str,
+}
+
+impl<'a> InternalJsParser<'a> {
+    fn new(filename: &'a str) -> Self {
+        Self { filename }
+    }
+
+    fn parse(&mut self, source: &str, cpg: &mut Cpg) {
+        let lines: Vec<&str> = source.lines().collect();
+        let mut i = 0;
+        while i < lines.len() {
+            let trimmed = lines[i].trim();
+            if trimmed.starts_with("function ") {
+                i = self.parse_function(lines.as_slice(), i, cpg);
+            } else if let Some(name) = Self::detect_arrow_or_func_expr(trimmed) {
+                i = self.parse_named_block(lines.as_slice(), i, name, cpg);
+            } else {
+                i += 1;
+            }
+        }
+    }
+
+    /// Detect `const/let/var name = function(...) {` or `const name = (...) => {`.
+    fn detect_arrow_or_func_expr(line: &str) -> Option<String> {
+        for prefix in &["const ", "let ", "var "] {
+            if let Some(rest) = line.strip_prefix(prefix) {
+                let name_end = rest.find(|c: char| !c.is_alphanumeric() && c != '_')?;
+                let name = &rest[..name_end];
+                let after = rest[name_end..].trim_start();
+                if let Some(rhs_raw) = after.strip_prefix('=') {
+                    let rhs = rhs_raw.trim();
+                    if rhs.starts_with("function") || rhs.contains("=>") {
+                        return Some(name.to_string());
+                    }
+                }
+            }
+        }
+        None
+    }
+
+    fn parse_function(&self, lines: &[&str], def_idx: usize, cpg: &mut Cpg) -> usize {
+        let def_line = lines[def_idx].trim();
+        let line_no = (def_idx + 1) as u32;
+        // Extract name from `function name(`
+        let after_fn = def_line.trim_start_matches("function").trim();
+        let paren = after_fn.find('(').unwrap_or(after_fn.len());
+        let fn_name = after_fn[..paren].trim().to_string();
+        let params = if let (Some(open), Some(close)) = (after_fn.find('('), after_fn.find(')')) {
+            let inner = &after_fn[open + 1..close];
+            inner
+                .split(',')
+                .map(|p| p.split('=').next().unwrap_or(p).trim().to_string())
+                .filter(|p| !p.is_empty())
+                .collect::<Vec<_>>()
+        } else {
+            vec![]
+        };
+        self.emit_function(lines, def_idx, line_no, fn_name, params, cpg)
+    }
+
+    fn parse_named_block(
+        &self,
+        lines: &[&str],
+        def_idx: usize,
+        name: String,
+        cpg: &mut Cpg,
+    ) -> usize {
+        let line_no = (def_idx + 1) as u32;
+        self.emit_function(lines, def_idx, line_no, name, vec![], cpg)
+    }
+
+    fn emit_function(
+        &self,
+        lines: &[&str],
+        def_idx: usize,
+        line_no: u32,
+        fn_name: String,
+        params: Vec<String>,
+        cpg: &mut Cpg,
+    ) -> usize {
+        let method_id = cpg.add_node(NodeKind::Method {
+            name: fn_name,
+            file: self.filename.to_string(),
+            line: line_no,
+        });
+        for (idx, param) in params.iter().enumerate() {
+            let p_id = cpg.add_node(NodeKind::Parameter {
+                name: param.clone(),
+                index: idx as u32,
+            });
+            cpg.add_edge(method_id, p_id, EdgeKind::Ast);
+        }
+
+        // Find the opening brace to determine body indentation
+        let body_indent = body_indentation(lines, def_idx + 1);
+        let mut prev_stmt: Option<u32> = None;
+        let mut i = def_idx + 1;
+
+        while i < lines.len() {
+            let raw = lines[i];
+            let trimmed = raw.trim();
+            if trimmed.is_empty() || trimmed == "}" {
+                let indent = leading_spaces(raw);
+                if !trimmed.is_empty() && indent < body_indent {
+                    break;
+                }
+                i += 1;
+                continue;
+            }
+            let indent = leading_spaces(raw);
+            if indent < body_indent {
+                break;
+            }
+            if let Some(sid) = self.parse_js_stmt(trimmed, (i + 1) as u32, cpg) {
+                cpg.add_edge(method_id, sid, EdgeKind::Ast);
+                if let Some(prev) = prev_stmt {
+                    cpg.add_edge(prev, sid, EdgeKind::Cfg);
+                }
+                prev_stmt = Some(sid);
+            }
+            i += 1;
+        }
+        i
+    }
+
+    fn parse_js_stmt(&self, stmt: &str, line_no: u32, cpg: &mut Cpg) -> Option<u32> {
+        // Strip trailing semicolons and braces for matching
+        let stmt = stmt.trim_end_matches([';', '{']).trim();
+        if stmt.is_empty() || stmt.starts_with("//") {
+            return None;
+        }
+        // return
+        if stmt.starts_with("return") {
+            let ret_id = cpg.add_node(NodeKind::Return { line: line_no });
+            let rest = stmt.trim_start_matches("return").trim();
+            if !rest.is_empty() {
+                self.js_attach_expr(rest, line_no, ret_id, 0, cpg);
+            }
+            return Some(ret_id);
+        }
+        // control structures
+        if let Some(ctrl) = parse_js_ctrl(stmt, line_no) {
+            return Some(cpg.add_node(ctrl));
+        }
+        // variable declaration with assignment: const/let/var name = ...
+        let decl_stmt = stmt
+            .trim_start_matches("const ")
+            .trim_start_matches("let ")
+            .trim_start_matches("var ");
+        if let Some((lhs, rhs)) = parse_assignment(decl_stmt) {
+            let assign_id = cpg.add_node(NodeKind::Assignment {
+                lhs: lhs.to_string(),
+                line: line_no,
+            });
+            self.js_attach_expr(rhs.trim(), line_no, assign_id, 0, cpg);
+            return Some(assign_id);
+        }
+        // bare assignment
+        if let Some((lhs, rhs)) = parse_assignment(stmt) {
+            let assign_id = cpg.add_node(NodeKind::Assignment {
+                lhs: lhs.to_string(),
+                line: line_no,
+            });
+            self.js_attach_expr(rhs.trim(), line_no, assign_id, 0, cpg);
+            return Some(assign_id);
+        }
+        // bare call
+        if let Some(call_id) = self.js_try_call(stmt, line_no, cpg) {
+            return Some(call_id);
+        }
+        None
+    }
+
+    fn js_attach_expr(&self, expr: &str, line_no: u32, parent: u32, arg_index: u32, cpg: &mut Cpg) {
+        let expr = expr.trim().trim_end_matches(';').trim();
+        if expr.is_empty() {
+            return;
+        }
+        if let Some(call_id) = self.js_try_call(expr, line_no, cpg) {
+            cpg.add_edge(parent, call_id, EdgeKind::Argument { index: arg_index });
+            return;
+        }
+        let name = expr
+            .split(|c: char| !c.is_alphanumeric() && c != '_' && c != '.')
+            .next()
+            .unwrap_or(expr)
+            .trim()
+            .to_string();
+        if !name.is_empty() {
+            let id = cpg.add_node(NodeKind::Identifier { name, line: line_no });
+            cpg.add_edge(parent, id, EdgeKind::Argument { index: arg_index });
+        }
+    }
+
+    fn js_try_call(&self, expr: &str, line_no: u32, cpg: &mut Cpg) -> Option<u32> {
+        let paren = expr.find('(')?;
+        if paren == 0 {
+            return None;
+        }
+        let callee = &expr[..paren];
+        if !callee.chars().all(|c| c.is_alphanumeric() || c == '_' || c == '.') {
+            return None;
+        }
+        let close = expr.rfind(')')?;
+        if close < paren {
+            return None;
+        }
+        let call_id = cpg.add_node(NodeKind::Call {
+            name: callee.to_string(),
+            line: line_no,
+        });
+        let args_str = &expr[paren + 1..close];
+        for (idx, arg) in split_args(args_str).iter().enumerate() {
+            let arg = arg.trim();
+            if !arg.is_empty() {
+                self.js_attach_expr(arg, line_no, call_id, idx as u32, cpg);
+            }
+        }
+        Some(call_id)
+    }
+}
+
+fn parse_js_ctrl(stmt: &str, line_no: u32) -> Option<NodeKind> {
+    let kind = if stmt.starts_with("if ") || stmt.starts_with("if(") {
+        CtrlKind::If
+    } else if stmt.starts_with("while ") || stmt.starts_with("while(") {
+        CtrlKind::While
+    } else if stmt.starts_with("for ") || stmt.starts_with("for(") {
+        CtrlKind::For
+    } else if stmt.starts_with("try ") || stmt == "try" {
+        CtrlKind::Try
+    } else {
+        return None;
+    };
+    Some(NodeKind::ControlStructure { kind, line: line_no })
+}
+
+// ─── Go internal parser ───────────────────────────────────────────────────────
+
+/// Simplified line-based Go CPG builder.
+///
+/// Recognises:
+/// - `func name(params)` declarations
+/// - `name(args)` call expressions
+/// - `:=` and `=` assignments
+/// - `if`/`for` control structures
+/// - `return` statements
+struct InternalGoParser<'a> {
+    filename: &'a str,
+}
+
+impl<'a> InternalGoParser<'a> {
+    fn new(filename: &'a str) -> Self {
+        Self { filename }
+    }
+
+    fn parse(&mut self, source: &str, cpg: &mut Cpg) {
+        let lines: Vec<&str> = source.lines().collect();
+        let mut i = 0;
+        while i < lines.len() {
+            let trimmed = lines[i].trim();
+            if trimmed.starts_with("func ") {
+                i = self.parse_func(lines.as_slice(), i, cpg);
+            } else {
+                i += 1;
+            }
+        }
+    }
+
+    fn parse_func(&self, lines: &[&str], def_idx: usize, cpg: &mut Cpg) -> usize {
+        let def_line = lines[def_idx].trim();
+        let line_no = (def_idx + 1) as u32;
+
+        // Strip `func ` prefix, skip optional receiver `(recv Type)`
+        let after_func = def_line.trim_start_matches("func").trim();
+        let after_func = if after_func.starts_with('(') {
+            // receiver: skip to closing paren
+            let close = after_func.find(')').map(|i| i + 1).unwrap_or(0);
+            after_func[close..].trim()
+        } else {
+            after_func
+        };
+
+        let paren = after_func.find('(').unwrap_or(after_func.len());
+        let fn_name = after_func[..paren].trim().to_string();
+
+        let params: Vec<String> = if let (Some(open), Some(close)) =
+            (after_func.find('('), after_func.find(')'))
+        {
+            let inner = &after_func[open + 1..close];
+            inner
+                .split(',')
+                .flat_map(|p| {
+                    // Go params: `name type` — take just the name
+                    let parts: Vec<&str> = p.trim().splitn(2, ' ').collect();
+                    if !parts.is_empty() && !parts[0].is_empty() {
+                        vec![parts[0].to_string()]
+                    } else {
+                        vec![]
+                    }
+                })
+                .filter(|p| !p.is_empty())
+                .collect()
+        } else {
+            vec![]
+        };
+
+        let method_id = cpg.add_node(NodeKind::Method {
+            name: fn_name,
+            file: self.filename.to_string(),
+            line: line_no,
+        });
+        for (idx, param) in params.iter().enumerate() {
+            let p_id = cpg.add_node(NodeKind::Parameter {
+                name: param.clone(),
+                index: idx as u32,
+            });
+            cpg.add_edge(method_id, p_id, EdgeKind::Ast);
+        }
+
+        let body_indent = body_indentation(lines, def_idx + 1);
+        let mut prev_stmt: Option<u32> = None;
+        let mut i = def_idx + 1;
+
+        while i < lines.len() {
+            let raw = lines[i];
+            let trimmed = raw.trim();
+            if trimmed.is_empty() || trimmed == "}" {
+                let indent = leading_spaces(raw);
+                if !trimmed.is_empty() && indent < body_indent {
+                    break;
+                }
+                i += 1;
+                continue;
+            }
+            let indent = leading_spaces(raw);
+            if indent < body_indent {
+                break;
+            }
+            if let Some(sid) = self.parse_go_stmt(trimmed, (i + 1) as u32, cpg) {
+                cpg.add_edge(method_id, sid, EdgeKind::Ast);
+                if let Some(prev) = prev_stmt {
+                    cpg.add_edge(prev, sid, EdgeKind::Cfg);
+                }
+                prev_stmt = Some(sid);
+            }
+            i += 1;
+        }
+        i
+    }
+
+    fn parse_go_stmt(&self, stmt: &str, line_no: u32, cpg: &mut Cpg) -> Option<u32> {
+        if stmt.is_empty() || stmt.starts_with("//") {
+            return None;
+        }
+        // return
+        if stmt.starts_with("return") {
+            let ret_id = cpg.add_node(NodeKind::Return { line: line_no });
+            let rest = stmt.trim_start_matches("return").trim();
+            if !rest.is_empty() {
+                self.go_attach_expr(rest, line_no, ret_id, 0, cpg);
+            }
+            return Some(ret_id);
+        }
+        // control structures
+        if let Some(ctrl) = parse_go_ctrl(stmt, line_no) {
+            return Some(cpg.add_node(ctrl));
+        }
+        // short variable declaration `name := expr`
+        if let Some(colon_eq) = stmt.find(":=") {
+            let lhs = stmt[..colon_eq].trim();
+            let rhs = stmt[colon_eq + 2..].trim();
+            if !lhs.is_empty() && !rhs.is_empty() {
+                let assign_id = cpg.add_node(NodeKind::Assignment {
+                    lhs: lhs.to_string(),
+                    line: line_no,
+                });
+                self.go_attach_expr(rhs, line_no, assign_id, 0, cpg);
+                return Some(assign_id);
+            }
+        }
+        // regular assignment
+        if let Some((lhs, rhs)) = parse_assignment(stmt) {
+            let assign_id = cpg.add_node(NodeKind::Assignment {
+                lhs: lhs.to_string(),
+                line: line_no,
+            });
+            self.go_attach_expr(rhs, line_no, assign_id, 0, cpg);
+            return Some(assign_id);
+        }
+        // bare call
+        if let Some(call_id) = self.go_try_call(stmt, line_no, cpg) {
+            return Some(call_id);
+        }
+        None
+    }
+
+    fn go_attach_expr(&self, expr: &str, line_no: u32, parent: u32, arg_index: u32, cpg: &mut Cpg) {
+        let expr = expr.trim();
+        if expr.is_empty() {
+            return;
+        }
+        if let Some(call_id) = self.go_try_call(expr, line_no, cpg) {
+            cpg.add_edge(parent, call_id, EdgeKind::Argument { index: arg_index });
+            return;
+        }
+        let name = expr
+            .split(|c: char| !c.is_alphanumeric() && c != '_' && c != '.')
+            .next()
+            .unwrap_or(expr)
+            .trim()
+            .to_string();
+        if !name.is_empty() {
+            let id = cpg.add_node(NodeKind::Identifier { name, line: line_no });
+            cpg.add_edge(parent, id, EdgeKind::Argument { index: arg_index });
+        }
+    }
+
+    fn go_try_call(&self, expr: &str, line_no: u32, cpg: &mut Cpg) -> Option<u32> {
+        let paren = expr.find('(')?;
+        if paren == 0 {
+            return None;
+        }
+        let callee = &expr[..paren];
+        if !callee.chars().all(|c| c.is_alphanumeric() || c == '_' || c == '.') {
+            return None;
+        }
+        let close = expr.rfind(')')?;
+        if close < paren {
+            return None;
+        }
+        let call_id = cpg.add_node(NodeKind::Call {
+            name: callee.to_string(),
+            line: line_no,
+        });
+        let args_str = &expr[paren + 1..close];
+        for (idx, arg) in split_args(args_str).iter().enumerate() {
+            let arg = arg.trim();
+            if !arg.is_empty() {
+                self.go_attach_expr(arg, line_no, call_id, idx as u32, cpg);
+            }
+        }
+        Some(call_id)
+    }
+}
+
+fn parse_go_ctrl(stmt: &str, line_no: u32) -> Option<NodeKind> {
+    let kind = if stmt.starts_with("if ") || stmt.starts_with("if(") {
+        CtrlKind::If
+    } else if stmt.starts_with("for ") || stmt.starts_with("for(") || stmt == "for {" {
+        CtrlKind::For
+    } else {
+        return None;
+    };
+    Some(NodeKind::ControlStructure { kind, line: line_no })
 }
 
 // ─── Tests ───────────────────────────────────────────────────────────────────

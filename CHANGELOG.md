@@ -4,6 +4,13 @@ All notable changes to APEX will be documented in this file.
 
 ## [Unreleased]
 
+### Added
+- **Multi-language CPG dispatch** — `apex-cli` now dispatches `JsCpgBuilder` and `GoCpgBuilder` for JavaScript and Go targets alongside the existing Python builder; all 5 CPG build sites refactored through a new `build_cpg_for_lang` helper using the `CpgBuilder` trait
+- **`JsCpgBuilder` and `GoCpgBuilder`** — new line-based CPG builders in `apex-cpg` for JavaScript and Go; exported from the crate alongside `PythonCpgBuilder`
+- **`Cpg` now derives `Clone`** — enables Arc unwrap-or-clone in the data-flow command
+- **E2E taint detection test** — `test_audit_detects_taint_flow` in `integration_harness.rs` verifies CWE-78 taint flow from `sys.argv` through `subprocess.call(shell=True)` is detected and not suppressed as noisy
+- **`tainted.py` fixture** — `tests/fixtures/tiny-python/tainted.py` provides a concrete CWE-78 taint source for E2E verification
+
 ## [0.3.1] — 2026-03-20
 
 ## [0.3.0] — 2026-03-20

@@ -8,7 +8,9 @@
 
 use apex_cli::{run_cli, Cli, Commands, DeadCodeArgs, DeployScoreArgs, FeaturesArgs, LangArg};
 use apex_core::config::ApexConfig;
+use apex_core::types::Language;
 use clap::Parser;
+use std::sync::Arc;
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -262,5 +264,98 @@ async fn test_features_js() {
         result.is_ok(),
         "apex features --lang js failed: {:?}",
         result
+    );
+}
+
+// ---------------------------------------------------------------------------
+// E2E taint detection: CWE-78 via CPG taint flow
+// ---------------------------------------------------------------------------
+
+/// Verify that the audit pipeline detects a real CWE-78 taint flow from
+/// `sys.argv` through `subprocess.call(shell=True)` in `tainted.py`, and that
+/// the finding is NOT suppressed as noisy (because a genuine taint path exists
+/// in the CPG).
+#[tokio::test]
+async fn test_audit_detects_taint_flow() {
+    let target = fixture_path("tiny-python");
+    assert!(
+        target.join("tainted.py").exists(),
+        "tainted.py fixture missing: {}",
+        target.join("tainted.py").display()
+    );
+
+    // Build source cache manually so we can drive the detector pipeline
+    // directly and inspect the findings.
+    let mut source_cache = std::collections::HashMap::new();
+    let tainted_src = std::fs::read_to_string(target.join("tainted.py"))
+        .expect("read tainted.py");
+    source_cache.insert(
+        std::path::PathBuf::from("tainted.py"),
+        tainted_src,
+    );
+
+    // Build CPG via the trait-based dispatch (Python -> PythonCpgBuilder).
+    use apex_cpg::{CpgBuilder, PythonCpgBuilder};
+    let builder = PythonCpgBuilder;
+    let mut combined = apex_cpg::Cpg::new();
+    for (path, source) in &source_cache {
+        let file_cpg = builder.build(source, &path.display().to_string());
+        combined.merge(file_cpg);
+    }
+    apex_cpg::reaching_def::add_reaching_def_edges(&mut combined);
+    let cpg = if combined.node_count() > 0 {
+        Some(Arc::new(combined))
+    } else {
+        None
+    };
+
+    let detect_cfg = apex_detect::DetectConfig::default();
+    let ctx = apex_detect::AnalysisContext {
+        target_root: target.clone(),
+        language: Language::Python,
+        oracle: Arc::new(apex_coverage::CoverageOracle::new()),
+        file_paths: std::collections::HashMap::new(),
+        known_bugs: vec![],
+        source_cache,
+        fuzz_corpus: None,
+        config: detect_cfg.clone(),
+        runner: Arc::new(apex_core::command::RealCommandRunner),
+        cpg,
+        threat_model: apex_core::config::ThreatModelConfig::default(),
+        reverse_path_engine: None,
+    };
+
+    let pipeline = apex_detect::DetectorPipeline::from_config(&detect_cfg, Language::Python);
+    let report = pipeline.run_all(&ctx).await;
+
+    // There must be at least one CWE-78 finding.
+    let cwe78_findings: Vec<_> = report
+        .findings
+        .iter()
+        .filter(|f| f.cwe_ids.contains(&78))
+        .collect();
+
+    assert!(
+        !cwe78_findings.is_empty(),
+        "Expected at least one CWE-78 finding from tainted.py, got none. \
+         All findings: {:?}",
+        report
+            .findings
+            .iter()
+            .map(|f| (&f.detector, &f.cwe_ids, f.noisy))
+            .collect::<Vec<_>>()
+    );
+
+    // At least one CWE-78 finding must NOT be marked noisy — the taint flow
+    // from sys.argv to subprocess.call(shell=True) is a confirmed path.
+    let confirmed = cwe78_findings.iter().any(|f| !f.noisy);
+    assert!(
+        confirmed,
+        "All CWE-78 findings are marked noisy; expected at least one confirmed taint flow. \
+         Findings: {:?}",
+        cwe78_findings
+            .iter()
+            .map(|f| (&f.detector, f.noisy))
+            .collect::<Vec<_>>()
     );
 }

@@ -989,23 +989,8 @@ async fn run_analyze(args: AnalyzeArgs, cfg: &ApexConfig) -> Result<()> {
     );
     let source_file_count = source_cache.len();
 
-    // Build CPG for Python projects
-    let cpg = if lang == Language::Python {
-        let mut combined_cpg = apex_cpg::Cpg::new();
-        for (path, source) in &source_cache {
-            let file_cpg =
-                apex_cpg::builder::build_python_cpg(source, &path.display().to_string());
-            combined_cpg.merge(file_cpg);
-        }
-        apex_cpg::reaching_def::add_reaching_def_edges(&mut combined_cpg);
-        if combined_cpg.node_count() > 0 {
-            Some(Arc::new(combined_cpg))
-        } else {
-            None
-        }
-    } else {
-        None
-    };
+    // Build CPG for supported languages (Python, JavaScript, Go)
+    let cpg = build_cpg_for_lang(lang, &source_cache);
 
     // Build call graph for reverse path analysis
     let reach_graph = apex_reach::extractors::build_call_graph(&source_cache, lang);
@@ -1383,23 +1368,8 @@ async fn run(args: RunArgs, cfg: &ApexConfig) -> Result<()> {
             cfg.index.max_source_file_bytes as u64,
         );
 
-        // Build CPG for Python projects (other languages: TODO)
-        let cpg = if lang == Language::Python {
-            let mut combined_cpg = apex_cpg::Cpg::new();
-            for (path, source) in &file_source_cache {
-                let file_cpg =
-                    apex_cpg::builder::build_python_cpg(source, &path.display().to_string());
-                combined_cpg.merge(file_cpg);
-            }
-            apex_cpg::reaching_def::add_reaching_def_edges(&mut combined_cpg);
-            if combined_cpg.node_count() > 0 {
-                Some(Arc::new(combined_cpg))
-            } else {
-                None
-            }
-        } else {
-            None
-        };
+        // Build CPG for supported languages (Python, JavaScript, Go)
+        let cpg = build_cpg_for_lang(lang, &file_source_cache);
 
         // Build call graph for reverse path analysis
         let reach_graph = apex_reach::extractors::build_call_graph(&file_source_cache, lang);
@@ -2219,22 +2189,8 @@ async fn run_audit(args: AuditArgs, cfg: &ApexConfig) -> Result<()> {
         cfg.index.max_source_file_bytes as u64,
     );
 
-    // Build CPG for Python projects (other languages: TODO)
-    let cpg = if lang == Language::Python {
-        let mut combined_cpg = apex_cpg::Cpg::new();
-        for (path, source) in &source_cache {
-            let file_cpg = apex_cpg::builder::build_python_cpg(source, &path.display().to_string());
-            combined_cpg.merge(file_cpg);
-        }
-        apex_cpg::reaching_def::add_reaching_def_edges(&mut combined_cpg);
-        if combined_cpg.node_count() > 0 {
-            Some(Arc::new(combined_cpg))
-        } else {
-            None
-        }
-    } else {
-        None
-    };
+    // Build CPG for supported languages (Python, JavaScript, Go)
+    let cpg = build_cpg_for_lang(lang, &source_cache);
 
     let ctx = AnalysisContext {
         target_root: target_path.clone(),
@@ -2369,6 +2325,36 @@ fn build_source_cache(
     }
 
     cache
+}
+
+/// Build a combined CPG for all source files in `source_cache` using the
+/// language-appropriate [`apex_cpg::CpgBuilder`].
+///
+/// Returns `None` when the language has no CPG builder yet (e.g. Java).
+fn build_cpg_for_lang(
+    lang: Language,
+    source_cache: &std::collections::HashMap<PathBuf, String>,
+) -> Option<Arc<apex_cpg::Cpg>> {
+    use apex_cpg::{CpgBuilder, GoCpgBuilder, JsCpgBuilder, PythonCpgBuilder};
+
+    let builder: Box<dyn CpgBuilder> = match lang {
+        Language::Python => Box::new(PythonCpgBuilder),
+        Language::JavaScript => Box::new(JsCpgBuilder),
+        Language::Go => Box::new(GoCpgBuilder),
+        _ => return None,
+    };
+
+    let mut combined = apex_cpg::Cpg::new();
+    for (path, source) in source_cache {
+        let file_cpg = builder.build(source, &path.display().to_string());
+        combined.merge(file_cpg);
+    }
+    apex_cpg::reaching_def::add_reaching_def_edges(&mut combined);
+    if combined.node_count() > 0 {
+        Some(Arc::new(combined))
+    } else {
+        None
+    }
 }
 
 /// Build the appropriate [`apex_core::traits::TestSynthesizer`] for the given language.
@@ -2812,22 +2798,8 @@ async fn run_lint(args: LintArgs, cfg: &ApexConfig) -> Result<()> {
         cfg.index.max_source_file_bytes as u64,
     );
 
-    // Build CPG for Python projects (other languages: TODO)
-    let cpg = if lang == Language::Python {
-        let mut combined_cpg = apex_cpg::Cpg::new();
-        for (path, source) in &source_cache {
-            let file_cpg = apex_cpg::builder::build_python_cpg(source, &path.display().to_string());
-            combined_cpg.merge(file_cpg);
-        }
-        apex_cpg::reaching_def::add_reaching_def_edges(&mut combined_cpg);
-        if combined_cpg.node_count() > 0 {
-            Some(Arc::new(combined_cpg))
-        } else {
-            None
-        }
-    } else {
-        None
-    };
+    // Build CPG for supported languages (Python, JavaScript, Go)
+    let cpg = build_cpg_for_lang(lang, &source_cache);
 
     let ctx = AnalysisContext {
         target_root: target_path.clone(),
@@ -4129,22 +4101,20 @@ async fn run_data_flow(args: DataFlowArgs) -> Result<()> {
         DEFAULT_MAX_SOURCE_FILE_BYTES,
     );
 
-    if lang != Language::Python {
-        eprintln!("Warning: data-flow currently best supports Python. Other languages will have limited results.");
-    }
-
-    let mut cpg = apex_cpg::Cpg::new();
-    for (path, source) in &source_cache {
-        let file_cpg = apex_cpg::builder::build_python_cpg(source, &path.display().to_string());
-        cpg.merge(file_cpg);
-    }
+    let cpg_opt = build_cpg_for_lang(lang, &source_cache);
+    let cpg = match cpg_opt {
+        Some(arc_cpg) => Arc::try_unwrap(arc_cpg).unwrap_or_else(|a| (*a).clone()),
+        None => {
+            println!("No code found to analyze (language not yet supported for data-flow).");
+            return Ok(());
+        }
+    };
 
     if cpg.node_count() == 0 {
         println!("No code found to analyze.");
         return Ok(());
     }
 
-    apex_cpg::reaching_def::add_reaching_def_edges(&mut cpg);
     let flows = apex_cpg::taint::find_taint_flows(&cpg, args.max_depth);
 
     match args.output_format {
@@ -4249,22 +4219,8 @@ async fn run_compliance_export(args: ComplianceExportArgs, cfg: &ApexConfig) -> 
         cfg.index.max_source_file_bytes as u64,
     );
 
-    // Build CPG for Python projects
-    let cpg = if lang == Language::Python {
-        let mut combined_cpg = apex_cpg::Cpg::new();
-        for (path, source) in &source_cache {
-            let file_cpg = apex_cpg::builder::build_python_cpg(source, &path.display().to_string());
-            combined_cpg.merge(file_cpg);
-        }
-        apex_cpg::reaching_def::add_reaching_def_edges(&mut combined_cpg);
-        if combined_cpg.node_count() > 0 {
-            Some(Arc::new(combined_cpg))
-        } else {
-            None
-        }
-    } else {
-        None
-    };
+    // Build CPG for supported languages (Python, JavaScript, Go)
+    let cpg = build_cpg_for_lang(lang, &source_cache);
 
     // Run detector pipeline to collect findings
     let detect_cfg = DetectConfig::default();

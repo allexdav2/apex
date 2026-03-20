@@ -5,7 +5,7 @@
 
 pub mod architecture;
 pub mod builder;
-pub use builder::{CpgBuilder, PythonCpgBuilder};
+pub use builder::{CpgBuilder, GoCpgBuilder, JsCpgBuilder, PythonCpgBuilder};
 pub mod deepdfa;
 pub mod model_loader;
 pub mod query;
@@ -91,6 +91,7 @@ pub enum EdgeKind {
 ///
 /// Stores nodes and edges with integer identifiers. Query helpers return
 /// references into the internal storage.
+#[derive(Clone)]
 pub struct Cpg {
     nodes: Vec<(NodeId, NodeKind)>,
     edges: Vec<(NodeId, NodeId, EdgeKind)>,

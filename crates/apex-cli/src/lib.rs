@@ -971,6 +971,7 @@ async fn run_analyze(args: AnalyzeArgs, cfg: &ApexConfig) -> Result<()> {
                 apex_cpg::builder::build_python_cpg(source, &path.display().to_string());
             combined_cpg.merge(file_cpg);
         }
+        apex_cpg::reaching_def::add_reaching_def_edges(&mut combined_cpg);
         if combined_cpg.node_count() > 0 {
             Some(Arc::new(combined_cpg))
         } else {
@@ -1364,6 +1365,7 @@ async fn run(args: RunArgs, cfg: &ApexConfig) -> Result<()> {
                     apex_cpg::builder::build_python_cpg(source, &path.display().to_string());
                 combined_cpg.merge(file_cpg);
             }
+            apex_cpg::reaching_def::add_reaching_def_edges(&mut combined_cpg);
             if combined_cpg.node_count() > 0 {
                 Some(Arc::new(combined_cpg))
             } else {
@@ -2170,6 +2172,7 @@ async fn run_audit(args: AuditArgs, cfg: &ApexConfig) -> Result<()> {
             let file_cpg = apex_cpg::builder::build_python_cpg(source, &path.display().to_string());
             combined_cpg.merge(file_cpg);
         }
+        apex_cpg::reaching_def::add_reaching_def_edges(&mut combined_cpg);
         if combined_cpg.node_count() > 0 {
             Some(Arc::new(combined_cpg))
         } else {
@@ -2762,6 +2765,7 @@ async fn run_lint(args: LintArgs, cfg: &ApexConfig) -> Result<()> {
             let file_cpg = apex_cpg::builder::build_python_cpg(source, &path.display().to_string());
             combined_cpg.merge(file_cpg);
         }
+        apex_cpg::reaching_def::add_reaching_def_edges(&mut combined_cpg);
         if combined_cpg.node_count() > 0 {
             Some(Arc::new(combined_cpg))
         } else {
@@ -4198,6 +4202,7 @@ async fn run_compliance_export(args: ComplianceExportArgs, cfg: &ApexConfig) -> 
             let file_cpg = apex_cpg::builder::build_python_cpg(source, &path.display().to_string());
             combined_cpg.merge(file_cpg);
         }
+        apex_cpg::reaching_def::add_reaching_def_edges(&mut combined_cpg);
         if combined_cpg.node_count() > 0 {
             Some(Arc::new(combined_cpg))
         } else {

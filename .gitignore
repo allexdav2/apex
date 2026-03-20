@@ -63,3 +63,5 @@ python/apex_cli/bin/
 
 # Nix
 result
+.fleet-worktrees/
+**/.coverage

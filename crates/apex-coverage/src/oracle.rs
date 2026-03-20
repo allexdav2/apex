@@ -94,7 +94,7 @@ impl CoverageOracle {
         let mut order = self.branch_order.lock().unwrap_or_else(|e| e.into_inner());
         for id in ids {
             self.branches.entry(id.clone()).or_insert_with(|| {
-                self.total_count.fetch_add(1, Ordering::Relaxed);
+                self.total_count.fetch_add(1, Ordering::Release);
                 order.push(id);
                 BranchState::Uncovered
             });
@@ -103,17 +103,30 @@ impl CoverageOracle {
 
     /// Mark a branch as covered by `seed_id`. Returns true if this is a new coverage.
     pub fn mark_covered(&self, id: &BranchId, seed_id: SeedId) -> bool {
+        // Check if the branch is already present before taking the branch_order lock.
+        // If it is present, we skip the lock entirely for the hot path.
+        let is_new = !self.branches.contains_key(id);
         let mut entry = self.branches.entry(id.clone()).or_insert_with(|| {
-            self.total_count.fetch_add(1, Ordering::Relaxed);
+            self.total_count.fetch_add(1, Ordering::Release);
             BranchState::Uncovered
         });
+        // If the entry was newly created, register it in branch_order so that
+        // merge_bitmap can resolve it by index.
+        if is_new {
+            let mut order = self.branch_order.lock().unwrap_or_else(|e| e.into_inner());
+            // Guard against a race where two threads both saw is_new=true for the
+            // same branch: only push if it isn't already in the list.
+            if !order.contains(id) {
+                order.push(id.clone());
+            }
+        }
         match *entry {
             BranchState::Uncovered => {
                 *entry = BranchState::Covered {
                     hit_count: 1,
                     first_seed_id: seed_id,
                 };
-                self.covered_count.fetch_add(1, Ordering::Relaxed);
+                self.covered_count.fetch_add(1, Ordering::Release);
                 true
             }
             BranchState::Covered {
@@ -167,20 +180,20 @@ impl CoverageOracle {
     }
 
     pub fn coverage_percent(&self) -> f64 {
-        let total = self.total_count.load(Ordering::Relaxed);
+        let total = self.total_count.load(Ordering::Acquire);
         if total == 0 {
             return 0.0;
         }
-        let covered = self.covered_count.load(Ordering::Relaxed);
+        let covered = self.covered_count.load(Ordering::Acquire);
         (covered as f64 / total as f64) * 100.0
     }
 
     pub fn covered_count(&self) -> usize {
-        self.covered_count.load(Ordering::Relaxed)
+        self.covered_count.load(Ordering::Acquire)
     }
 
     pub fn total_count(&self) -> usize {
-        self.total_count.load(Ordering::Relaxed)
+        self.total_count.load(Ordering::Acquire)
     }
 
     pub fn state_of(&self, id: &BranchId) -> Option<BranchState> {
@@ -215,7 +228,7 @@ impl CoverageOracle {
             if matches!(*entry, BranchState::Uncovered) {
                 *entry = BranchState::Unreachable;
                 // Treat as "covered" for percentage purposes.
-                self.covered_count.fetch_add(1, Ordering::Relaxed);
+                self.covered_count.fetch_add(1, Ordering::Release);
             }
         }
     }
@@ -225,7 +238,7 @@ impl CoverageOracle {
         if let Some(mut entry) = self.branches.get_mut(id) {
             if matches!(*entry, BranchState::Uncovered) {
                 *entry = BranchState::Suppressed;
-                self.covered_count.fetch_add(1, Ordering::Relaxed);
+                self.covered_count.fetch_add(1, Ordering::Release);
             }
         }
     }
@@ -419,6 +432,54 @@ mod tests {
         assert!(oracle.mark_covered(&b, SeedId::new()));
         assert_eq!(oracle.total_count(), 1);
         assert_eq!(oracle.covered_count(), 1);
+    }
+
+    /// Bug 1 regression: auto-covered branches must be visible to merge_bitmap.
+    /// Before the fix, mark_covered inserted into `branches` but not `branch_order`,
+    /// so merge_bitmap could never find them by index.
+    #[test]
+    fn test_auto_covered_branch_visible_to_merge_bitmap() {
+        let oracle = CoverageOracle::new();
+        let b0 = make_branch(0, 0);
+        let b1 = make_branch(1, 0);
+        let b2 = make_branch(2, 0);
+
+        // Register b0 and b2 normally (they get index 0 and 1 in branch_order).
+        oracle.register_branches([b0.clone(), b2.clone()]);
+
+        // Auto-cover b1 without registering first. This must also add b1 to branch_order
+        // so that it appears at index 2 and a subsequent merge_bitmap can reach it.
+        oracle.mark_covered(&b1, SeedId::new());
+
+        // b0=0 (hit), b2=0 (miss), b1=1 (hit) -- indices 0, 1, 2
+        let bitmap = vec![1u8, 0, 1];
+        let delta = oracle.merge_bitmap(&bitmap, SeedId::new());
+
+        // b0 was not yet covered, so it should show up as newly covered.
+        assert!(
+            delta.newly_covered.contains(&b0),
+            "b0 should be newly covered by bitmap"
+        );
+        // b1 was already covered by mark_covered above, so not newly covered again.
+        assert!(
+            !delta.newly_covered.contains(&b1),
+            "b1 was already covered, should not appear in delta"
+        );
+    }
+
+    /// Bug 2 smoke test: verify that Acquire/Release ordering is used for counters.
+    /// This is a compile-time check — if the constants change to Relaxed this test
+    /// exercises the visible store/load path under a single-threaded scenario.
+    #[test]
+    fn test_counter_ordering_acquire_release() {
+        let oracle = CoverageOracle::new();
+        let b = make_branch(10, 0);
+        oracle.register_branches([b.clone()]);
+        // After a Release store, an Acquire load must see the updated value.
+        assert_eq!(oracle.total_count(), 1);
+        oracle.mark_covered(&b, SeedId::new());
+        assert_eq!(oracle.covered_count(), 1);
+        assert!((oracle.coverage_percent() - 100.0).abs() < 0.001);
     }
 
     #[test]

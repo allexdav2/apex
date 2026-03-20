@@ -4,6 +4,13 @@ All notable changes to APEX will be documented in this file.
 
 ## [Unreleased]
 
+### Fixed
+- **oracle.rs Bug 1**: `mark_covered()` now adds auto-covered branches to `branch_order` so `merge_bitmap` can resolve them by index (previously invisible — WRONG, 92%)
+- **oracle.rs Bug 2**: Changed `Relaxed` atomic ordering to `Acquire`/`Release` on all `covered_count` and `total_count` loads/stores; prevents stale reads on ARM under concurrent access
+- **coordinator.rs Bug 3**: `enqueue_seeds()` now enforces `MAX_QUEUE_SIZE = 100_000`; oldest seeds are evicted (FIFO) when the queue is full — unbounded growth eliminated (LEAK, 95%)
+- **coordinator.rs Bug 4**: `SeedId::new()` is now called once per `result` in `submit_results`, not once per batch — each result gets a distinct seed attribution ID (WRONG, 80%)
+- **coordinator.rs Bug 5**: `start_with_service` and `start_uds_with_service` now return an `Arc<Notify>` shutdown handle; caller signals graceful server stop via `notify_one()` instead of relying on `JoinHandle::abort()`
+
 ## [0.3.0] — 2026-03-18
 
 ### Added

@@ -3,6 +3,7 @@
 //! Catches shell command execution sinks across all 11 supported languages
 //! where unsanitized input may reach the shell.
 
+use apex_core::config::ThreatModelType;
 use apex_core::error::Result;
 use apex_core::types::Language;
 use async_trait::async_trait;
@@ -14,6 +15,20 @@ use super::util::{is_comment, is_test_file};
 use crate::context::AnalysisContext;
 use crate::finding::{Finding, FindingCategory, Severity};
 use crate::Detector;
+
+/// Returns true when the project is a CLI or console tool.
+///
+/// CLI/console tools deliberately spawn subprocesses — compilers, test runners,
+/// linters, coverage tools, etc.  Every `Command::new()`-equivalent line in
+/// such a project is intentional.  Findings are still emitted so the user can
+/// see them, but they are marked `noisy: true` and downgraded to `Severity::Low`
+/// so that default report views can filter them without silently dropping them.
+fn is_cli_threat_model(ctx: &AnalysisContext) -> bool {
+    matches!(
+        ctx.threat_model.model_type,
+        Some(ThreatModelType::CliTool) | Some(ThreatModelType::ConsoleTool)
+    )
+}
 
 pub struct MultiCommandInjectionDetector;
 
@@ -294,6 +309,11 @@ impl Detector for MultiCommandInjectionDetector {
             return Ok(Vec::new());
         }
 
+        // CLI/console tools spawn subprocesses by design.  Downgrade all
+        // command-injection findings to noisy + Low so they don't flood
+        // reports.  WebService and Library projects stay at High.
+        let cli_tool = is_cli_threat_model(ctx);
+
         let mut findings = Vec::new();
 
         for (path, source) in &ctx.source_cache {
@@ -324,10 +344,16 @@ impl Detector for MultiCommandInjectionDetector {
                     if pattern.regex.is_match(trimmed) {
                         let line_1based = (line_num + 1) as u32;
 
+                        let (severity, noisy) = if cli_tool {
+                            (Severity::Low, true)
+                        } else {
+                            (Severity::High, false)
+                        };
+
                         findings.push(Finding {
                             id: Uuid::new_v4(),
                             detector: self.name().into(),
-                            severity: Severity::High,
+                            severity,
                             category: FindingCategory::Injection,
                             file: path.clone(),
                             line: Some(line_1based),
@@ -350,7 +376,7 @@ impl Detector for MultiCommandInjectionDetector {
                             explanation: None,
                             fix: None,
                             cwe_ids: vec![78],
-                            noisy: false,
+                            noisy,
                         });
                         break; // One finding per line max
                     }
@@ -366,6 +392,7 @@ impl Detector for MultiCommandInjectionDetector {
 mod tests {
     use super::*;
     use crate::context::AnalysisContext;
+    use apex_core::config::{ThreatModelConfig, ThreatModelType};
     use apex_core::types::Language;
     use std::collections::HashMap;
     use std::path::PathBuf;
@@ -374,6 +401,22 @@ mod tests {
         AnalysisContext {
             language: lang,
             source_cache: files,
+            ..AnalysisContext::test_default()
+        }
+    }
+
+    fn make_ctx_with_threat_model(
+        files: HashMap<PathBuf, String>,
+        lang: Language,
+        model_type: ThreatModelType,
+    ) -> AnalysisContext {
+        AnalysisContext {
+            language: lang,
+            source_cache: files,
+            threat_model: ThreatModelConfig {
+                model_type: Some(model_type),
+                ..ThreatModelConfig::default()
+            },
             ..AnalysisContext::test_default()
         }
     }
@@ -534,5 +577,90 @@ mod tests {
     #[test]
     fn does_not_use_cargo_subprocess() {
         assert!(!MultiCommandInjectionDetector.uses_cargo_subprocess());
+    }
+
+    // -----------------------------------------------------------------------
+    // Task 3.2: threat-model suppression — CLI tools
+    // -----------------------------------------------------------------------
+
+    // CliTool → noisy + Low for all command-injection findings
+    #[tokio::test]
+    async fn cli_tool_rust_command_new_is_noisy_low() {
+        let files = single_file("src/main.rs", "Command::new(user_input)\n");
+        let ctx = make_ctx_with_threat_model(files, Language::Rust, ThreatModelType::CliTool);
+        let findings = MultiCommandInjectionDetector.analyze(&ctx).await.unwrap();
+        assert_eq!(findings.len(), 1);
+        assert!(findings[0].noisy, "CliTool finding should be noisy");
+        assert_eq!(
+            findings[0].severity,
+            Severity::Low,
+            "CliTool finding should be Low"
+        );
+    }
+
+    // ConsoleTool → noisy + Low (same as CliTool)
+    #[tokio::test]
+    async fn console_tool_rust_command_new_is_noisy_low() {
+        let files = single_file("src/main.rs", "Command::new(user_input)\n");
+        let ctx =
+            make_ctx_with_threat_model(files, Language::Rust, ThreatModelType::ConsoleTool);
+        let findings = MultiCommandInjectionDetector.analyze(&ctx).await.unwrap();
+        assert_eq!(findings.len(), 1);
+        assert!(findings[0].noisy, "ConsoleTool finding should be noisy");
+        assert_eq!(
+            findings[0].severity,
+            Severity::Low,
+            "ConsoleTool finding should be Low"
+        );
+    }
+
+    // WebService → High and not noisy
+    #[tokio::test]
+    async fn web_service_python_os_system_is_high_not_noisy() {
+        let files = single_file("src/app.py", "os.system(user_input)\n");
+        let ctx =
+            make_ctx_with_threat_model(files, Language::Python, ThreatModelType::WebService);
+        let findings = MultiCommandInjectionDetector.analyze(&ctx).await.unwrap();
+        assert_eq!(findings.len(), 1);
+        assert!(
+            !findings[0].noisy,
+            "WebService finding should not be noisy"
+        );
+        assert_eq!(
+            findings[0].severity,
+            Severity::High,
+            "WebService finding should be High"
+        );
+    }
+
+    // Library → High and not noisy
+    #[tokio::test]
+    async fn library_go_exec_command_is_high_not_noisy() {
+        let files = single_file("src/main.go", "exec.Command(userInput, args...)\n");
+        let ctx =
+            make_ctx_with_threat_model(files, Language::Go, ThreatModelType::Library);
+        let findings = MultiCommandInjectionDetector.analyze(&ctx).await.unwrap();
+        assert_eq!(findings.len(), 1);
+        assert!(!findings[0].noisy, "Library finding should not be noisy");
+        assert_eq!(
+            findings[0].severity,
+            Severity::High,
+            "Library finding should be High"
+        );
+    }
+
+    // No threat model → High (default behaviour unchanged)
+    #[tokio::test]
+    async fn no_threat_model_is_high_not_noisy() {
+        let files = single_file("src/main.rs", "Command::new(user_input)\n");
+        let ctx = make_ctx(files, Language::Rust);
+        let findings = MultiCommandInjectionDetector.analyze(&ctx).await.unwrap();
+        assert_eq!(findings.len(), 1);
+        assert!(!findings[0].noisy, "no threat model should not be noisy");
+        assert_eq!(
+            findings[0].severity,
+            Severity::High,
+            "no threat model should be High"
+        );
     }
 }

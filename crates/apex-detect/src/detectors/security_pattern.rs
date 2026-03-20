@@ -1,3 +1,4 @@
+use apex_core::config::ThreatModelType;
 use apex_core::error::Result;
 use apex_core::types::Language;
 use async_trait::async_trait;
@@ -8,6 +9,17 @@ use crate::context::AnalysisContext;
 use crate::finding::{Finding, FindingCategory, Severity};
 use crate::threat_model::should_suppress;
 use crate::Detector;
+
+/// Returns true when the threat model is a CLI/console tool — these projects
+/// deliberately spawn subprocesses (compilers, test runners, coverage tools).
+/// CWE-78 command-injection findings in these projects are almost always
+/// intentional and should be marked noisy so they don't flood reports.
+fn is_cli_threat_model(ctx: &AnalysisContext) -> bool {
+    matches!(
+        ctx.threat_model.model_type,
+        Some(ThreatModelType::CliTool) | Some(ThreatModelType::ConsoleTool)
+    )
+}
 
 pub struct SecurityPatternDetector;
 
@@ -1148,6 +1160,18 @@ impl Detector for SecurityPatternDetector {
                             indicators_defined,
                         );
 
+                        // CWE-78 (command injection) in CLI/console tools: mark noisy + Low.
+                        // CLI tools spawn subprocesses by design; these findings are almost
+                        // always intentional.  SQL injection (CWE-89), deserialization
+                        // (CWE-502), and SSRF (CWE-918) remain at their original severity
+                        // because they are real risks even for CLI tools.
+                        let (severity, noisy) =
+                            if pattern.cwe.contains(&78) && is_cli_threat_model(ctx) {
+                                (Severity::Low, true)
+                            } else {
+                                (severity, false)
+                            };
+
                         findings.push(Finding {
                             id: Uuid::new_v4(),
                             detector: self.name().into(),
@@ -1168,7 +1192,7 @@ impl Detector for SecurityPatternDetector {
                             explanation: None,
                             fix: None,
                             cwe_ids: pattern.cwe.to_vec(),
-                            noisy: false,
+                            noisy,
                         });
                         break; // One finding per line max
                     }
@@ -2051,5 +2075,123 @@ mod tests {
             !findings.is_empty(),
             "Kotlin Gson().fromJson with user body should trigger"
         );
+    }
+
+    // -----------------------------------------------------------------------
+    // Task 3.2: security-pattern threat-model suppression for CLI tools (CWE-78)
+    // -----------------------------------------------------------------------
+
+    fn cli_threat_model() -> apex_core::config::ThreatModelConfig {
+        apex_core::config::ThreatModelConfig {
+            model_type: Some(apex_core::config::ThreatModelType::CliTool),
+            ..Default::default()
+        }
+    }
+
+    fn console_threat_model() -> apex_core::config::ThreatModelConfig {
+        apex_core::config::ThreatModelConfig {
+            model_type: Some(apex_core::config::ThreatModelType::ConsoleTool),
+            ..Default::default()
+        }
+    }
+
+    fn web_threat_model() -> apex_core::config::ThreatModelConfig {
+        apex_core::config::ThreatModelConfig {
+            model_type: Some(apex_core::config::ThreatModelType::WebService),
+            ..Default::default()
+        }
+    }
+
+    // CliTool with Command::new → noisy + Low (CWE-78 suppressed for CLI tools)
+    #[tokio::test]
+    async fn cli_tool_command_new_is_noisy_low() {
+        let mut files = HashMap::new();
+        files.insert(
+            PathBuf::from("src/runner.rs"),
+            "fn run(path: &str) {\n    Command::new(path);\n}\n".into(),
+        );
+        let mut ctx = make_ctx(files, Language::Rust);
+        ctx.threat_model = cli_threat_model();
+        let findings = SecurityPatternDetector.analyze(&ctx).await.unwrap();
+        // May be suppressed entirely (if indicators trusted) or noisy+Low
+        for f in &findings {
+            if f.cwe_ids.contains(&78) {
+                assert!(f.noisy, "CWE-78 in CliTool should be noisy, got {f:?}");
+                assert_eq!(f.severity, Severity::Low, "CWE-78 in CliTool should be Low, got {f:?}");
+            }
+        }
+    }
+
+    // ConsoleTool with Command::new → noisy + Low (same as CliTool)
+    #[tokio::test]
+    async fn console_tool_command_new_is_noisy_low() {
+        let mut files = HashMap::new();
+        files.insert(
+            PathBuf::from("src/runner.rs"),
+            "fn run(path: &str) {\n    Command::new(path);\n}\n".into(),
+        );
+        let mut ctx = make_ctx(files, Language::Rust);
+        ctx.threat_model = console_threat_model();
+        let findings = SecurityPatternDetector.analyze(&ctx).await.unwrap();
+        for f in &findings {
+            if f.cwe_ids.contains(&78) {
+                assert!(f.noisy, "CWE-78 in ConsoleTool should be noisy, got {f:?}");
+                assert_eq!(f.severity, Severity::Low, "CWE-78 in ConsoleTool should be Low, got {f:?}");
+            }
+        }
+    }
+
+    // WebService with Command::new → High (not noisy)
+    #[tokio::test]
+    async fn web_service_command_new_is_high_not_noisy() {
+        let mut files = HashMap::new();
+        files.insert(
+            PathBuf::from("src/handler.rs"),
+            "fn handle(request: &str) {\n    Command::new(request);\n}\n".into(),
+        );
+        let mut ctx = make_ctx(files, Language::Rust);
+        ctx.threat_model = web_threat_model();
+        let findings = SecurityPatternDetector.analyze(&ctx).await.unwrap();
+        assert!(
+            !findings.is_empty(),
+            "WebService Command::new should not be suppressed"
+        );
+        for f in &findings {
+            if f.cwe_ids.contains(&78) {
+                assert!(!f.noisy, "CWE-78 in WebService should not be noisy, got {f:?}");
+                assert!(
+                    f.severity >= Severity::High,
+                    "CWE-78 in WebService should be High or above, got {:?}",
+                    f.severity
+                );
+            }
+        }
+    }
+
+    // CliTool with SQL injection (CWE-89) → not noisy (CLI suppression applies to CWE-78 only)
+    #[tokio::test]
+    async fn cli_tool_sql_injection_stays_high() {
+        let mut files = HashMap::new();
+        files.insert(
+            PathBuf::from("src/db.py"),
+            "def query(user_id):\n    cursor.execute(f\"SELECT * FROM users WHERE id='{user_id}'\")\n".into(),
+        );
+        let mut ctx = make_ctx(files, Language::Python);
+        ctx.threat_model = cli_threat_model();
+        let findings = SecurityPatternDetector.analyze(&ctx).await.unwrap();
+        // CWE-89 (SQL injection) must not be marked noisy even in CLI tools —
+        // the CLI suppression rule only applies to CWE-78 (command injection).
+        // Severity can be High or Critical depending on context; just check !noisy.
+        let sql_findings: Vec<_> = findings.iter().filter(|f| f.cwe_ids.contains(&89)).collect();
+        assert!(
+            !sql_findings.is_empty(),
+            "SQL injection should still be reported for CliTool"
+        );
+        for f in &sql_findings {
+            assert!(
+                !f.noisy,
+                "SQL injection (CWE-89) should not be noisy even for CliTool, got {f:?}"
+            );
+        }
     }
 }

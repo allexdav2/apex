@@ -25,6 +25,12 @@ pub mod timeout;
 pub mod unsafe_reach;
 pub mod util;
 
+// P1 concurrency detectors
+pub mod ffi_panic;
+pub mod mutex_across_await;
+pub mod open_without_with;
+pub mod unbounded_queue;
+
 // Rust self-analysis detectors
 pub mod discarded_async_result;
 pub mod duplicated_fn;
@@ -58,6 +64,12 @@ pub use session_security::SessionSecurityDetector;
 pub use static_analysis::StaticAnalysisDetector;
 pub use timeout::MissingTimeoutDetector;
 pub use unsafe_reach::UnsafeReachabilityDetector;
+
+// P1 concurrency detectors
+pub use ffi_panic::FfiPanicDetector;
+pub use mutex_across_await::MutexAcrossAwaitDetector;
+pub use open_without_with::OpenWithoutWithDetector;
+pub use unbounded_queue::UnboundedQueueDetector;
 
 // Rust self-analysis detectors
 pub use discarded_async_result::DiscardedAsyncResultDetector;

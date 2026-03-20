@@ -508,6 +508,125 @@ pub(crate) fn references_env_var(line: &str) -> bool {
     ENV_VAR_MARKERS.iter().any(|m| line.contains(m))
 }
 
+// ---------------------------------------------------------------------------
+// Taint-flow bridge
+// ---------------------------------------------------------------------------
+
+/// Check whether any taint flow from `source_indicators` reaches the given
+/// `sink_line` (1-based) in `file`, using the CPG attached to `ctx`.
+///
+/// # Return value
+///
+/// | Situation                             | Returns       |
+/// |---------------------------------------|---------------|
+/// | CPG available, flow found             | `Some(true)`  |
+/// | CPG available, no flow to sink line   | `Some(false)` |
+/// | No CPG in context (`ctx.cpg is None`) | `None`        |
+///
+/// When `None` is returned the caller should fall back to pattern matching.
+///
+/// # How it works
+///
+/// 1. Locate sink nodes in the CPG whose line number matches `sink_line` **and**
+///    whose name contains any of the (optional) `source_indicators`.  If
+///    `source_indicators` is empty every node on `sink_line` is considered a
+///    candidate sink.
+/// 2. Run the taint engine (with reaching-def edges already expected to be
+///    materialized on the stored CPG — callers that build the CPG via
+///    [`apex_cpg::builder::build_python_cpg`] should call
+///    [`apex_cpg::reaching_def::add_reaching_def_edges`] before storing it in
+///    the context).
+/// 3. Return `Some(true)` if any flow terminates at one of the sink candidates.
+pub fn taint_reaches_sink(
+    ctx: &AnalysisContext,
+    _file: &Path,
+    sink_line: u32,
+    source_indicators: &[&str],
+) -> Option<bool> {
+    let cpg = ctx.cpg.as_deref()?;
+
+    // Collect candidate sink nodes on the requested line.
+    let sinks: Vec<apex_cpg::NodeId> = cpg
+        .nodes()
+        .filter_map(|(id, kind)| {
+            let line = node_line(kind)?;
+            if line != sink_line {
+                return None;
+            }
+            // If caller supplied indicators, the node name must contain one.
+            if source_indicators.is_empty() || node_name_matches(kind, source_indicators) {
+                Some(id)
+            } else {
+                None
+            }
+        })
+        .collect();
+
+    if sinks.is_empty() {
+        return Some(false);
+    }
+
+    // Determine source nodes using the taint engine's built-in source list.
+    let sources: Vec<apex_cpg::NodeId> = cpg
+        .nodes()
+        .filter_map(|(id, kind)| is_taint_source(cpg, id, kind).then_some(id))
+        .collect();
+
+    if sources.is_empty() {
+        return Some(false);
+    }
+
+    let flows = apex_cpg::taint::reachable_by(cpg, &sinks, &sources, 20);
+    Some(!flows.is_empty())
+}
+
+/// Extract the line number from a CPG node kind, if it has one.
+fn node_line(kind: &apex_cpg::NodeKind) -> Option<u32> {
+    use apex_cpg::NodeKind;
+    match kind {
+        NodeKind::Call { line, .. }
+        | NodeKind::Identifier { line, .. }
+        | NodeKind::Literal { line, .. }
+        | NodeKind::Return { line }
+        | NodeKind::ControlStructure { line, .. }
+        | NodeKind::Assignment { line, .. } => Some(*line),
+        NodeKind::Method { line, .. } => Some(*line),
+        NodeKind::Parameter { .. } => None,
+    }
+}
+
+/// Returns true if the node has a name-like field that contains any of the
+/// given `indicators`.
+fn node_name_matches(kind: &apex_cpg::NodeKind, indicators: &[&str]) -> bool {
+    use apex_cpg::NodeKind;
+    let name = match kind {
+        NodeKind::Call { name, .. }
+        | NodeKind::Identifier { name, .. }
+        | NodeKind::Assignment { lhs: name, .. }
+        | NodeKind::Method { name, .. } => name.as_str(),
+        _ => return false,
+    };
+    indicators.iter().any(|ind| name.contains(ind))
+}
+
+/// Mirror of the taint engine's source classification logic.
+fn is_taint_source(cpg: &apex_cpg::Cpg, id: apex_cpg::NodeId, kind: &apex_cpg::NodeKind) -> bool {
+    use apex_cpg::{EdgeKind, NodeKind};
+    match kind {
+        NodeKind::Parameter { .. } => true,
+        NodeKind::Call { name, .. } => {
+            apex_cpg::taint::PYTHON_SOURCES.iter().any(|s| name == s)
+        }
+        NodeKind::Identifier { name, .. } => {
+            cpg.edges_to(id).iter().any(|(from, _, ek)| {
+                matches!(ek, EdgeKind::ReachingDef { .. })
+                    && matches!(cpg.node(*from), Some(NodeKind::Parameter { .. }))
+            }) || apex_cpg::taint::PYTHON_SOURCES.contains(&name.as_str())
+        }
+        _ => false,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -995,5 +1114,106 @@ x = 1
         assert!(in_any_scope(&scopes, 5));
         assert!(in_any_scope(&scopes, 7));
         assert!(!in_any_scope(&scopes, 8));
+    }
+
+    // ---- taint_reaches_sink ----
+
+    use std::sync::Arc;
+
+    fn make_ctx_with_cpg(cpg: apex_cpg::Cpg) -> AnalysisContext {
+        let mut ctx = AnalysisContext::test_default();
+        ctx.cpg = Some(Arc::new(cpg));
+        ctx
+    }
+
+    /// No CPG in context → None (caller should fall back to pattern matching).
+    #[test]
+    fn taint_reaches_sink_no_cpg_returns_none() {
+        let ctx = AnalysisContext::test_default();
+        let result = taint_reaches_sink(&ctx, Path::new("foo.py"), 5, &[]);
+        assert!(result.is_none(), "expected None when no CPG present");
+    }
+
+    /// CPG with a taint flow from parameter to subprocess.run on line 3
+    /// → Some(true).
+    #[test]
+    fn taint_reaches_sink_flow_exists_returns_some_true() {
+        use apex_cpg::{EdgeKind, NodeKind};
+
+        let mut cpg = apex_cpg::Cpg::new();
+
+        let param = cpg.add_node(NodeKind::Parameter {
+            name: "cmd".into(),
+            index: 0,
+        });
+        let sink = cpg.add_node(NodeKind::Call {
+            name: "subprocess.run".into(),
+            line: 3,
+        });
+        // Direct reaching-def edge: parameter → sink (simulates taint flow)
+        cpg.add_edge(
+            param,
+            sink,
+            EdgeKind::ReachingDef {
+                variable: "cmd".into(),
+            },
+        );
+
+        let ctx = make_ctx_with_cpg(cpg);
+        let result = taint_reaches_sink(&ctx, Path::new("test.py"), 3, &["subprocess.run"]);
+        assert_eq!(result, Some(true), "expected Some(true) when flow reaches sink");
+    }
+
+    /// CPG with no data-flow connection between parameter and sink on line 5
+    /// → Some(false).
+    #[test]
+    fn taint_reaches_sink_no_flow_returns_some_false() {
+        use apex_cpg::NodeKind;
+
+        let mut cpg = apex_cpg::Cpg::new();
+
+        // Parameter exists but is not connected to anything on line 5.
+        cpg.add_node(NodeKind::Parameter {
+            name: "x".into(),
+            index: 0,
+        });
+        // Sink on line 5 — no incoming taint.
+        cpg.add_node(NodeKind::Call {
+            name: "subprocess.run".into(),
+            line: 5,
+        });
+
+        let ctx = make_ctx_with_cpg(cpg);
+        let result = taint_reaches_sink(&ctx, Path::new("test.py"), 5, &["subprocess.run"]);
+        assert_eq!(result, Some(false), "expected Some(false) when no flow reaches sink");
+    }
+
+    /// CPG with a taint flow but no node on the requested sink_line
+    /// → Some(false).
+    #[test]
+    fn taint_reaches_sink_wrong_line_returns_some_false() {
+        use apex_cpg::{EdgeKind, NodeKind};
+
+        let mut cpg = apex_cpg::Cpg::new();
+        let param = cpg.add_node(NodeKind::Parameter {
+            name: "cmd".into(),
+            index: 0,
+        });
+        let sink = cpg.add_node(NodeKind::Call {
+            name: "subprocess.run".into(),
+            line: 10, // flow exists, but on line 10 not 99
+        });
+        cpg.add_edge(
+            param,
+            sink,
+            EdgeKind::ReachingDef {
+                variable: "cmd".into(),
+            },
+        );
+
+        let ctx = make_ctx_with_cpg(cpg);
+        // Ask for line 99 — no node there.
+        let result = taint_reaches_sink(&ctx, Path::new("test.py"), 99, &[]);
+        assert_eq!(result, Some(false), "expected Some(false) when sink_line has no nodes");
     }
 }

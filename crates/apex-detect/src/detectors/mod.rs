@@ -35,6 +35,14 @@ pub mod substring_security;
 pub mod unsafe_send_sync;
 pub mod vecdeque_partial;
 
+// Wave 2 multi-language detectors
+pub mod blocking_io_in_async;
+pub mod broad_exception;
+pub mod error_context_loss;
+pub mod regex_in_loop;
+pub mod string_concat_in_loop;
+pub mod swallowed_errors;
+
 // JS/TS detectors
 pub mod js_command_injection;
 pub mod js_crypto_failure;
@@ -68,6 +76,14 @@ pub use process_exit_in_lib::ProcessExitInLibDetector;
 pub use substring_security::SubstringSecurityDetector;
 pub use unsafe_send_sync::UnsafeSendSyncDetector;
 pub use vecdeque_partial::VecDequePartialDetector;
+
+// Wave 2 multi-language detectors
+pub use blocking_io_in_async::BlockingIoInAsyncDetector;
+pub use broad_exception::BroadExceptionDetector;
+pub use error_context_loss::ErrorContextLossDetector;
+pub use regex_in_loop::RegexInLoopDetector;
+pub use string_concat_in_loop::StringConcatInLoopDetector;
+pub use swallowed_errors::SwallowedErrorsDetector;
 
 // JS/TS detectors
 pub use js_command_injection::JsCommandInjectionDetector;

@@ -126,6 +126,26 @@ impl DetectorPipeline {
             detectors.push(Box::new(JsPathTraversalDetector));
         }
 
+        // Wave 2 multi-language detectors
+        if cfg.enabled.contains(&"blocking-io-in-async".into()) {
+            detectors.push(Box::new(BlockingIoInAsyncDetector));
+        }
+        if cfg.enabled.contains(&"swallowed-errors".into()) {
+            detectors.push(Box::new(SwallowedErrorsDetector));
+        }
+        if cfg.enabled.contains(&"broad-exception".into()) {
+            detectors.push(Box::new(BroadExceptionDetector));
+        }
+        if cfg.enabled.contains(&"error-context-loss".into()) {
+            detectors.push(Box::new(ErrorContextLossDetector));
+        }
+        if cfg.enabled.contains(&"string-concat-in-loop".into()) {
+            detectors.push(Box::new(StringConcatInLoopDetector));
+        }
+        if cfg.enabled.contains(&"regex-in-loop".into()) {
+            detectors.push(Box::new(RegexInLoopDetector));
+        }
+
         // Spec mining detectors (opt-in)
         if cfg.enabled.contains(&"data-transform".into()) {
             detectors.push(Box::new(DataTransformSpecMiner));
@@ -406,7 +426,7 @@ mod tests {
     fn from_config_enables_all_by_default() {
         let cfg = DetectConfig::default();
         let pipeline = DetectorPipeline::from_config(&cfg, Language::Rust);
-        assert_eq!(pipeline.detectors.len(), 20);
+        assert_eq!(pipeline.detectors.len(), 26);
     }
 
     #[test]
@@ -809,7 +829,7 @@ mod tests {
         // Python should get all except unsafe
         let cfg = DetectConfig::default();
         let pipeline = DetectorPipeline::from_config(&cfg, Language::Python);
-        assert_eq!(pipeline.detectors.len(), 19);
+        assert_eq!(pipeline.detectors.len(), 25);
         assert!(pipeline
             .detectors
             .iter()

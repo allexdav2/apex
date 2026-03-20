@@ -29,6 +29,13 @@ fn default_enabled() -> Vec<String> {
         "js-timeout".into(),
         "js-insecure-deser".into(),
         "js-path-traversal".into(),
+        // Wave 2 multi-language detectors
+        "blocking-io-in-async".into(),
+        "swallowed-errors".into(),
+        "broad-exception".into(),
+        "error-context-loss".into(),
+        "string-concat-in-loop".into(),
+        "regex-in-loop".into(),
     ]
 }
 
@@ -78,9 +85,16 @@ pub enum DetectorTag {
 /// Map from detector name to its tag. Used for `--tag` filtering.
 pub fn detector_tag(name: &str) -> DetectorTag {
     match name {
-        "panic" | "mixed-bool-ops" | "duplicated-fn" | "process-exit-in-lib"
-        | "partial-cmp-unwrap" | "substring-security" | "vecdeque-partial"
-        | "unsafe-send-sync" | "discarded-async-result" | "static" => DetectorTag::Quality,
+        "panic"
+        | "mixed-bool-ops"
+        | "duplicated-fn"
+        | "process-exit-in-lib"
+        | "partial-cmp-unwrap"
+        | "substring-security"
+        | "vecdeque-partial"
+        | "unsafe-send-sync"
+        | "discarded-async-result"
+        | "static" => DetectorTag::Quality,
         "deps" | "license-scan" => DetectorTag::Dependency,
         _ => DetectorTag::Security,
     }
@@ -276,7 +290,7 @@ clippy_extra_args = ["-W", "clippy::pedantic"]
     #[test]
     fn empty_toml_gives_defaults() {
         let cfg: DetectConfig = toml::from_str("").unwrap();
-        assert_eq!(cfg.enabled.len(), 27);
+        assert_eq!(cfg.enabled.len(), 33);
         assert_eq!(cfg.severity_threshold, "low");
     }
 
@@ -378,7 +392,7 @@ detect_mode = "Fast"
         let cfg = DetectConfig::default();
         let json = serde_json::to_string(&cfg).unwrap();
         let cfg2: DetectConfig = serde_json::from_str(&json).unwrap();
-        assert_eq!(cfg2.enabled.len(), 27);
+        assert_eq!(cfg2.enabled.len(), 33);
         assert_eq!(cfg2.severity_threshold, "low");
     }
 
@@ -438,7 +452,10 @@ detect_mode = "Fast"
 
     #[test]
     fn detector_tag_security() {
-        assert_eq!(super::detector_tag("security"), super::DetectorTag::Security);
+        assert_eq!(
+            super::detector_tag("security"),
+            super::DetectorTag::Security
+        );
         assert_eq!(
             super::detector_tag("secret-scan"),
             super::DetectorTag::Security

@@ -6,6 +6,7 @@
 //! This library crate exposes [`Cli`], [`Commands`], and [`run_cli`] so that
 //! integration tests can exercise CLI logic without spawning a subprocess.
 
+pub mod agent_dispatch;
 pub mod doctor;
 pub mod fuzz;
 pub mod integrate;
@@ -229,6 +230,14 @@ pub struct AnalyzeArgs {
     /// Minimum severity to report.
     #[arg(long, default_value = "low")]
     pub severity_threshold: String,
+
+    /// Use an AI agent to set up environment and run coverage (default: true).
+    #[arg(long, default_value = "true")]
+    pub agentic: bool,
+
+    /// Disable agentic coverage (use deterministic code path).
+    #[arg(long)]
+    pub no_agent: bool,
 }
 
 #[derive(Parser)]
@@ -821,27 +830,44 @@ async fn run_analyze(args: AnalyzeArgs, cfg: &ApexConfig) -> Result<()> {
         }
     }
 
-    // ── 2. Install deps (non-fatal — audit works without deps) ────────
-    if !args.no_install {
-        if let Err(e) = install_deps(lang, &target_path).await {
-            eprintln!(
-                "  \x1b[33m\u{26a0}\x1b[0m Dependency installation failed: {e}"
-            );
-            eprintln!("  Continuing with audit-only mode (no coverage)");
-        }
-    }
+    // ── 2+3. Coverage: agentic or deterministic ───────────────────────
+    let use_agent = args.agentic && !args.no_agent;
 
-    // ── 3. Instrument + coverage (graceful fallback) ────────────────────
     let oracle = Arc::new(CoverageOracle::new());
-    let coverage_result = instrument(lang, &target_path, &oracle).await;
-
-    let (has_coverage, instrumented) = match coverage_result {
-        Ok(inst) => (true, Some(inst)),
-        Err(e) => {
-            eprintln!("  \x1b[33m\u{26a0}\x1b[0m Coverage unavailable: {e}");
-            eprintln!("  Running audit-only mode");
-            (false, None)
+    let (has_coverage, instrumented) = if use_agent {
+        // Agentic path: dispatch a claude agent to install deps + run coverage
+        info!("using agentic coverage pipeline");
+        let preflight_info = preflight.as_ref().ok().cloned().unwrap_or_default();
+        match agent_dispatch::run_coverage_agent(
+            lang,
+            &target_path,
+            &preflight_info,
+            coverage_target,
+        )
+        .await
+        {
+            Ok(agent_result) => {
+                info!(
+                    success = agent_result.success,
+                    pct = agent_result.coverage_pct,
+                    "agent coverage complete"
+                );
+                // TODO(wave4): populate oracle from agent_result via
+                // CoverageOracle::from_agent_result() once wired up
+                (agent_result.success, None)
+            }
+            Err(e) => {
+                eprintln!(
+                    "  \x1b[33m\u{26a0}\x1b[0m Agent dispatch failed: {e}"
+                );
+                eprintln!("  Falling back to deterministic pipeline");
+                // Fall back to deterministic path
+                run_deterministic_coverage(lang, &target_path, &oracle, args.no_install).await
+            }
         }
+    } else {
+        // Deterministic path: install_deps + instrument
+        run_deterministic_coverage(lang, &target_path, &oracle, args.no_install).await
     };
 
     // ── 4. Exploration (skip if no coverage or already at target) ───────
@@ -971,6 +997,7 @@ async fn run_analyze(args: AnalyzeArgs, cfg: &ApexConfig) -> Result<()> {
                 apex_cpg::builder::build_python_cpg(source, &path.display().to_string());
             combined_cpg.merge(file_cpg);
         }
+        apex_cpg::reaching_def::add_reaching_def_edges(&mut combined_cpg);
         if combined_cpg.node_count() > 0 {
             Some(Arc::new(combined_cpg))
         } else {
@@ -1364,6 +1391,7 @@ async fn run(args: RunArgs, cfg: &ApexConfig) -> Result<()> {
                     apex_cpg::builder::build_python_cpg(source, &path.display().to_string());
                 combined_cpg.merge(file_cpg);
             }
+            apex_cpg::reaching_def::add_reaching_def_edges(&mut combined_cpg);
             if combined_cpg.node_count() > 0 {
                 Some(Arc::new(combined_cpg))
             } else {
@@ -1633,6 +1661,34 @@ fn preflight_check(
         Language::Cpp => runner_check(&apex_lang::cpp::CppRunner::new()),
         Language::Rust => runner_check(&apex_lang::rust_lang::RustRunner::new()),
         Language::Wasm => Ok(apex_core::traits::PreflightInfo::default()),
+    }
+}
+
+/// Run the deterministic (non-agentic) coverage pipeline: install deps then
+/// instrument.  Returns `(has_coverage, instrumented)`.
+async fn run_deterministic_coverage(
+    lang: Language,
+    target_path: &std::path::Path,
+    oracle: &Arc<CoverageOracle>,
+    no_install: bool,
+) -> (bool, Option<apex_core::types::InstrumentedTarget>) {
+    if !no_install {
+        if let Err(e) = install_deps(lang, target_path).await {
+            eprintln!(
+                "  \x1b[33m\u{26a0}\x1b[0m Dependency installation failed: {e}"
+            );
+            eprintln!("  Continuing with audit-only mode (no coverage)");
+        }
+    }
+
+    let coverage_result = instrument(lang, target_path, oracle).await;
+    match coverage_result {
+        Ok(inst) => (true, Some(inst)),
+        Err(e) => {
+            eprintln!("  \x1b[33m\u{26a0}\x1b[0m Coverage unavailable: {e}");
+            eprintln!("  Running audit-only mode");
+            (false, None)
+        }
     }
 }
 
@@ -2170,6 +2226,7 @@ async fn run_audit(args: AuditArgs, cfg: &ApexConfig) -> Result<()> {
             let file_cpg = apex_cpg::builder::build_python_cpg(source, &path.display().to_string());
             combined_cpg.merge(file_cpg);
         }
+        apex_cpg::reaching_def::add_reaching_def_edges(&mut combined_cpg);
         if combined_cpg.node_count() > 0 {
             Some(Arc::new(combined_cpg))
         } else {
@@ -2762,6 +2819,7 @@ async fn run_lint(args: LintArgs, cfg: &ApexConfig) -> Result<()> {
             let file_cpg = apex_cpg::builder::build_python_cpg(source, &path.display().to_string());
             combined_cpg.merge(file_cpg);
         }
+        apex_cpg::reaching_def::add_reaching_def_edges(&mut combined_cpg);
         if combined_cpg.node_count() > 0 {
             Some(Arc::new(combined_cpg))
         } else {
@@ -4198,6 +4256,7 @@ async fn run_compliance_export(args: ComplianceExportArgs, cfg: &ApexConfig) -> 
             let file_cpg = apex_cpg::builder::build_python_cpg(source, &path.display().to_string());
             combined_cpg.merge(file_cpg);
         }
+        apex_cpg::reaching_def::add_reaching_def_edges(&mut combined_cpg);
         if combined_cpg.node_count() > 0 {
             Some(Arc::new(combined_cpg))
         } else {

@@ -9,8 +9,47 @@
 //!
 //! Sequential statements within a function body are connected by CFG edges.
 //! All statement nodes are connected to their enclosing Method via AST edges.
+//!
+//! The [`CpgBuilder`] trait allows future language builders (JS, Java, Go, …)
+//! to plug into the same pipeline without changing call sites.
+
+use apex_core::types::Language;
 
 use crate::{Cpg, CtrlKind, EdgeKind, NodeKind};
+
+// ─── CpgBuilder trait ─────────────────────────────────────────────────────────
+
+/// A language-specific Code Property Graph builder.
+///
+/// Each language that APEX supports provides one implementation. The trait is
+/// object-safe so builders can be stored as `Box<dyn CpgBuilder>`.
+pub trait CpgBuilder: Send + Sync {
+    /// Build a CPG from `source` code stored in `filename`.
+    fn build(&self, source: &str, filename: &str) -> Cpg;
+
+    /// The language this builder handles.
+    fn language(&self) -> Language;
+}
+
+// ─── Python implementation ────────────────────────────────────────────────────
+
+/// A [`CpgBuilder`] for Python source files.
+///
+/// Uses a simplified line-based parser — no tree-sitter dependency — that
+/// understands `def`, assignments, calls, control structures, and `return`.
+pub struct PythonCpgBuilder;
+
+impl CpgBuilder for PythonCpgBuilder {
+    fn build(&self, source: &str, filename: &str) -> Cpg {
+        build_python_cpg(source, filename)
+    }
+
+    fn language(&self) -> Language {
+        Language::Python
+    }
+}
+
+// ─── Free-function convenience wrapper ────────────────────────────────────────
 
 /// Build a CPG from Python source code.
 ///
@@ -18,18 +57,18 @@ use crate::{Cpg, CtrlKind, EdgeKind, NodeKind};
 /// requiring tree-sitter. Good enough to demonstrate taint-flow detection.
 pub fn build_python_cpg(source: &str, filename: &str) -> Cpg {
     let mut cpg = Cpg::new();
-    let mut parser = PythonCpgBuilder::new(filename);
+    let mut parser = InternalPythonParser::new(filename);
     parser.parse(source, &mut cpg);
     cpg
 }
 
 // ─── Internal builder state ───────────────────────────────────────────────────
 
-struct PythonCpgBuilder<'a> {
+struct InternalPythonParser<'a> {
     filename: &'a str,
 }
 
-impl<'a> PythonCpgBuilder<'a> {
+impl<'a> InternalPythonParser<'a> {
     fn new(filename: &'a str) -> Self {
         Self { filename }
     }
@@ -970,6 +1009,41 @@ mod tests {
         assert!(
             has_correct,
             "x ^= mask should produce Assignment with lhs='x'"
+        );
+    }
+
+    // ── CpgBuilder trait tests ────────────────────────────────────────────────
+
+    /// PythonCpgBuilder::language() must return Language::Python.
+    #[test]
+    fn python_cpg_builder_language_is_python() {
+        use apex_core::types::Language;
+        let builder = PythonCpgBuilder;
+        assert_eq!(builder.language(), Language::Python);
+    }
+
+    /// PythonCpgBuilder::build() must produce a non-empty CPG for real Python source.
+    #[test]
+    fn python_cpg_builder_build_produces_non_empty_cpg() {
+        let builder = PythonCpgBuilder;
+        let cpg = builder.build(
+            "def greet(name):\n    print(name)\n",
+            "greet.py",
+        );
+        assert!(cpg.node_count() > 0, "CpgBuilder::build should produce at least one node");
+    }
+
+    /// CpgBuilder is object-safe — can be stored as Box<dyn CpgBuilder>.
+    #[test]
+    fn cpg_builder_is_object_safe() {
+        use apex_core::types::Language;
+        let builder: Box<dyn CpgBuilder> = Box::new(PythonCpgBuilder);
+        assert_eq!(builder.language(), Language::Python);
+        let cpg = builder.build("def foo():\n    pass\n", "foo.py");
+        // Should create at least the Method node.
+        assert!(
+            cpg.nodes().any(|(_, k)| matches!(k, NodeKind::Method { .. })),
+            "boxed CpgBuilder should produce a Method node"
         );
     }
 }

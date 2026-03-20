@@ -647,6 +647,12 @@ impl BugSummary {
 }
 
 // ---------------------------------------------------------------------------
+// Agent coverage result (agentic instrumentation pipeline)
+// ---------------------------------------------------------------------------
+
+/// Result returned by a coverage agent via structured JSON markers on stdout.
+///
+// ---------------------------------------------------------------------------
 // Path constraints (for symbolic/concolic)
 // ---------------------------------------------------------------------------
 

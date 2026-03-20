@@ -5,6 +5,7 @@
 
 pub mod architecture;
 pub mod builder;
+pub use builder::{CpgBuilder, PythonCpgBuilder};
 pub mod deepdfa;
 pub mod model_loader;
 pub mod query;

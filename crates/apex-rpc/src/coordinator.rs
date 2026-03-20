@@ -8,10 +8,14 @@ use apex_coverage::CoverageOracle;
 use std::collections::VecDeque;
 use std::net::SocketAddr;
 use std::sync::Arc;
-use tokio::sync::Mutex;
+use tokio::sync::{Mutex, Notify};
 use tonic::{Request, Response, Status};
 use tracing::instrument;
 use uuid::Uuid;
+
+/// Maximum number of seeds held in the in-memory queue. When the queue is full,
+/// the oldest seed is dropped to make room for the new one (FIFO eviction).
+const MAX_QUEUE_SIZE: usize = 100_000;
 
 /// Convert a proto BranchId to the core BranchId type.
 fn proto_to_core_branch(pb: &ProtoBranchId) -> BranchId {
@@ -42,9 +46,16 @@ impl CoordinatorService {
     }
 
     /// Enqueue seeds for workers to consume.
+    ///
+    /// When the queue is at or above [`MAX_QUEUE_SIZE`], the oldest seed is
+    /// evicted before each new seed is added, keeping memory bounded.
     pub async fn enqueue_seeds(&self, seeds: Vec<InputSeed>) {
         let mut queue = self.seed_queue.lock().await;
         for seed in seeds {
+            if queue.len() >= MAX_QUEUE_SIZE {
+                // Evict oldest to keep the queue bounded.
+                queue.pop_front();
+            }
             queue.push_back(seed);
         }
     }
@@ -105,6 +116,9 @@ impl ApexCoordinator for CoordinatorService {
         let mut new_coverage_count: u64 = 0;
 
         for result in &batch.results {
+            // Bug fix: create a distinct SeedId per result, not once per batch.
+            // Previously all results in a batch shared the same SeedId, making
+            // first_seed_id attribution incorrect.
             let seed_id = SeedId::new();
             for pb_branch in &result.new_branches {
                 let branch = proto_to_core_branch(pb_branch);
@@ -166,8 +180,12 @@ impl CoordinatorServer {
         }
     }
 
-    /// Start the gRPC server and return the service handle and the bound address.
-    /// Useful for tests where you need to know the actual port.
+    /// Start the gRPC server and return the service handle, a join handle, and a
+    /// shutdown notifier.
+    ///
+    /// Call `shutdown.notify_one()` to signal the server to stop gracefully.
+    /// Simply dropping the `Arc<Notify>` does NOT trigger shutdown — an explicit
+    /// `notify_one()` call is required.
     pub async fn start_with_service(
         addr: SocketAddr,
         oracle: Arc<CoverageOracle>,
@@ -175,25 +193,33 @@ impl CoordinatorServer {
         (
             Arc<CoordinatorService>,
             tokio::task::JoinHandle<Result<(), tonic::transport::Error>>,
+            Arc<Notify>,
         ),
         tonic::transport::Error,
     > {
         let service = Arc::new(CoordinatorService::new(oracle));
         let svc_clone = service.clone();
 
+        let shutdown = Arc::new(Notify::new());
+        let shutdown_signal = shutdown.clone();
+
         let handle = tokio::spawn(async move {
             tonic::transport::Server::builder()
                 .add_service(ApexCoordinatorServer::from_arc(svc_clone))
-                .serve(addr)
+                .serve_with_shutdown(addr, async move {
+                    shutdown_signal.notified().await;
+                })
                 .await
         });
 
-        Ok((service, handle))
+        Ok((service, handle, shutdown))
     }
 
-    /// Start a gRPC server on a Unix domain socket. Returns the service handle
-    /// and a join handle for the server task. The socket file is created at the
-    /// given path.
+    /// Start a gRPC server on a Unix domain socket. Returns the service handle,
+    /// a join handle for the server task, and a shutdown notifier.
+    ///
+    /// Call `shutdown.notify_one()` to signal graceful shutdown. Dropping the
+    /// `Arc<Notify>` without calling `notify_one()` does NOT stop the server.
     #[cfg(unix)]
     pub async fn start_uds_with_service(
         uds_path: &std::path::Path,
@@ -201,6 +227,7 @@ impl CoordinatorServer {
     ) -> std::io::Result<(
         Arc<CoordinatorService>,
         tokio::task::JoinHandle<Result<(), tonic::transport::Error>>,
+        Arc<Notify>,
     )> {
         let service = Arc::new(CoordinatorService::new(oracle));
         let svc_clone = service.clone();
@@ -208,14 +235,19 @@ impl CoordinatorServer {
         let uds = tokio::net::UnixListener::bind(uds_path)?;
         let incoming = tokio_stream::wrappers::UnixListenerStream::new(uds);
 
+        let shutdown = Arc::new(Notify::new());
+        let shutdown_signal = shutdown.clone();
+
         let handle = tokio::spawn(async move {
             tonic::transport::Server::builder()
                 .add_service(ApexCoordinatorServer::from_arc(svc_clone))
-                .serve_with_incoming(incoming)
+                .serve_with_incoming_shutdown(incoming, async move {
+                    shutdown_signal.notified().await;
+                })
                 .await
         });
 
-        Ok((service, handle))
+        Ok((service, handle, shutdown))
     }
 }
 
@@ -1361,7 +1393,7 @@ mod tests {
         let result = CoordinatorServer::start_with_service(addr, oracle.clone()).await;
         assert!(result.is_ok());
 
-        let (service, handle) = result.unwrap();
+        let (service, handle, shutdown) = result.unwrap();
 
         // Service should work for direct calls
         let snap = service
@@ -1390,8 +1422,12 @@ mod tests {
             .into_inner();
         assert_eq!(seeds.seeds.len(), 1);
 
-        // Abort the server handle
-        handle.abort();
+        // Signal graceful shutdown via notify_one().
+        shutdown.notify_one();
+        // Give the server task time to exit; abort as fallback.
+        tokio::time::timeout(std::time::Duration::from_millis(200), handle)
+            .await
+            .ok();
     }
 
     #[tokio::test]
@@ -1955,6 +1991,175 @@ mod tests {
         assert_ne!(
             proto_orig.direction, proto_back.direction,
             "BUG: direction data lost"
+        );
+    }
+
+    // -------------------------------------------------------------------------
+    // Bug 3 regression: unbounded seed queue
+    // -------------------------------------------------------------------------
+
+    /// Enqueue more seeds than MAX_QUEUE_SIZE and verify the queue never exceeds
+    /// the cap. The oldest seeds must be evicted (FIFO) to make room.
+    #[tokio::test]
+    async fn test_seed_queue_bounded_at_max_size() {
+        let oracle = make_oracle();
+        let service = CoordinatorService::new(oracle);
+
+        // Enqueue MAX_QUEUE_SIZE + 500 seeds in one call.
+        let overflow = MAX_QUEUE_SIZE + 500;
+        let seeds: Vec<InputSeed> = (0..overflow)
+            .map(|i| InputSeed {
+                id: format!("s{i}"),
+                data: vec![(i % 256) as u8],
+                origin: "test".into(),
+            })
+            .collect();
+
+        service.enqueue_seeds(seeds).await;
+
+        // Drain everything and verify we never got more than MAX_QUEUE_SIZE seeds.
+        let mut total_drained = 0usize;
+        loop {
+            let resp = service
+                .get_seeds(Request::new(SeedRequest {
+                    worker_id: "w1".into(),
+                    max_seeds: 1000,
+                }))
+                .await
+                .unwrap()
+                .into_inner();
+            if resp.seeds.is_empty() {
+                break;
+            }
+            total_drained += resp.seeds.len();
+        }
+
+        assert!(
+            total_drained <= MAX_QUEUE_SIZE,
+            "queue grew beyond MAX_QUEUE_SIZE: drained {total_drained}"
+        );
+    }
+
+    /// After filling the queue to the cap, new seeds evict the oldest (FIFO).
+    #[tokio::test]
+    async fn test_seed_queue_evicts_oldest_on_overflow() {
+        let oracle = make_oracle();
+        let service = CoordinatorService::new(oracle);
+
+        // Fill queue to MAX_QUEUE_SIZE with seeds "fill-0".."fill-N".
+        let fill: Vec<InputSeed> = (0..MAX_QUEUE_SIZE)
+            .map(|i| InputSeed {
+                id: format!("fill-{i}"),
+                data: vec![0],
+                origin: "fill".into(),
+            })
+            .collect();
+        service.enqueue_seeds(fill).await;
+
+        // Enqueue one more seed — it should evict fill-0 and keep fill-1..fill-N + new.
+        service
+            .enqueue_seeds(vec![InputSeed {
+                id: "new-seed".into(),
+                data: vec![1],
+                origin: "new".into(),
+            }])
+            .await;
+
+        // The first seed we drain must NOT be fill-0 (it was evicted).
+        let resp = service
+            .get_seeds(Request::new(SeedRequest {
+                worker_id: "w1".into(),
+                max_seeds: 1,
+            }))
+            .await
+            .unwrap()
+            .into_inner();
+
+        assert_eq!(resp.seeds.len(), 1);
+        assert_ne!(
+            resp.seeds[0].id, "fill-0",
+            "fill-0 should have been evicted but is still at the front"
+        );
+        assert_eq!(resp.seeds[0].id, "fill-1");
+    }
+
+    // -------------------------------------------------------------------------
+    // Bug 4 regression: SeedId per result, not per batch
+    // -------------------------------------------------------------------------
+
+    /// Submit a batch with two results covering different branches. Verify that
+    /// the two branches receive distinct SeedIds (meaning a new SeedId was created
+    /// for each result, not once shared across the whole batch).
+    ///
+    /// We verify indirectly: if two results share the same SeedId, then
+    /// `first_seed_id` in the oracle state will be identical for both branches.
+    /// With the fix, each result gets its own `SeedId::new()`, so the IDs differ.
+    #[tokio::test]
+    async fn test_seed_id_distinct_per_result_in_batch() {
+        use apex_core::types::BranchState;
+
+        let oracle = Arc::new(CoverageOracle::new());
+        // Register two branches
+        oracle.register_branches([
+            BranchId::new(1, 1, 0, 0),
+            BranchId::new(1, 2, 0, 0),
+        ]);
+        let service = CoordinatorService::new(oracle.clone());
+
+        // Submit a batch with two separate results, each covering one branch.
+        service
+            .submit_results(Request::new(ResultBatch {
+                worker_id: "w1".into(),
+                results: vec![
+                    ProtoResult {
+                        seed_id: "result-a".into(),
+                        status: "pass".into(),
+                        new_branches: vec![ProtoBranchId {
+                            file_id: 1,
+                            line: 1,
+                            col: 0,
+                            direction: 0,
+                        }],
+                        duration_ms: 5,
+                        stdout: String::new(),
+                        stderr: String::new(),
+                    },
+                    ProtoResult {
+                        seed_id: "result-b".into(),
+                        status: "pass".into(),
+                        new_branches: vec![ProtoBranchId {
+                            file_id: 1,
+                            line: 2,
+                            col: 0,
+                            direction: 0,
+                        }],
+                        duration_ms: 5,
+                        stdout: String::new(),
+                        stderr: String::new(),
+                    },
+                ],
+            }))
+            .await
+            .unwrap();
+
+        // Extract first_seed_id for each branch.
+        let b1 = BranchId::new(1, 1, 0, 0);
+        let b2 = BranchId::new(1, 2, 0, 0);
+
+        let sid1 = match oracle.state_of(&b1) {
+            Some(BranchState::Covered { first_seed_id, .. }) => first_seed_id,
+            other => panic!("expected Covered for b1, got {other:?}"),
+        };
+        let sid2 = match oracle.state_of(&b2) {
+            Some(BranchState::Covered { first_seed_id, .. }) => first_seed_id,
+            other => panic!("expected Covered for b2, got {other:?}"),
+        };
+
+        // With the fix each result gets its own SeedId::new(), so they must differ.
+        assert_ne!(
+            sid1, sid2,
+            "Bug 4 regression: both results share the same SeedId — \
+             SeedId::new() must be called per result, not per batch"
         );
     }
 }

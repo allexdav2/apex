@@ -214,7 +214,7 @@ mod tests {
         let tmp = tempfile::tempdir().ok()?;
         let sock_path = tmp.path().join("apex-test.sock");
 
-        let (service, _handle) =
+        let (service, _handle, _shutdown) =
             CoordinatorServer::start_uds_with_service(&sock_path, oracle.clone())
                 .await
                 .ok()?;

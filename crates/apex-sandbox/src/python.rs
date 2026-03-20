@@ -164,58 +164,74 @@ impl Sandbox for PythonTestSandbox {
 
         // Step 1: run pytest under coverage.py
         // Prefer `uv run python3` when uv is available.
+        // Use spawn() + kill_on_drop(true) so the child is killed if the timeout
+        // fires — prevents zombie processes leaking after a timeout.
         let run_output = if let Some(uv) = &self.uv_bin {
+            let child = tokio::process::Command::new(uv)
+                .args([
+                    "run",
+                    "python3",
+                    "-m",
+                    "coverage",
+                    "run",
+                    "--branch",
+                    "--source=.",
+                    &format!("--data-file={}", cov_data.display()),
+                    "-m",
+                    "pytest",
+                    &test_file.to_string_lossy(),
+                    "-x",
+                    "-q",
+                    "--tb=short",
+                ])
+                .current_dir(&self.target_dir)
+                .stdout(std::process::Stdio::piped())
+                .stderr(std::process::Stdio::piped())
+                .kill_on_drop(true)
+                .spawn()
+                .map_err(|e| ApexError::Sandbox(format!("spawn pytest: {e}")))?;
             tokio::time::timeout(
                 std::time::Duration::from_millis(self.timeout_ms),
-                tokio::process::Command::new(uv)
-                    .args([
-                        "run",
-                        "python3",
-                        "-m",
-                        "coverage",
-                        "run",
-                        "--branch",
-                        "--source=.",
-                        &format!("--data-file={}", cov_data.display()),
-                        "-m",
-                        "pytest",
-                        &test_file.to_string_lossy(),
-                        "-x",
-                        "-q",
-                        "--tb=short",
-                    ])
-                    .current_dir(&self.target_dir)
-                    .output(),
+                child.wait_with_output(),
             )
             .await
+            .map(|r| r.map_err(|e| ApexError::Sandbox(format!("spawn pytest: {e}"))))
+            .map_err(|_| ())
         } else {
+            let child = tokio::process::Command::new("python3")
+                .args([
+                    "-m",
+                    "coverage",
+                    "run",
+                    "--branch",
+                    "--source=.",
+                    &format!("--data-file={}", cov_data.display()),
+                    "-m",
+                    "pytest",
+                    &test_file.to_string_lossy(),
+                    "-x",
+                    "-q",
+                    "--tb=short",
+                ])
+                .current_dir(&self.target_dir)
+                .stdout(std::process::Stdio::piped())
+                .stderr(std::process::Stdio::piped())
+                .kill_on_drop(true)
+                .spawn()
+                .map_err(|e| ApexError::Sandbox(format!("spawn pytest: {e}")))?;
             tokio::time::timeout(
                 std::time::Duration::from_millis(self.timeout_ms),
-                tokio::process::Command::new("python3")
-                    .args([
-                        "-m",
-                        "coverage",
-                        "run",
-                        "--branch",
-                        "--source=.",
-                        &format!("--data-file={}", cov_data.display()),
-                        "-m",
-                        "pytest",
-                        &test_file.to_string_lossy(),
-                        "-x",
-                        "-q",
-                        "--tb=short",
-                    ])
-                    .current_dir(&self.target_dir)
-                    .output(),
+                child.wait_with_output(),
             )
             .await
+            .map(|r| r.map_err(|e| ApexError::Sandbox(format!("spawn pytest: {e}"))))
+            .map_err(|_| ())
         };
 
         let duration_ms = start.elapsed().as_millis() as u64;
 
         let run_output = match run_output {
-            Err(_) => {
+            Err(()) => {
                 return Ok(ExecutionResult {
                     seed_id: input.id,
                     status: ExecutionStatus::Timeout,
@@ -227,7 +243,7 @@ impl Sandbox for PythonTestSandbox {
                     input: None,
                 });
             }
-            Ok(Err(e)) => return Err(ApexError::Sandbox(format!("spawn pytest: {e}"))),
+            Ok(Err(e)) => return Err(e),
             Ok(Ok(o)) => o,
         };
 
@@ -241,39 +257,64 @@ impl Sandbox for PythonTestSandbox {
             _ => ExecutionStatus::Fail,
         };
 
-        // Step 2: export coverage to JSON (best-effort; may fail on syntax errors)
+        // Step 2: export coverage to JSON (best-effort; may fail on syntax errors).
+        // Bounded to 60 s to prevent a stalled coverage export from hanging the run.
         let json_ok = if let Some(uv) = &self.uv_bin {
-            tokio::process::Command::new(uv)
-                .args([
-                    "run",
-                    "python3",
-                    "-m",
-                    "coverage",
-                    "json",
-                    &format!("--data-file={}", cov_data.display()),
-                    "-o",
-                    &cov_json.to_string_lossy(),
-                ])
-                .current_dir(&self.target_dir)
-                .output()
-                .await
-                .map(|o| o.status.success())
-                .unwrap_or(false)
+            match tokio::time::timeout(
+                std::time::Duration::from_secs(60),
+                tokio::process::Command::new(uv)
+                    .args([
+                        "run",
+                        "python3",
+                        "-m",
+                        "coverage",
+                        "json",
+                        &format!("--data-file={}", cov_data.display()),
+                        "-o",
+                        &cov_json.to_string_lossy(),
+                    ])
+                    .current_dir(&self.target_dir)
+                    .output(),
+            )
+            .await
+            {
+                Ok(Ok(o)) => o.status.success(),
+                Ok(Err(e)) => {
+                    warn!(error = %e, "coverage json command failed");
+                    false
+                }
+                Err(_) => {
+                    warn!("coverage json export timed out after 60 s — skipping");
+                    false
+                }
+            }
         } else {
-            tokio::process::Command::new("python3")
-                .args([
-                    "-m",
-                    "coverage",
-                    "json",
-                    &format!("--data-file={}", cov_data.display()),
-                    "-o",
-                    &cov_json.to_string_lossy(),
-                ])
-                .current_dir(&self.target_dir)
-                .output()
-                .await
-                .map(|o| o.status.success())
-                .unwrap_or(false)
+            match tokio::time::timeout(
+                std::time::Duration::from_secs(60),
+                tokio::process::Command::new("python3")
+                    .args([
+                        "-m",
+                        "coverage",
+                        "json",
+                        &format!("--data-file={}", cov_data.display()),
+                        "-o",
+                        &cov_json.to_string_lossy(),
+                    ])
+                    .current_dir(&self.target_dir)
+                    .output(),
+            )
+            .await
+            {
+                Ok(Ok(o)) => o.status.success(),
+                Ok(Err(e)) => {
+                    warn!(error = %e, "coverage json command failed");
+                    false
+                }
+                Err(_) => {
+                    warn!("coverage json export timed out after 60 s — skipping");
+                    false
+                }
+            }
         };
 
         // Step 3: compute coverage delta vs oracle

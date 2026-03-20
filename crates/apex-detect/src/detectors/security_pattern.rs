@@ -1715,6 +1715,7 @@ mod tests {
             model_type: Some(apex_core::config::ThreatModelType::CliTool),
             trusted_sources: vec![],
             untrusted_sources: vec![],
+            ..Default::default()
         };
         let ctx = make_ctx_with_threat_model(files, Language::Rust, tm);
         let findings = SecurityPatternDetector.analyze(&ctx).await.unwrap();
@@ -1738,6 +1739,7 @@ mod tests {
             model_type: Some(apex_core::config::ThreatModelType::WebService),
             trusted_sources: vec![],
             untrusted_sources: vec![],
+            ..Default::default()
         };
         let ctx = make_ctx_with_threat_model(files, Language::Python, tm);
         let findings = SecurityPatternDetector.analyze(&ctx).await.unwrap();
@@ -1777,6 +1779,7 @@ mod tests {
             model_type: Some(apex_core::config::ThreatModelType::CliTool),
             trusted_sources: vec![],
             untrusted_sources: vec![],
+            ..Default::default()
         };
         let ctx = make_ctx_with_threat_model(files, Language::Python, tm);
         let findings = SecurityPatternDetector.analyze(&ctx).await.unwrap();
@@ -1799,6 +1802,7 @@ mod tests {
             model_type: Some(apex_core::config::ThreatModelType::WebService),
             trusted_sources: vec!["request".into()],
             untrusted_sources: vec![],
+            ..Default::default()
         };
         let ctx = make_ctx_with_threat_model(files, Language::Python, tm);
         let findings = SecurityPatternDetector.analyze(&ctx).await.unwrap();

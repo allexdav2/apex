@@ -76,6 +76,78 @@ jobs:
             exit 1
           fi
 
+  apex-audit:
+    name: APEX Self-Audit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - run: sudo apt-get install -y protobuf-compiler
+      - name: Build APEX
+        run: cargo build --release
+      - name: Run APEX audit on itself
+        run: |
+          ./target/release/apex audit --target . --lang rust --output-format json > /tmp/apex-audit.json
+          echo "APEX audit completed"
+      - name: Check for new high-severity findings
+        run: |
+          HIGH_COUNT=$(python3 -c "
+          import json
+          data = json.load(open('/tmp/apex-audit.json'))
+          findings = data.get('findings', [])
+          highs = [f for f in findings if f.get('severity') == 'high']
+          print(len(highs))
+          ")
+          echo "High-severity findings: $HIGH_COUNT"
+          # Baseline: current known highs (path-normalize FPs in CLI)
+          # Allow up to this baseline, fail on new ones
+          if [ "$HIGH_COUNT" -gt 100 ]; then
+            echo "::error::APEX audit found $HIGH_COUNT high findings (baseline: ~94). New high-severity issues introduced."
+            exit 1
+          fi
+      - name: Upload audit results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: apex-audit-results
+          path: /tmp/apex-audit.json
+
+  apex-coverage:
+    name: APEX Coverage Gate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: llvm-tools-preview
+      - uses: Swatinem/rust-cache@v2
+      - run: sudo apt-get install -y protobuf-compiler
+      - name: Install cargo-llvm-cov
+        run: cargo install cargo-llvm-cov
+      - name: Run coverage
+        run: |
+          cargo llvm-cov --json --workspace > /tmp/coverage.json 2>&1 || true
+      - name: Check coverage threshold
+        run: |
+          COVERAGE=$(python3 -c "
+          import json
+          try:
+              data = json.load(open('/tmp/coverage.json'))
+              pct = data.get('data', [{}])[0].get('totals', {}).get('lines', {}).get('percent', 0)
+              print(f'{pct:.1f}')
+          except:
+              print('0.0')
+          ")
+          echo "Line coverage: ${COVERAGE}%"
+          # Fail if coverage drops below 90%
+          if python3 -c "exit(0 if float('$COVERAGE') >= 90.0 else 1)"; then
+            echo "Coverage gate passed: ${COVERAGE}% >= 90%"
+          else
+            echo "::error::Coverage dropped to ${COVERAGE}% (minimum: 90%)"
+            exit 1
+          fi
+
   dist-npm:
     name: Validate npm package
     runs-on: ubuntu-latest

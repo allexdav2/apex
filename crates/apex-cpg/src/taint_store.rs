@@ -13,6 +13,59 @@ pub struct TaintSpecStore {
     sanitizers: HashSet<String>,
 }
 
+/// JavaScript taint sources.
+pub const JS_SOURCES: &[&str] = &[
+    "req.query",
+    "req.params",
+    "req.body",
+    "process.argv",
+    "process.env",
+    "window.location",
+];
+
+/// JavaScript taint sinks.
+pub const JS_SINKS: &[&str] = &[
+    "eval",
+    "exec",
+    "child_process",
+    "fs.writeFile",
+    "res.send",
+    "db.query",
+];
+
+/// JavaScript sanitizers.
+pub const JS_SANITIZERS: &[&str] = &[
+    "escape",
+    "encodeURI",
+    "sanitize",
+    "DOMPurify",
+];
+
+/// Go taint sources.
+pub const GO_SOURCES: &[&str] = &[
+    "r.URL.Query",
+    "r.FormValue",
+    "r.Body",
+    "os.Args",
+    "os.Getenv",
+];
+
+/// Go taint sinks.
+pub const GO_SINKS: &[&str] = &[
+    "exec.Command",
+    "db.Query",
+    "db.Exec",
+    "http.Get",
+    "fmt.Fprintf",
+];
+
+/// Go sanitizers.
+pub const GO_SANITIZERS: &[&str] = &[
+    "html.EscapeString",
+    "url.QueryEscape",
+    "strconv",
+];
+
 impl TaintSpecStore {
     /// Create an empty store.
     pub fn new() -> Self {
@@ -30,6 +83,36 @@ impl TaintSpecStore {
             store.sinks.insert(s.to_string());
         }
         for s in PYTHON_SANITIZERS {
+            store.sanitizers.insert(s.to_string());
+        }
+        store
+    }
+
+    /// Create a store pre-loaded with JavaScript taint specs.
+    pub fn javascript_defaults() -> Self {
+        let mut store = Self::new();
+        for s in JS_SOURCES {
+            store.sources.insert(s.to_string());
+        }
+        for s in JS_SINKS {
+            store.sinks.insert(s.to_string());
+        }
+        for s in JS_SANITIZERS {
+            store.sanitizers.insert(s.to_string());
+        }
+        store
+    }
+
+    /// Create a store pre-loaded with Go taint specs.
+    pub fn go_defaults() -> Self {
+        let mut store = Self::new();
+        for s in GO_SOURCES {
+            store.sources.insert(s.to_string());
+        }
+        for s in GO_SINKS {
+            store.sinks.insert(s.to_string());
+        }
+        for s in GO_SANITIZERS {
             store.sanitizers.insert(s.to_string());
         }
         store
@@ -156,5 +239,157 @@ mod tests {
         store.add_source("foo".into());
         store.add_source("foo".into());
         assert_eq!(store.sources().len(), 1);
+    }
+
+    // ── JavaScript taint spec tests ──────────────────────────────────────────
+
+    #[test]
+    fn js_defaults_has_sources() {
+        let store = TaintSpecStore::javascript_defaults();
+        assert!(!store.is_empty());
+        assert!(
+            store.sources().len() >= 3,
+            "expected at least 3 JS sources, got {}",
+            store.sources().len()
+        );
+    }
+
+    #[test]
+    fn js_defaults_req_query_is_source() {
+        let store = TaintSpecStore::javascript_defaults();
+        assert!(store.is_source("req.query"), "req.query should be a JS source");
+    }
+
+    #[test]
+    fn js_defaults_req_params_is_source() {
+        let store = TaintSpecStore::javascript_defaults();
+        assert!(store.is_source("req.params"), "req.params should be a JS source");
+    }
+
+    #[test]
+    fn js_defaults_req_body_is_source() {
+        let store = TaintSpecStore::javascript_defaults();
+        assert!(store.is_source("req.body"), "req.body should be a JS source");
+    }
+
+    #[test]
+    fn js_defaults_process_argv_is_source() {
+        let store = TaintSpecStore::javascript_defaults();
+        assert!(store.is_source("process.argv"), "process.argv should be a JS source");
+    }
+
+    #[test]
+    fn js_defaults_eval_is_sink() {
+        let store = TaintSpecStore::javascript_defaults();
+        assert!(store.is_sink("eval"), "eval should be a JS sink");
+    }
+
+    #[test]
+    fn js_defaults_db_query_is_sink() {
+        let store = TaintSpecStore::javascript_defaults();
+        assert!(store.is_sink("db.query"), "db.query should be a JS sink");
+    }
+
+    #[test]
+    fn js_defaults_res_send_is_sink() {
+        let store = TaintSpecStore::javascript_defaults();
+        assert!(store.is_sink("res.send"), "res.send should be a JS sink");
+    }
+
+    #[test]
+    fn js_defaults_escape_is_sanitizer() {
+        let store = TaintSpecStore::javascript_defaults();
+        assert!(store.is_sanitizer("escape"), "escape should be a JS sanitizer");
+    }
+
+    #[test]
+    fn js_defaults_encode_uri_is_sanitizer() {
+        let store = TaintSpecStore::javascript_defaults();
+        assert!(store.is_sanitizer("encodeURI"), "encodeURI should be a JS sanitizer");
+    }
+
+    #[test]
+    fn js_defaults_has_sinks() {
+        let store = TaintSpecStore::javascript_defaults();
+        assert!(
+            store.sinks().len() >= 3,
+            "expected at least 3 JS sinks"
+        );
+    }
+
+    // ── Go taint spec tests ──────────────────────────────────────────────────
+
+    #[test]
+    fn go_defaults_has_sources() {
+        let store = TaintSpecStore::go_defaults();
+        assert!(!store.is_empty());
+        assert!(
+            store.sources().len() >= 3,
+            "expected at least 3 Go sources, got {}",
+            store.sources().len()
+        );
+    }
+
+    #[test]
+    fn go_defaults_url_query_is_source() {
+        let store = TaintSpecStore::go_defaults();
+        assert!(store.is_source("r.URL.Query"), "r.URL.Query should be a Go source");
+    }
+
+    #[test]
+    fn go_defaults_form_value_is_source() {
+        let store = TaintSpecStore::go_defaults();
+        assert!(store.is_source("r.FormValue"), "r.FormValue should be a Go source");
+    }
+
+    #[test]
+    fn go_defaults_os_getenv_is_source() {
+        let store = TaintSpecStore::go_defaults();
+        assert!(store.is_source("os.Getenv"), "os.Getenv should be a Go source");
+    }
+
+    #[test]
+    fn go_defaults_exec_command_is_sink() {
+        let store = TaintSpecStore::go_defaults();
+        assert!(store.is_sink("exec.Command"), "exec.Command should be a Go sink");
+    }
+
+    #[test]
+    fn go_defaults_db_query_is_sink() {
+        let store = TaintSpecStore::go_defaults();
+        assert!(store.is_sink("db.Query"), "db.Query should be a Go sink");
+    }
+
+    #[test]
+    fn go_defaults_db_exec_is_sink() {
+        let store = TaintSpecStore::go_defaults();
+        assert!(store.is_sink("db.Exec"), "db.Exec should be a Go sink");
+    }
+
+    #[test]
+    fn go_defaults_http_get_is_sink() {
+        let store = TaintSpecStore::go_defaults();
+        assert!(store.is_sink("http.Get"), "http.Get should be a Go sink");
+    }
+
+    #[test]
+    fn go_defaults_html_escape_is_sanitizer() {
+        let store = TaintSpecStore::go_defaults();
+        assert!(store.is_sanitizer("html.EscapeString"), "html.EscapeString should be a Go sanitizer");
+    }
+
+    #[test]
+    fn go_defaults_url_query_escape_is_sanitizer() {
+        let store = TaintSpecStore::go_defaults();
+        assert!(store.is_sanitizer("url.QueryEscape"), "url.QueryEscape should be a Go sanitizer");
+    }
+
+    #[test]
+    fn go_defaults_has_sinks() {
+        let store = TaintSpecStore::go_defaults();
+        assert!(
+            store.sinks().len() >= 3,
+            "expected at least 3 Go sinks"
+        );
     }
 }

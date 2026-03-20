@@ -6,6 +6,10 @@
 pub mod architecture;
 pub mod builder;
 pub use builder::{CpgBuilder, PythonCpgBuilder};
+pub mod go_builder;
+pub use go_builder::GoCpgBuilder;
+pub mod js_builder;
+pub use js_builder::JsCpgBuilder;
 pub mod deepdfa;
 pub mod model_loader;
 pub mod query;

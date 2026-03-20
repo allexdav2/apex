@@ -2256,7 +2256,8 @@ async fn run_audit(args: AuditArgs, cfg: &ApexConfig) -> Result<()> {
 
     if let Some(path) = args.output {
         let path = validate_output_path(&path)?;
-        std::fs::write(&path, &output_text)?;
+        tokio::fs::write(&path, &output_text).await
+            .map_err(|e| color_eyre::eyre::eyre!("write {}: {e}", path.display()))?;
         eprintln!("Wrote audit report to {}", path.display());
     } else {
         print!("{output_text}");
@@ -3278,7 +3279,8 @@ async fn run_docs(args: DocsArgs) -> Result<()> {
 
     if let Some(path) = args.output {
         let path = validate_output_path(&path)?;
-        std::fs::write(&path, &output)?;
+        tokio::fs::write(&path, &output).await
+            .map_err(|e| color_eyre::eyre::eyre!("write {}: {e}", path.display()))?;
         eprintln!("Docs written to {}", path.display());
     } else {
         print!("{output}");
@@ -4011,8 +4013,10 @@ async fn run_flag_hygiene(args: FlagHygieneArgs) -> Result<()> {
 async fn run_api_diff(args: ApiDiffArgs) -> Result<()> {
     use apex_detect::api_diff::{ApiDiffer, ChangeKind};
 
-    let old_spec = std::fs::read_to_string(&args.old)?;
-    let new_spec = std::fs::read_to_string(&args.new)?;
+    let old_spec = tokio::fs::read_to_string(&args.old).await
+        .map_err(|e| color_eyre::eyre::eyre!("read {}: {e}", args.old.display()))?;
+    let new_spec = tokio::fs::read_to_string(&args.new).await
+        .map_err(|e| color_eyre::eyre::eyre!("read {}: {e}", args.new.display()))?;
 
     let report = ApiDiffer::diff(&old_spec, &new_spec)?;
 
@@ -4142,7 +4146,8 @@ async fn run_blast_radius(args: BlastRadiusArgs) -> Result<()> {
         ));
     }
 
-    let index_data = std::fs::read_to_string(&index_path)?;
+    let index_data = tokio::fs::read_to_string(&index_path).await
+        .map_err(|e| color_eyre::eyre::eyre!("read {}: {e}", index_path.display()))?;
     let index: apex_index::BranchIndex = serde_json::from_str(&index_data)?;
     let assessment = apex_index::analysis::assess_risk(&index, &args.changed_files);
 
@@ -4380,7 +4385,8 @@ async fn run_compliance_export(args: ComplianceExportArgs, cfg: &ApexConfig) -> 
     // Write to file or stdout
     if let Some(out_path) = args.output {
         let out_path = validate_output_path(&out_path)?;
-        std::fs::write(&out_path, &output)?;
+        tokio::fs::write(&out_path, &output).await
+            .map_err(|e| color_eyre::eyre::eyre!("write {}: {e}", out_path.display()))?;
         println!("Compliance report written to {}", out_path.display());
     } else {
         print!("{output}");
@@ -4396,7 +4402,8 @@ async fn run_compliance_export(args: ComplianceExportArgs, cfg: &ApexConfig) -> 
 async fn run_api_coverage(args: ApiCoverageArgs) -> Result<()> {
     let lang: Language = args.lang.into();
     let target_path = args.target.canonicalize()?;
-    let spec_json = std::fs::read_to_string(&args.spec)?;
+    let spec_json = tokio::fs::read_to_string(&args.spec).await
+        .map_err(|e| color_eyre::eyre::eyre!("read {}: {e}", args.spec.display()))?;
     let source_cache = build_source_cache(
         &target_path,
         lang,
@@ -4496,7 +4503,8 @@ async fn run_service_map(args: ServiceMapArgs) -> Result<()> {
 async fn run_schema_check(args: SchemaCheckArgs) -> Result<()> {
     use apex_detect::schema_check::MigrationRisk;
 
-    let sql = std::fs::read_to_string(&args.migration)?;
+    let sql = tokio::fs::read_to_string(&args.migration).await
+        .map_err(|e| color_eyre::eyre::eyre!("read {}: {e}", args.migration.display()))?;
     let report = apex_detect::schema_check::analyze_migration(&sql);
 
     match args.output_format {
@@ -4539,7 +4547,8 @@ async fn run_schema_check(args: SchemaCheckArgs) -> Result<()> {
 // ---------------------------------------------------------------------------
 
 async fn run_test_data(args: TestDataArgs) -> Result<()> {
-    let sql = std::fs::read_to_string(&args.schema)?;
+    let sql = tokio::fs::read_to_string(&args.schema).await
+        .map_err(|e| color_eyre::eyre::eyre!("read {}: {e}", args.schema.display()))?;
     let tables = apex_detect::test_data::parse_schema(&sql);
 
     match args.output_format {

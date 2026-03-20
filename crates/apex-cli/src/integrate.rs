@@ -134,10 +134,11 @@ pub fn detect_editor() -> &'static str {
 /// If the file does not exist it is created (including any missing parent
 /// directories). Any existing `mcpServers` entries besides `apex` are
 /// preserved.
-pub fn write_config(path: &Path, config: &Value) -> Result<()> {
+pub async fn write_config(path: &Path, config: &Value) -> Result<()> {
     // Load existing config (or start with an empty object).
     let mut existing: Value = if path.exists() {
-        let raw = std::fs::read_to_string(path)?;
+        let raw = tokio::fs::read_to_string(path).await
+            .map_err(|e| eyre!("read {}: {e}", path.display()))?;
         serde_json::from_str(&raw).unwrap_or(serde_json::json!({}))
     } else {
         serde_json::json!({})
@@ -155,11 +156,13 @@ pub fn write_config(path: &Path, config: &Value) -> Result<()> {
 
     // Create parent directories if needed.
     if let Some(parent) = path.parent() {
-        std::fs::create_dir_all(parent)?;
+        tokio::fs::create_dir_all(parent).await
+            .map_err(|e| eyre!("create_dir_all {}: {e}", parent.display()))?;
     }
 
     let pretty = serde_json::to_string_pretty(&existing)?;
-    std::fs::write(path, pretty + "\n")?;
+    tokio::fs::write(path, pretty + "\n").await
+        .map_err(|e| eyre!("write {}: {e}", path.display()))?;
     Ok(())
 }
 
@@ -185,7 +188,7 @@ pub async fn run_integrate(args: IntegrateArgs) -> Result<()> {
         return Ok(());
     }
 
-    write_config(&path, &config)?;
+    write_config(&path, &config).await?;
 
     println!(
         "apex MCP server registered in {} ({})",
@@ -310,15 +313,15 @@ mod tests {
 
     // --- write_config ---
 
-    #[test]
-    fn write_config_creates_new_file() {
+    #[tokio::test]
+    async fn write_config_creates_new_file() {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("mcp.json");
 
         let binary = Path::new("/usr/local/bin/apex");
         let config = generate_config(binary);
 
-        write_config(&path, &config).unwrap();
+        write_config(&path, &config).await.unwrap();
 
         assert!(path.exists(), "file should have been created");
         let raw = std::fs::read_to_string(&path).unwrap();
@@ -333,8 +336,8 @@ mod tests {
         );
     }
 
-    #[test]
-    fn write_config_merges_existing() {
+    #[tokio::test]
+    async fn write_config_merges_existing() {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("mcp.json");
 
@@ -351,7 +354,7 @@ mod tests {
 
         // Write apex config.
         let apex_config = generate_config(Path::new("/usr/local/bin/apex"));
-        write_config(&path, &apex_config).unwrap();
+        write_config(&path, &apex_config).await.unwrap();
 
         let raw = std::fs::read_to_string(&path).unwrap();
         let parsed: Value = serde_json::from_str(&raw).unwrap();
@@ -371,8 +374,8 @@ mod tests {
         );
     }
 
-    #[test]
-    fn write_config_overwrites_stale_apex_entry() {
+    #[tokio::test]
+    async fn write_config_overwrites_stale_apex_entry() {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("mcp.json");
 
@@ -388,7 +391,7 @@ mod tests {
         std::fs::write(&path, serde_json::to_string_pretty(&old).unwrap()).unwrap();
 
         let apex_config = generate_config(Path::new("/new/path/apex"));
-        write_config(&path, &apex_config).unwrap();
+        write_config(&path, &apex_config).await.unwrap();
 
         let raw = std::fs::read_to_string(&path).unwrap();
         let parsed: Value = serde_json::from_str(&raw).unwrap();
@@ -398,13 +401,13 @@ mod tests {
         );
     }
 
-    #[test]
-    fn write_config_creates_parent_directories() {
+    #[tokio::test]
+    async fn write_config_creates_parent_directories() {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("nested").join("deep").join("mcp.json");
 
         let config = generate_config(Path::new("/usr/local/bin/apex"));
-        write_config(&path, &config).unwrap();
+        write_config(&path, &config).await.unwrap();
 
         assert!(
             path.exists(),

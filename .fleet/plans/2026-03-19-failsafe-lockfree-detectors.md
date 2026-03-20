@@ -1,4 +1,4 @@
-<!-- status: ACTIVE -->
+<!-- status: DONE -->
 
 # Fail-Safe & Lock-Free Detectors — 10 New Detectors
 

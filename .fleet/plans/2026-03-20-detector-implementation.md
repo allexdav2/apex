@@ -1,4 +1,4 @@
-<!-- status: ACTIVE -->
+<!-- status: DONE -->
 
 # Unified Detector Implementation Plan
 

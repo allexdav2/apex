@@ -12,6 +12,7 @@ pub mod doctor;
 pub mod fuzz;
 pub mod integrate;
 pub mod mcp;
+pub mod wrap;
 
 use apex_agent::{AgentCluster, OrchestratorConfig};
 use apex_core::{
@@ -134,6 +135,12 @@ pub enum Commands {
     TestData(TestDataArgs),
     /// Start MCP STDIO server for AI tool integration.
     Mcp,
+    /// Wrap a test command with coverage instrumentation.
+    ///
+    /// Injects the right env vars and flags so your existing test command
+    /// produces coverage data.  Language is auto-detected from the command
+    /// or can be set with --lang.
+    Wrap(wrap::WrapArgs),
     /// Write MCP server config for Claude Code, Cursor, or Windsurf.
     Integrate(integrate::IntegrateArgs),
     /// Compare findings between base and head audit reports (CI diff).
@@ -813,6 +820,7 @@ pub async fn run_cli(cli: Cli, cfg: &ApexConfig) -> Result<()> {
         Commands::ServiceMap(args) => run_service_map(args).await,
         Commands::SchemaCheck(args) => run_schema_check(args).await,
         Commands::TestData(args) => run_test_data(args).await,
+        Commands::Wrap(args) => wrap::run_wrap(args).await,
         Commands::Mcp => mcp::run_mcp().await,
         Commands::Integrate(args) => integrate::run_integrate(args).await,
         Commands::CiReport(args) => {

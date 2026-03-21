@@ -20,6 +20,7 @@ pub mod source_map;
 pub mod swift;
 pub mod v8_coverage;
 pub mod wasm;
+pub mod wrap;
 
 pub use c_coverage::CCoverageInstrumentor;
 pub use csharp::CSharpInstrumentor;

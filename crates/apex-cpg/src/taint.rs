@@ -208,32 +208,28 @@ pub fn reachable_by_with_summaries(
             // follow arguments that the callee's summary says propagate to the
             // return value (inter-procedural mode). Without summaries, follow all
             // arguments (intra-procedural mode, preserving backward compatibility).
-            let tainted_params: Option<HashSet<u32>> =
-                if let Some(cache) = summaries {
-                    if let Some(NodeKind::Call { name, .. }) = cpg.node(current) {
-                        let summary = cache.get_by_name(name);
-                        summary.map(|s| {
-                            s.flows
-                                .iter()
-                                .filter(|f| {
-                                    !f.sanitized
-                                        && f.sink == FlowEndpoint::Return
-                                })
-                                .filter_map(|f| {
-                                    if let FlowEndpoint::Parameter(idx) = f.source {
-                                        Some(idx)
-                                    } else {
-                                        None
-                                    }
-                                })
-                                .collect()
-                        })
-                    } else {
-                        None
-                    }
+            let tainted_params: Option<HashSet<u32>> = if let Some(cache) = summaries {
+                if let Some(NodeKind::Call { name, .. }) = cpg.node(current) {
+                    let summary = cache.get_by_name(name);
+                    summary.map(|s| {
+                        s.flows
+                            .iter()
+                            .filter(|f| !f.sanitized && f.sink == FlowEndpoint::Return)
+                            .filter_map(|f| {
+                                if let FlowEndpoint::Parameter(idx) = f.source {
+                                    Some(idx)
+                                } else {
+                                    None
+                                }
+                            })
+                            .collect()
+                    })
                 } else {
                     None
-                };
+                }
+            } else {
+                None
+            };
 
             for (_from, to, kind) in cpg.edges_from(current) {
                 let arg_index = match kind {
@@ -759,8 +755,7 @@ def run(user_input):
             }],
         );
 
-        let flows =
-            find_taint_flows_with_summaries(&cpg, 10, Some(&cache));
+        let flows = find_taint_flows_with_summaries(&cpg, 10, Some(&cache));
         assert!(
             !flows.is_empty(),
             "summary should propagate taint through transform() call"
@@ -806,8 +801,7 @@ def run(user_input):
             }],
         );
 
-        let flows =
-            find_taint_flows_with_summaries(&cpg, 10, Some(&cache));
+        let flows = find_taint_flows_with_summaries(&cpg, 10, Some(&cache));
         assert!(
             flows.is_empty(),
             "sanitized summary should block taint propagation; got: {flows:?}"
@@ -854,8 +848,7 @@ def run(user_input):
             }],
         );
 
-        let flows =
-            find_taint_flows_with_summaries(&cpg, 10, Some(&cache));
+        let flows = find_taint_flows_with_summaries(&cpg, 10, Some(&cache));
         assert!(
             flows.is_empty(),
             "wrong param index should not propagate taint; got: {flows:?}"
@@ -894,8 +887,7 @@ def run(user_input):
         // Cache exists but has no entry for "unknown_func"
         let cache = SummaryCache::new();
 
-        let flows =
-            find_taint_flows_with_summaries(&cpg, 10, Some(&cache));
+        let flows = find_taint_flows_with_summaries(&cpg, 10, Some(&cache));
         assert!(
             !flows.is_empty(),
             "missing summary should fall back to following all arguments"
@@ -946,8 +938,7 @@ def run(user_input):
             }],
         );
 
-        let flows =
-            find_taint_flows_with_summaries(&cpg, 10, Some(&cache));
+        let flows = find_taint_flows_with_summaries(&cpg, 10, Some(&cache));
         assert!(
             !flows.is_empty(),
             "param(1) should propagate taint via summary"
@@ -982,8 +973,7 @@ def run(user_input):
         );
 
         let flows_original = find_taint_flows(&cpg, 10);
-        let flows_with_none =
-            find_taint_flows_with_summaries(&cpg, 10, None);
+        let flows_with_none = find_taint_flows_with_summaries(&cpg, 10, None);
         assert_eq!(
             flows_original.len(),
             flows_with_none.len(),

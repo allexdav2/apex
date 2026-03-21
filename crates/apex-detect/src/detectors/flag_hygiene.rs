@@ -179,7 +179,9 @@ impl Detector for FlagHygieneDetector {
                 explanation: None,
                 fix: None,
                 cwe_ids: vec![],
-                    noisy: false, base_severity: None, coverage_confidence: None,
+                noisy: false,
+                base_severity: None,
+                coverage_confidence: None,
             });
         }
 

@@ -179,7 +179,11 @@ fn extract_receiver(line: &str) -> Option<String> {
         .chars()
         .rev()
         .collect();
-    if name.is_empty() { None } else { Some(name) }
+    if name.is_empty() {
+        None
+    } else {
+        Some(name)
+    }
 }
 
 #[async_trait]
@@ -257,11 +261,7 @@ fn increment() {
     #[test]
     fn no_finding_for_non_rust() {
         let src = "counter.fetch_add(1, Ordering::Relaxed)";
-        let findings = analyze_source(
-            &PathBuf::from("src/app.py"),
-            src,
-            Language::Python,
-        );
+        let findings = analyze_source(&PathBuf::from("src/app.py"), src, Language::Python);
         assert_eq!(findings.len(), 0);
     }
 

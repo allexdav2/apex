@@ -16,12 +16,25 @@ const PYTHON_FN_KEYWORDS: &[&str] = &["def "];
 const JS_FN_KEYWORDS: &[&str] = &["function ", "=> {", "=> (", "const ", "let ", "var "];
 const RUST_FN_KEYWORDS: &[&str] = &["fn "];
 const JAVA_FN_KEYWORDS: &[&str] = &[
-    "public ", "private ", "protected ", "static ", "void ", "String ", "File ",
+    "public ",
+    "private ",
+    "protected ",
+    "static ",
+    "void ",
+    "String ",
+    "File ",
 ];
 const GO_FN_KEYWORDS: &[&str] = &["func "];
 const C_FN_KEYWORDS: &[&str] = &["void ", "int ", "char ", "FILE ", "size_t ", "ssize_t "];
 const CSHARP_FN_KEYWORDS: &[&str] = &[
-    "public ", "private ", "protected ", "internal ", "static ", "void ", "string ", "async ",
+    "public ",
+    "private ",
+    "protected ",
+    "internal ",
+    "static ",
+    "void ",
+    "string ",
+    "async ",
 ];
 const SWIFT_FN_KEYWORDS: &[&str] = &["func "];
 const KOTLIN_FN_KEYWORDS: &[&str] = &["fun "];
@@ -61,19 +74,11 @@ const JAVA_NORM_CALLS: &[&str] = &[
     "paths.get(",
 ];
 
-const GO_NORM_CALLS: &[&str] = &[
-    "filepath.clean(",
-    "filepath.abs(",
-    "filepath.evalsymlinks(",
-];
+const GO_NORM_CALLS: &[&str] = &["filepath.clean(", "filepath.abs(", "filepath.evalsymlinks("];
 
 const C_NORM_CALLS: &[&str] = &["realpath(", "canonicalize_file_name("];
 
-const CSHARP_NORM_CALLS: &[&str] = &[
-    "path.getfullpath(",
-    "path.combine(",
-    "getfullpath(",
-];
+const CSHARP_NORM_CALLS: &[&str] = &["path.getfullpath(", "path.combine(", "getfullpath("];
 
 const SWIFT_NORM_CALLS: &[&str] = &[
     "standardizedfileurl",
@@ -287,18 +292,32 @@ const PYTHON_USER_INPUT: &[&str] = &[
 const JS_USER_INPUT: &[&str] = &["req.", "request", "params", "query", "body", "input"];
 const RUST_USER_INPUT: &[&str] = &["user", "input", "request", "query", "args"];
 const JAVA_USER_INPUT: &[&str] = &[
-    "request", "getparameter", "getpathinfo", "getservletpath",
-    "user_input", "args[", "params.",
+    "request",
+    "getparameter",
+    "getpathinfo",
+    "getservletpath",
+    "user_input",
+    "args[",
+    "params.",
 ];
-const GO_USER_INPUT: &[&str] = &["r.url", "r.formvalue", "request", "user_input", "args[", "query.get"];
+const GO_USER_INPUT: &[&str] = &[
+    "r.url",
+    "r.formvalue",
+    "request",
+    "user_input",
+    "args[",
+    "query.get",
+];
 const C_USER_INPUT: &[&str] = &["argv", "user_input", "user", "buf", "request"];
 const CSHARP_USER_INPUT: &[&str] = &[
-    "request", "httpcontext", "user_input", "query[", "formcollection",
+    "request",
+    "httpcontext",
+    "user_input",
+    "query[",
+    "formcollection",
 ];
 const SWIFT_USER_INPUT: &[&str] = &["request", "user_input", "params", "query", "urlcomponents"];
-const KOTLIN_USER_INPUT: &[&str] = &[
-    "request", "getparameter", "user_input", "args[", "params.",
-];
+const KOTLIN_USER_INPUT: &[&str] = &["request", "getparameter", "user_input", "args[", "params."];
 const RUBY_USER_INPUT: &[&str] = &["params", "request", "input", "args", "ARGV"];
 
 // Normalization calls for expression-level scanning (superset of the function-level ones).
@@ -317,20 +336,29 @@ const JS_EXPR_NORM: &[&str] = &["path.normalize", "path.resolve", "sanitize", "b
 
 const RUST_EXPR_NORM: &[&str] = &["canonicalize", "normalize", "sanitize"];
 const JAVA_EXPR_NORM: &[&str] = &[
-    "normalize", "getcanonicalpath", "getcanonicalfile", "torealpath", "sanitize",
+    "normalize",
+    "getcanonicalpath",
+    "getcanonicalfile",
+    "torealpath",
+    "sanitize",
 ];
 const GO_EXPR_NORM: &[&str] = &["filepath.clean", "filepath.abs", "filepath.evalsymlinks"];
 const C_EXPR_NORM: &[&str] = &["realpath", "canonicalize_file_name", "sanitize"];
 const CSHARP_EXPR_NORM: &[&str] = &["getfullpath", "path.getfullpath", "sanitize"];
 const SWIFT_EXPR_NORM: &[&str] = &[
-    "standardizedfileurl", "resolvingsymlinksinpath", "standardized", "sanitize",
+    "standardizedfileurl",
+    "resolvingsymlinksinpath",
+    "standardized",
+    "sanitize",
 ];
 const KOTLIN_EXPR_NORM: &[&str] = &[
-    "normalize", "canonicalpath", "getcanonicalpath", "torealpath", "sanitize",
+    "normalize",
+    "canonicalpath",
+    "getcanonicalpath",
+    "torealpath",
+    "sanitize",
 ];
-const RUBY_EXPR_NORM: &[&str] = &[
-    "file.expand_path", "cleanpath", "realpath", "sanitize",
-];
+const RUBY_EXPR_NORM: &[&str] = &["file.expand_path", "cleanpath", "realpath", "sanitize"];
 
 /// Returns true when the threat model indicates file-path arguments are
 /// intentionally user-controlled (CLI tools, console tools, CI pipelines).
@@ -666,8 +694,7 @@ impl Detector for PathNormalizationDetector {
             }
 
             // Pass 2: expression-level file-operation sink scanning.
-            let expr_findings =
-                find_expression_sinks(&lines, lang, path, self.name(), file_noisy);
+            let expr_findings = find_expression_sinks(&lines, lang, path, self.name(), file_noisy);
             findings.extend(expr_findings);
         }
 
@@ -1062,10 +1089,7 @@ void read_file(const char* path) {
 ";
         let ctx = make_ctx_with_source("src/file.c", src, Language::C);
         let findings = PathNormalizationDetector.analyze(&ctx).await.unwrap();
-        assert!(
-            findings.is_empty(),
-            "realpath should suppress C finding"
-        );
+        assert!(findings.is_empty(), "realpath should suppress C finding");
     }
 
     #[tokio::test]
@@ -1313,7 +1337,10 @@ fn read_file(path: &Path) -> Vec<u8> {
             ThreatModelType::CliTool,
         );
         let findings = PathNormalizationDetector.analyze(&ctx).await.unwrap();
-        assert!(!findings.is_empty(), "should still emit findings for CLI tools");
+        assert!(
+            !findings.is_empty(),
+            "should still emit findings for CLI tools"
+        );
         for f in &findings {
             assert_eq!(f.severity, Severity::Low, "CLI tool findings must be Low");
             assert!(f.noisy, "CLI tool findings must be noisy");
@@ -1335,7 +1362,10 @@ fn serve_file(path: &Path) -> Vec<u8> {
             ThreatModelType::WebService,
         );
         let findings = PathNormalizationDetector.analyze(&ctx).await.unwrap();
-        assert!(!findings.is_empty(), "web service findings must not be suppressed");
+        assert!(
+            !findings.is_empty(),
+            "web service findings must not be suppressed"
+        );
         for f in &findings {
             assert!(!f.noisy, "web service findings must not be noisy");
             assert_ne!(
@@ -1358,7 +1388,10 @@ fn load_config(path: &Path) -> String {
         let findings = PathNormalizationDetector.analyze(&ctx).await.unwrap();
         assert!(!findings.is_empty(), "should emit findings");
         for f in &findings {
-            assert!(f.noisy, "Rust CLI-like code without threat model should be noisy");
+            assert!(
+                f.noisy,
+                "Rust CLI-like code without threat model should be noisy"
+            );
             assert_eq!(f.severity, Severity::Low);
         }
     }

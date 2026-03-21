@@ -88,10 +88,7 @@ impl From<&AuditFinding> for ReportFinding {
 // Core comparison logic
 // ---------------------------------------------------------------------------
 
-pub fn compare_findings(
-    base: &[AuditFinding],
-    head: &[AuditFinding],
-) -> CiReportOutput {
+pub fn compare_findings(base: &[AuditFinding], head: &[AuditFinding]) -> CiReportOutput {
     let base_keys: HashSet<FindingKey> = base.iter().map(|f| f.key()).collect();
     let head_keys: HashSet<FindingKey> = head.iter().map(|f| f.key()).collect();
 
@@ -107,10 +104,7 @@ pub fn compare_findings(
         .map(ReportFinding::from)
         .collect();
 
-    let unchanged_count = head
-        .iter()
-        .filter(|f| base_keys.contains(&f.key()))
-        .count();
+    let unchanged_count = head.iter().filter(|f| base_keys.contains(&f.key())).count();
 
     let has_new_high_critical = head
         .iter()
@@ -184,10 +178,12 @@ pub fn format_json(report: &CiReportOutput) -> Result<String> {
 // ---------------------------------------------------------------------------
 
 pub fn run_ci_report(base_path: &PathBuf, head_path: &PathBuf, json_output: bool) -> Result<bool> {
-    let base_data = std::fs::read_to_string(base_path)
-        .map_err(|e| color_eyre::eyre::eyre!("cannot read base file {}: {e}", base_path.display()))?;
-    let head_data = std::fs::read_to_string(head_path)
-        .map_err(|e| color_eyre::eyre::eyre!("cannot read head file {}: {e}", head_path.display()))?;
+    let base_data = std::fs::read_to_string(base_path).map_err(|e| {
+        color_eyre::eyre::eyre!("cannot read base file {}: {e}", base_path.display())
+    })?;
+    let head_data = std::fs::read_to_string(head_path).map_err(|e| {
+        color_eyre::eyre::eyre!("cannot read head file {}: {e}", head_path.display())
+    })?;
 
     let base: Vec<AuditFinding> = serde_json::from_str(&base_data)
         .map_err(|e| color_eyre::eyre::eyre!("cannot parse base JSON: {e}"))?;

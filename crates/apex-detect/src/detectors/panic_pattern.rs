@@ -156,7 +156,9 @@ impl Detector for PanicPatternDetector {
                             explanation: None,
                             fix: None,
                             cwe_ids: vec![248],
-                    noisy: false, base_severity: None, coverage_confidence: None,
+                            noisy: false,
+                            base_severity: None,
+                            coverage_confidence: None,
                         });
                         break; // One finding per line max
                     }
@@ -473,10 +475,12 @@ mod tests {
             PathBuf::from("src/main.rs"),
             "fn run() {\n    let x = bar().unwrap();\n    panic!(\"bad arg\");\n}\n".into(),
         );
-        let ctx =
-            make_ctx_threat_model(files, Some(apex_core::config::ThreatModelType::CliTool));
+        let ctx = make_ctx_threat_model(files, Some(apex_core::config::ThreatModelType::CliTool));
         let findings = PanicPatternDetector.analyze(&ctx).await.unwrap();
-        assert!(!findings.is_empty(), "should still produce findings for CLI tools");
+        assert!(
+            !findings.is_empty(),
+            "should still produce findings for CLI tools"
+        );
         assert!(
             findings.iter().all(|f| f.noisy),
             "all findings should be noisy for CLI tools"
@@ -491,10 +495,8 @@ mod tests {
             PathBuf::from("src/main.rs"),
             "fn run() {\n    let x = bar().unwrap();\n}\n".into(),
         );
-        let ctx = make_ctx_threat_model(
-            files,
-            Some(apex_core::config::ThreatModelType::ConsoleTool),
-        );
+        let ctx =
+            make_ctx_threat_model(files, Some(apex_core::config::ThreatModelType::ConsoleTool));
         let findings = PanicPatternDetector.analyze(&ctx).await.unwrap();
         assert!(!findings.is_empty());
         assert!(
@@ -511,8 +513,7 @@ mod tests {
             PathBuf::from("src/lib.rs"),
             "pub fn parse(s: &str) -> i32 {\n    s.parse().unwrap()\n}\n".into(),
         );
-        let ctx =
-            make_ctx_threat_model(files, Some(apex_core::config::ThreatModelType::Library));
+        let ctx = make_ctx_threat_model(files, Some(apex_core::config::ThreatModelType::Library));
         let findings = PanicPatternDetector.analyze(&ctx).await.unwrap();
         assert!(!findings.is_empty());
         assert!(
@@ -546,10 +547,8 @@ mod tests {
             PathBuf::from("src/handler.rs"),
             "fn handle(req: Request) -> Response {\n    parse(req.body()).unwrap()\n}\n".into(),
         );
-        let ctx = make_ctx_threat_model(
-            files,
-            Some(apex_core::config::ThreatModelType::WebService),
-        );
+        let ctx =
+            make_ctx_threat_model(files, Some(apex_core::config::ThreatModelType::WebService));
         let findings = PanicPatternDetector.analyze(&ctx).await.unwrap();
         assert!(!findings.is_empty());
         assert!(

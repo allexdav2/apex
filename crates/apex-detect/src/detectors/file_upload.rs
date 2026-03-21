@@ -39,8 +39,9 @@ static JAVA_MULTIPART: LazyLock<Regex> =
 static CSHARP_IFORMFILE: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"IFormFile\b").expect("invalid regex"));
 
-static RUBY_FILE_UPLOAD: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"params\[.*\]\.\w*(?:tempfile|original_filename)").expect("invalid regex"));
+static RUBY_FILE_UPLOAD: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r"params\[.*\]\.\w*(?:tempfile|original_filename)").expect("invalid regex")
+});
 
 static GO_FORM_FILE: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"r\.FormFile\s*\(").expect("invalid regex"));
@@ -98,20 +99,16 @@ fn context_has_validation(source: &str, line_num: usize) -> (bool, bool) {
 
 /// Patterns that indicate saving to a web-accessible directory.
 const WEB_DIR_PATTERNS: &[&str] = &[
-    "public/",
-    "static/",
-    "uploads/",
-    "www/",
-    "htdocs/",
-    "webroot/",
-    "wwwroot/",
-    "media/",
+    "public/", "static/", "uploads/", "www/", "htdocs/", "webroot/", "wwwroot/", "media/",
 ];
 
 fn saves_to_web_dir(source: &str) -> bool {
     let lower = source.to_lowercase();
     WEB_DIR_PATTERNS.iter().any(|p| lower.contains(p))
-        && (lower.contains("save") || lower.contains("write") || lower.contains("move") || lower.contains("copy"))
+        && (lower.contains("save")
+            || lower.contains("write")
+            || lower.contains("move")
+            || lower.contains("copy"))
 }
 
 #[async_trait]
@@ -194,11 +191,15 @@ impl Detector for FileUploadDetector {
                         ),
                         evidence: vec![],
                         covered: false,
-                        suggestion: "Set a maximum file size limit to prevent denial-of-service attacks".into(),
+                        suggestion:
+                            "Set a maximum file size limit to prevent denial-of-service attacks"
+                                .into(),
                         explanation: None,
                         fix: None,
                         cwe_ids: vec![434],
-                        noisy: false, base_severity: None, coverage_confidence: None,
+                        noisy: false,
+                        base_severity: None,
+                        coverage_confidence: None,
                     });
                 }
             }

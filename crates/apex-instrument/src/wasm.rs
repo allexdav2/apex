@@ -99,8 +99,8 @@ impl WasmInstrumentor {
         let _keep = inst_dir.keep();
         let inst_path = inst_dir_path.join(format!("{stem}.inst.wasm"));
 
-        let spec =
-            CommandSpec::new("wasm-opt", wasm_path.parent().unwrap_or(Path::new("."))).args([
+        let spec = CommandSpec::new("wasm-opt", wasm_path.parent().unwrap_or(Path::new(".")))
+            .args([
                 "--instrument-branch-coverage",
                 "-o",
                 &inst_path.to_string_lossy(),

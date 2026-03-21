@@ -201,8 +201,14 @@ fn has_sanitization(line: &str) -> bool {
 /// Safe variable prefixes suggesting non-user-input.
 fn is_safe_variable(line: &str) -> bool {
     const SAFE_PREFIXES: &[&str] = &[
-        "self.", "config.", "settings.", "BASE_", "ROOT_", "APP_",
-        "__file__", "__dirname",
+        "self.",
+        "config.",
+        "settings.",
+        "BASE_",
+        "ROOT_",
+        "APP_",
+        "__file__",
+        "__dirname",
     ];
     SAFE_PREFIXES.iter().any(|p| line.contains(p))
 }
@@ -333,10 +339,9 @@ impl Detector for MultiPathTraversalDetector {
                             ),
                             evidence: super::util::reachability_evidence(ctx, path, line_1based),
                             covered: false,
-                            suggestion:
-                                "Validate and canonicalize file paths before use. \
+                            suggestion: "Validate and canonicalize file paths before use. \
                                  Ensure paths cannot escape the intended directory."
-                                    .into(),
+                                .into(),
                             explanation: None,
                             fix: None,
                             cwe_ids: vec![22],
@@ -422,7 +427,10 @@ mod tests {
     // is emitted but flagged noisy + Low severity (heuristic suppression).
     #[tokio::test]
     async fn rust_fs_read_no_threat_model_is_noisy() {
-        let files = single_file("src/main.rs", "let data = fs::read_to_string(user_path)?;\n");
+        let files = single_file(
+            "src/main.rs",
+            "let data = fs::read_to_string(user_path)?;\n",
+        );
         let ctx = make_ctx(files, Language::Rust);
         let findings = MultiPathTraversalDetector.analyze(&ctx).await.unwrap();
         assert_eq!(findings.len(), 1);
@@ -433,7 +441,10 @@ mod tests {
     // Rust with explicit WebService threat model: finding is High and not noisy.
     #[tokio::test]
     async fn rust_fs_read_web_service_threat_model_is_high() {
-        let files = single_file("src/handler.rs", "let data = fs::read_to_string(user_path)?;\n");
+        let files = single_file(
+            "src/handler.rs",
+            "let data = fs::read_to_string(user_path)?;\n",
+        );
         let ctx = make_ctx_with_threat_model(files, Language::Rust, ThreatModelType::WebService);
         let findings = MultiPathTraversalDetector.analyze(&ctx).await.unwrap();
         assert_eq!(findings.len(), 1);
@@ -456,8 +467,7 @@ mod tests {
     #[tokio::test]
     async fn rust_fs_read_console_tool_threat_model_is_noisy() {
         let files = single_file("src/main.rs", "let data = fs::read_to_string(path)?;\n");
-        let ctx =
-            make_ctx_with_threat_model(files, Language::Rust, ThreatModelType::ConsoleTool);
+        let ctx = make_ctx_with_threat_model(files, Language::Rust, ThreatModelType::ConsoleTool);
         let findings = MultiPathTraversalDetector.analyze(&ctx).await.unwrap();
         assert_eq!(findings.len(), 1);
         assert!(findings[0].noisy);
@@ -468,8 +478,7 @@ mod tests {
     #[tokio::test]
     async fn rust_fs_read_ci_pipeline_threat_model_is_noisy() {
         let files = single_file("src/main.rs", "let data = fs::read_to_string(path)?;\n");
-        let ctx =
-            make_ctx_with_threat_model(files, Language::Rust, ThreatModelType::CiPipeline);
+        let ctx = make_ctx_with_threat_model(files, Language::Rust, ThreatModelType::CiPipeline);
         let findings = MultiPathTraversalDetector.analyze(&ctx).await.unwrap();
         assert_eq!(findings.len(), 1);
         assert!(findings[0].noisy);
@@ -491,8 +500,7 @@ mod tests {
     #[tokio::test]
     async fn python_web_service_threat_model_is_high() {
         let files = single_file("src/views.py", "data = open(user_path, 'r')\n");
-        let ctx =
-            make_ctx_with_threat_model(files, Language::Python, ThreatModelType::WebService);
+        let ctx = make_ctx_with_threat_model(files, Language::Python, ThreatModelType::WebService);
         let findings = MultiPathTraversalDetector.analyze(&ctx).await.unwrap();
         assert_eq!(findings.len(), 1);
         assert!(!findings[0].noisy);
@@ -507,7 +515,10 @@ mod tests {
         let ctx = make_ctx(files, Language::Rust);
         let findings = MultiPathTraversalDetector.analyze(&ctx).await.unwrap();
         assert_eq!(findings.len(), 1);
-        assert!(!findings[0].noisy, "web handler context should not be noisy");
+        assert!(
+            !findings[0].noisy,
+            "web handler context should not be noisy"
+        );
         assert_eq!(findings[0].severity, Severity::High);
     }
 

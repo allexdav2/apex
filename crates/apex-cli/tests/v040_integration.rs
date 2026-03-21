@@ -68,7 +68,11 @@ async fn audit_sarif_output_has_runs_and_results() {
         output_path.to_str().unwrap(),
     ]);
     let result = run_cli(cli, &default_cfg()).await;
-    assert!(result.is_ok(), "audit --output-format sarif failed: {:?}", result);
+    assert!(
+        result.is_ok(),
+        "audit --output-format sarif failed: {:?}",
+        result
+    );
 
     let sarif_text = std::fs::read_to_string(&output_path).expect("read SARIF output file");
     let sarif: serde_json::Value =
@@ -207,7 +211,10 @@ fn badge_svg_is_valid_xml_with_correct_color() {
         "85% coverage should produce green badge"
     );
     assert!(svg.contains("85.0%"), "Badge should display 85.0%");
-    assert!(svg.contains("coverage"), "Badge should contain 'coverage' label");
+    assert!(
+        svg.contains("coverage"),
+        "Badge should contain 'coverage' label"
+    );
 }
 
 #[test]
@@ -314,7 +321,7 @@ async fn test_prioritize_filters_by_changed_files() {
 
 #[test]
 fn ci_report_classifies_new_and_resolved_findings() {
-    use apex_cli::ci_report::{compare_findings, format_markdown, format_json, AuditFinding};
+    use apex_cli::ci_report::{compare_findings, format_json, format_markdown, AuditFinding};
 
     let base = vec![
         AuditFinding {
@@ -375,9 +382,18 @@ fn ci_report_classifies_new_and_resolved_findings() {
 
     // Markdown output
     let md = format_markdown(&report);
-    assert!(md.contains("## APEX CI Report"), "Missing CI report heading");
-    assert!(md.contains("### New Findings"), "Missing new findings section");
-    assert!(md.contains("### Resolved Findings"), "Missing resolved findings section");
+    assert!(
+        md.contains("## APEX CI Report"),
+        "Missing CI report heading"
+    );
+    assert!(
+        md.contains("### New Findings"),
+        "Missing new findings section"
+    );
+    assert!(
+        md.contains("### Resolved Findings"),
+        "Missing resolved findings section"
+    );
     assert!(md.contains("new.py"), "Missing new finding file");
     assert!(md.contains("resolved.py"), "Missing resolved finding file");
 
@@ -427,10 +443,7 @@ fn lcov_export_contains_required_markers() {
         BranchId::new(2, 5, 0, 0),
     ];
 
-    let executed_branches = vec![
-        BranchId::new(1, 10, 0, 0),
-        BranchId::new(2, 5, 0, 0),
-    ];
+    let executed_branches = vec![BranchId::new(1, 10, 0, 0), BranchId::new(2, 5, 0, 0)];
 
     let mut file_paths = HashMap::new();
     file_paths.insert(1u64, PathBuf::from("src/main.py"));
@@ -439,7 +452,10 @@ fn lcov_export_contains_required_markers() {
     let lcov = export_lcov(&all_branches, &executed_branches, &file_paths);
 
     // LCOV format markers
-    assert!(lcov.contains("SF:"), "LCOV must contain SF: (source file) marker");
+    assert!(
+        lcov.contains("SF:"),
+        "LCOV must contain SF: (source file) marker"
+    );
     assert!(lcov.contains("DA:"), "LCOV must contain DA: (data) marker");
     assert!(
         lcov.contains("end_of_record"),

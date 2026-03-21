@@ -87,10 +87,7 @@ pub use frida_impl::collect_frida_coverage;
 /// On macOS the function also looks for companion `.dSYM` bundles. Returns
 /// only those addresses for which debug info was found.
 #[cfg(feature = "frida")]
-pub fn map_addresses_to_source(
-    binary: &Path,
-    addresses: &[u64],
-) -> Vec<(u64, String, u32)> {
+pub fn map_addresses_to_source(binary: &Path, addresses: &[u64]) -> Vec<(u64, String, u32)> {
     use addr2line::Context;
     use object::read::File as ObjectFile;
 
@@ -117,10 +114,7 @@ pub fn map_addresses_to_source(
 
 /// Stub — always returns an empty vec when the `frida` feature is disabled.
 #[cfg(not(feature = "frida"))]
-pub fn map_addresses_to_source(
-    _binary: &Path,
-    _addresses: &[u64],
-) -> Vec<(u64, String, u32)> {
+pub fn map_addresses_to_source(_binary: &Path, _addresses: &[u64]) -> Vec<(u64, String, u32)> {
     Vec::new()
 }
 
@@ -134,14 +128,10 @@ mod tests {
     async fn frida_not_available_returns_error() {
         #[cfg(not(feature = "frida"))]
         {
-            let result =
-                collect_frida_coverage(Path::new("/bin/true"), &[], None).await;
+            let result = collect_frida_coverage(Path::new("/bin/true"), &[], None).await;
             assert!(result.is_err());
             let msg = format!("{}", result.unwrap_err());
-            assert!(
-                msg.contains("frida"),
-                "error should mention frida: {msg}"
-            );
+            assert!(msg.contains("frida"), "error should mention frida: {msg}");
         }
 
         // When compiled with the frida feature the stub path is not taken,
@@ -150,12 +140,7 @@ mod tests {
         #[cfg(feature = "frida")]
         {
             // Placeholder: ensure the function signature compiles.
-            let _ = collect_frida_coverage(
-                Path::new("/bin/true"),
-                &[],
-                None,
-            )
-            .await;
+            let _ = collect_frida_coverage(Path::new("/bin/true"), &[], None).await;
         }
     }
 
@@ -191,10 +176,8 @@ mod tests {
 
     #[test]
     fn map_addresses_nonexistent_binary_returns_empty() {
-        let result = map_addresses_to_source(
-            Path::new("/nonexistent/binary"),
-            &[0x1000, 0x2000, 0x3000],
-        );
+        let result =
+            map_addresses_to_source(Path::new("/nonexistent/binary"), &[0x1000, 0x2000, 0x3000]);
         assert!(result.is_empty());
     }
 }

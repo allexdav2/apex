@@ -230,7 +230,10 @@ mod tests {
             is_null: false,
         };
         let combined = ConditionTree::And(Box::new(a), Box::new(b));
-        assert_eq!(combined.to_source_constraint(), "x > 10 and name is not null");
+        assert_eq!(
+            combined.to_source_constraint(),
+            "x > 10 and name is not null"
+        );
     }
 
     #[test]

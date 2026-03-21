@@ -35,24 +35,20 @@ fn analyze_source(path: &std::path::Path, source: &str, lang: Language) -> Vec<F
     }
 
     // Check if the file has a runtime entry-point macro
-    let runtime_line = RUNTIME_MACROS
-        .iter()
-        .find_map(|&mac| {
-            source
-                .lines()
-                .enumerate()
-                .find(|(_, line)| line.trim() == mac || line.trim().starts_with(mac))
-                .map(|(idx, _)| (idx, mac))
-        });
+    let runtime_line = RUNTIME_MACROS.iter().find_map(|&mac| {
+        source
+            .lines()
+            .enumerate()
+            .find(|(_, line)| line.trim() == mac || line.trim().starts_with(mac))
+            .map(|(idx, _)| (idx, mac))
+    });
 
     let Some((macro_line_idx, macro_name)) = runtime_line else {
         return Vec::new();
     };
 
     // Check if the file has any signal-handling import or call
-    let has_signal_handler = SIGNAL_PATTERNS
-        .iter()
-        .any(|&pat| source.contains(pat));
+    let has_signal_handler = SIGNAL_PATTERNS.iter().any(|&pat| source.contains(pat));
 
     if has_signal_handler {
         return Vec::new();
@@ -80,7 +76,9 @@ fn analyze_source(path: &std::path::Path, source: &str, lang: Language) -> Vec<F
         explanation: None,
         fix: None,
         cwe_ids: vec![772],
-                    noisy: false, base_severity: None, coverage_confidence: None,
+        noisy: false,
+        base_severity: None,
+        coverage_confidence: None,
     }]
 }
 
@@ -186,11 +184,7 @@ async fn handler() {
     #[test]
     fn no_finding_on_non_rust_file() {
         let src = "#[tokio::main]\nasync fn main() {}";
-        let findings = analyze_source(
-            &PathBuf::from("src/main.py"),
-            src,
-            Language::Python,
-        );
+        let findings = analyze_source(&PathBuf::from("src/main.py"), src, Language::Python);
         assert_eq!(findings.len(), 0);
     }
 }

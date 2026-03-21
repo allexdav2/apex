@@ -3,7 +3,7 @@ use apex_core::types::Language;
 use async_trait::async_trait;
 use uuid::Uuid;
 
-use super::util::{is_comment, is_test_file, in_test_block};
+use super::util::{in_test_block, is_comment, is_test_file};
 use crate::context::AnalysisContext;
 use crate::finding::{Finding, FindingCategory, Severity};
 use crate::Detector;
@@ -11,19 +11,10 @@ use crate::Detector;
 pub struct HardcodedEnvValuesDetector;
 
 /// Patterns that indicate hardcoded environment-specific host values.
-static HOST_PATTERNS: &[&str] = &[
-    "localhost",
-    "127.0.0.1",
-    "0.0.0.0",
-    "::1",
-];
+static HOST_PATTERNS: &[&str] = &["localhost", "127.0.0.1", "0.0.0.0", "::1"];
 
 /// `bind(` patterns that suggest a port is being hardcoded.
-static BIND_PATTERNS: &[&str] = &[
-    ".bind(",
-    "bind(\"",
-    "bind('",
-];
+static BIND_PATTERNS: &[&str] = &[".bind(", "bind(\"", "bind('"];
 
 /// Port patterns — simple numeric ports in common ranges embedded in bind strings.
 /// We look for `":PORT"` where PORT is a 4-5 digit number.
@@ -117,7 +108,9 @@ fn analyze_source(path: &std::path::Path, source: &str, lang: Language) -> Vec<F
                 explanation: None,
                 fix: None,
                 cwe_ids: vec![547],
-                    noisy: false, base_severity: None, coverage_confidence: None,
+                noisy: false,
+                base_severity: None,
+                coverage_confidence: None,
             });
             continue; // one finding per line
         }
@@ -144,7 +137,9 @@ fn analyze_source(path: &std::path::Path, source: &str, lang: Language) -> Vec<F
                 explanation: None,
                 fix: None,
                 cwe_ids: vec![547],
-                    noisy: false, base_severity: None, coverage_confidence: None,
+                noisy: false,
+                base_severity: None,
+                coverage_confidence: None,
             });
         }
     }

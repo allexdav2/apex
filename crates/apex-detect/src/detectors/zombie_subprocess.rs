@@ -92,7 +92,9 @@ fn analyze_source(path: &std::path::Path, source: &str, lang: Language) -> Vec<F
                     explanation: None,
                     fix: None,
                     cwe_ids: vec![772],
-                    noisy: false, base_severity: None, coverage_confidence: None,
+                    noisy: false,
+                    base_severity: None,
+                    coverage_confidence: None,
                 });
             }
 
@@ -184,11 +186,7 @@ async fn run_command() {
     #[test]
     fn no_finding_in_non_rust_file() {
         let src = "timeout(5, subprocess.run(['ls']))";
-        let findings = analyze_source(
-            &PathBuf::from("src/app.py"),
-            src,
-            Language::Python,
-        );
+        let findings = analyze_source(&PathBuf::from("src/app.py"), src, Language::Python);
         assert_eq!(findings.len(), 0);
     }
 

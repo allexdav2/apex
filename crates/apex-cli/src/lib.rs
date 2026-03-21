@@ -955,9 +955,7 @@ async fn run_analyze(args: AnalyzeArgs, cfg: &ApexConfig) -> Result<()> {
                     (agent_result.success, None)
                 }
                 Err(e) => {
-                    eprintln!(
-                        "  \x1b[33m\u{26a0}\x1b[0m Agent dispatch failed: {e}"
-                    );
+                    eprintln!("  \x1b[33m\u{26a0}\x1b[0m Agent dispatch failed: {e}");
                     eprintln!("  Falling back to deterministic pipeline");
                     // Fall back to deterministic path
                     run_deterministic_coverage(lang, &target_path, &oracle, args.no_install).await
@@ -1024,7 +1022,9 @@ async fn run_analyze(args: AnalyzeArgs, cfg: &ApexConfig) -> Result<()> {
                 }
                 "concolic" => {
                     if inst.target.language != Language::Python {
-                        warn!("concolic strategy is currently Python-only; switch to --lang python");
+                        warn!(
+                            "concolic strategy is currently Python-only; switch to --lang python"
+                        );
                     } else {
                         run_concolic_strategy(
                             Arc::clone(&oracle),
@@ -1063,7 +1063,10 @@ async fn run_analyze(args: AnalyzeArgs, cfg: &ApexConfig) -> Result<()> {
                 }
             }
         } else {
-            info!(current = current_pct, "coverage already at target, skipping exploration");
+            info!(
+                current = current_pct,
+                "coverage already at target, skipping exploration"
+            );
         }
     }
 
@@ -1246,9 +1249,7 @@ async fn run_analyze(args: AnalyzeArgs, cfg: &ApexConfig) -> Result<()> {
             print!("{md}");
         }
         OutputFormat::Text => {
-            println!(
-                "\n\x1b[1mAPEX Analysis\x1b[0m \u{2014} {project_name} ({lang})\n"
-            );
+            println!("\n\x1b[1mAPEX Analysis\x1b[0m \u{2014} {project_name} ({lang})\n");
             println!(
                 "  Preflight:    build={build_system}, test={test_framework}, {source_file_count} source files"
             );
@@ -1842,9 +1843,7 @@ async fn run_deterministic_coverage(
 ) -> (bool, Option<apex_core::types::InstrumentedTarget>) {
     if !no_install {
         if let Err(e) = install_deps(lang, target_path).await {
-            eprintln!(
-                "  \x1b[33m\u{26a0}\x1b[0m Dependency installation failed: {e}"
-            );
+            eprintln!("  \x1b[33m\u{26a0}\x1b[0m Dependency installation failed: {e}");
             eprintln!("  Continuing with audit-only mode (no coverage)");
         }
     }
@@ -2380,7 +2379,11 @@ fn format_findings_markdown(
     writeln!(buf).ok();
 
     if let Some((pct, covered, total)) = coverage {
-        writeln!(buf, "**Coverage:** {pct:.1}% ({covered} / {total} branches)\n").ok();
+        writeln!(
+            buf,
+            "**Coverage:** {pct:.1}% ({covered} / {total} branches)\n"
+        )
+        .ok();
     }
 
     if !findings.is_empty() {
@@ -2571,7 +2574,8 @@ async fn run_audit(args: AuditArgs, cfg: &ApexConfig) -> Result<()> {
 
     if let Some(path) = args.output {
         let path = validate_output_path(&path)?;
-        tokio::fs::write(&path, &output_text).await
+        tokio::fs::write(&path, &output_text)
+            .await
             .map_err(|e| color_eyre::eyre::eyre!("write {}: {e}", path.display()))?;
         eprintln!("Wrote audit report to {}", path.display());
     } else {
@@ -3611,7 +3615,8 @@ async fn run_docs(args: DocsArgs) -> Result<()> {
 
     if let Some(path) = args.output {
         let path = validate_output_path(&path)?;
-        tokio::fs::write(&path, &output).await
+        tokio::fs::write(&path, &output)
+            .await
             .map_err(|e| color_eyre::eyre::eyre!("write {}: {e}", path.display()))?;
         eprintln!("Docs written to {}", path.display());
     } else {
@@ -4349,9 +4354,11 @@ async fn run_flag_hygiene(args: FlagHygieneArgs) -> Result<()> {
 async fn run_api_diff(args: ApiDiffArgs) -> Result<()> {
     use apex_detect::api_diff::{ApiDiffer, ChangeKind};
 
-    let old_spec = tokio::fs::read_to_string(&args.old).await
+    let old_spec = tokio::fs::read_to_string(&args.old)
+        .await
         .map_err(|e| color_eyre::eyre::eyre!("read {}: {e}", args.old.display()))?;
-    let new_spec = tokio::fs::read_to_string(&args.new).await
+    let new_spec = tokio::fs::read_to_string(&args.new)
+        .await
         .map_err(|e| color_eyre::eyre::eyre!("read {}: {e}", args.new.display()))?;
 
     let report = ApiDiffer::diff(&old_spec, &new_spec)?;
@@ -4480,7 +4487,8 @@ async fn run_blast_radius(args: BlastRadiusArgs) -> Result<()> {
         ));
     }
 
-    let index_data = tokio::fs::read_to_string(&index_path).await
+    let index_data = tokio::fs::read_to_string(&index_path)
+        .await
         .map_err(|e| color_eyre::eyre::eyre!("read {}: {e}", index_path.display()))?;
     let index: apex_index::BranchIndex = serde_json::from_str(&index_data)?;
     let assessment = apex_index::analysis::assess_risk(&index, &args.changed_files);
@@ -4586,7 +4594,10 @@ async fn run_compliance_export(args: ComplianceExportArgs, cfg: &ApexConfig) -> 
                 });
                 writeln!(output, "{}", serde_json::to_string_pretty(&val)?).ok();
             }
-            OutputFormat::Text | OutputFormat::Lcov | OutputFormat::Markdown | OutputFormat::Sarif => {
+            OutputFormat::Text
+            | OutputFormat::Lcov
+            | OutputFormat::Markdown
+            | OutputFormat::Sarif => {
                 writeln!(output, "\n=== ASVS Compliance ({:?}) ===\n", asvs.level).ok();
                 writeln!(output, "  Total requirements: {}", asvs.coverage.total).ok();
                 writeln!(output, "  Automated:          {}", asvs.coverage.automated).ok();
@@ -4626,7 +4637,10 @@ async fn run_compliance_export(args: ComplianceExportArgs, cfg: &ApexConfig) -> 
                 });
                 writeln!(output, "{}", serde_json::to_string_pretty(&val)?).ok();
             }
-            OutputFormat::Text | OutputFormat::Lcov | OutputFormat::Markdown | OutputFormat::Sarif => {
+            OutputFormat::Text
+            | OutputFormat::Lcov
+            | OutputFormat::Markdown
+            | OutputFormat::Sarif => {
                 writeln!(
                     output,
                     "\n=== SSDF Compliance ({}/{}) ===\n",
@@ -4673,7 +4687,10 @@ async fn run_compliance_export(args: ComplianceExportArgs, cfg: &ApexConfig) -> 
                 });
                 writeln!(output, "{}", serde_json::to_string_pretty(&val)?).ok();
             }
-            OutputFormat::Text | OutputFormat::Lcov | OutputFormat::Markdown | OutputFormat::Sarif => {
+            OutputFormat::Text
+            | OutputFormat::Lcov
+            | OutputFormat::Markdown
+            | OutputFormat::Sarif => {
                 writeln!(output, "\n=== STRIDE Threat Model ===\n").ok();
                 for entry in &stride.entries {
                     writeln!(
@@ -4706,7 +4723,8 @@ async fn run_compliance_export(args: ComplianceExportArgs, cfg: &ApexConfig) -> 
     // Write to file or stdout
     if let Some(out_path) = args.output {
         let out_path = validate_output_path(&out_path)?;
-        tokio::fs::write(&out_path, &output).await
+        tokio::fs::write(&out_path, &output)
+            .await
             .map_err(|e| color_eyre::eyre::eyre!("write {}: {e}", out_path.display()))?;
         println!("Compliance report written to {}", out_path.display());
     } else {
@@ -4723,7 +4741,8 @@ async fn run_compliance_export(args: ComplianceExportArgs, cfg: &ApexConfig) -> 
 async fn run_api_coverage(args: ApiCoverageArgs) -> Result<()> {
     let lang: Language = args.lang.into();
     let target_path = args.target.canonicalize()?;
-    let spec_json = tokio::fs::read_to_string(&args.spec).await
+    let spec_json = tokio::fs::read_to_string(&args.spec)
+        .await
         .map_err(|e| color_eyre::eyre::eyre!("read {}: {e}", args.spec.display()))?;
     let source_cache = build_source_cache(
         &target_path,
@@ -4824,7 +4843,8 @@ async fn run_service_map(args: ServiceMapArgs) -> Result<()> {
 async fn run_schema_check(args: SchemaCheckArgs) -> Result<()> {
     use apex_detect::schema_check::MigrationRisk;
 
-    let sql = tokio::fs::read_to_string(&args.migration).await
+    let sql = tokio::fs::read_to_string(&args.migration)
+        .await
         .map_err(|e| color_eyre::eyre::eyre!("read {}: {e}", args.migration.display()))?;
     let report = apex_detect::schema_check::analyze_migration(&sql);
 
@@ -4868,7 +4888,8 @@ async fn run_schema_check(args: SchemaCheckArgs) -> Result<()> {
 // ---------------------------------------------------------------------------
 
 async fn run_test_data(args: TestDataArgs) -> Result<()> {
-    let sql = tokio::fs::read_to_string(&args.schema).await
+    let sql = tokio::fs::read_to_string(&args.schema)
+        .await
         .map_err(|e| color_eyre::eyre::eyre!("read {}: {e}", args.schema.display()))?;
     let tables = apex_detect::test_data::parse_schema(&sql);
 
@@ -4966,7 +4987,7 @@ fn validate_output_path(p: &std::path::Path) -> Result<PathBuf> {
 /// Generate a shields.io-style SVG coverage badge.
 pub fn generate_badge_svg(coverage_pct: f64) -> String {
     let color = if coverage_pct >= 90.0 {
-        "#4c1"    // brightgreen
+        "#4c1" // brightgreen
     } else if coverage_pct >= 75.0 {
         "#a3c51c" // green
     } else if coverage_pct >= 60.0 {
@@ -5021,7 +5042,8 @@ async fn run_badge(args: BadgeArgs) -> Result<()> {
 
     if let Some(path) = args.output {
         let path = validate_output_path(&path)?;
-        tokio::fs::write(&path, &svg).await
+        tokio::fs::write(&path, &svg)
+            .await
             .map_err(|e| color_eyre::eyre::eyre!("write {}: {e}", path.display()))?;
         eprintln!("Wrote badge to {}", path.display());
     } else {
@@ -5583,8 +5605,14 @@ mod tests {
         let findings: Vec<&apex_detect::Finding> = vec![&f];
         let md = format_findings_markdown("APEX Analysis", &summary, &findings, None);
 
-        assert!(md.contains("| Severity | Count |"), "missing severity count header");
-        assert!(md.contains("|----------|------:|"), "missing severity count separator");
+        assert!(
+            md.contains("| Severity | Count |"),
+            "missing severity count header"
+        );
+        assert!(
+            md.contains("|----------|------:|"),
+            "missing severity count separator"
+        );
         assert!(
             md.contains("| Severity | File | Line | CWE | Description |"),
             "missing findings table header"
@@ -5609,7 +5637,10 @@ mod tests {
 
         assert!(md.contains("| Critical | 2 |"));
         assert!(md.contains("| High | 5 |"));
-        assert!(!md.contains("| Medium |"), "zero-count severity should be omitted");
+        assert!(
+            !md.contains("| Medium |"),
+            "zero-count severity should be omitted"
+        );
         assert!(md.contains("| Low | 1 |"));
     }
 
@@ -5651,7 +5682,10 @@ mod tests {
         assert!(md.contains("CWE-89"), "CWE ID should appear in table");
         assert!(md.contains("CRITICAL"), "severity should be uppercase");
         assert!(md.contains("src/auth.py"), "file path should appear");
-        assert!(md.contains("SQL injection via f-string"), "title should appear");
+        assert!(
+            md.contains("SQL injection via f-string"),
+            "title should appear"
+        );
     }
 
     #[test]
@@ -5691,7 +5725,10 @@ mod tests {
             "should show total count in summary"
         );
         assert!(md.contains("</details>"), "should close details block");
-        assert!(md.contains("### Top Findings"), "should have top findings heading");
+        assert!(
+            md.contains("### Top Findings"),
+            "should have top findings heading"
+        );
     }
 
     #[test]
@@ -5704,11 +5741,20 @@ mod tests {
             medium: 0,
             low: 0,
         };
-        let f = make_test_finding(apex_detect::Severity::High, "src/api.py", 42, "issue", vec![78]);
+        let f = make_test_finding(
+            apex_detect::Severity::High,
+            "src/api.py",
+            42,
+            "issue",
+            vec![78],
+        );
         let findings: Vec<&apex_detect::Finding> = vec![&f];
         let md = format_findings_markdown("Test", &summary, &findings, None);
 
-        assert!(!md.contains("<details>"), "should not have details block for <= 10 findings");
+        assert!(
+            !md.contains("<details>"),
+            "should not have details block for <= 10 findings"
+        );
     }
 
     #[test]

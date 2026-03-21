@@ -100,7 +100,9 @@ impl Detector for SubstringSecurityDetector {
                         explanation: None,
                         fix: None,
                         cwe_ids: vec![183],
-                    noisy: false, base_severity: None, coverage_confidence: None,
+                        noisy: false,
+                        base_severity: None,
+                        coverage_confidence: None,
                     });
                 }
             }

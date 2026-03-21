@@ -110,7 +110,9 @@ fn analyze_source(path: &std::path::Path, source: &str, lang: Language) -> Vec<F
             explanation: None,
             fix: None,
             cwe_ids: vec![400],
-                    noisy: false, base_severity: None, coverage_confidence: None,
+            noisy: false,
+            base_severity: None,
+            coverage_confidence: None,
         });
     }
 

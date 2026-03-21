@@ -162,13 +162,14 @@ mod tests {
         let executed = vec![make_branch(file_id, 1, 0), make_branch(file_id, 3, 0)];
 
         let lcov = export_lcov(&all, &executed, &file_paths);
-        let (parsed_all, parsed_exec, parsed_paths) =
-            import::parse_lcov(&lcov).unwrap();
+        let (parsed_all, parsed_exec, parsed_paths) = import::parse_lcov(&lcov).unwrap();
 
         assert_eq!(parsed_all.len(), all.len());
         assert_eq!(parsed_exec.len(), executed.len());
         assert_eq!(parsed_paths.len(), file_paths.len());
-        assert!(parsed_paths.values().any(|p| p == std::path::Path::new("src/lib.rs")));
+        assert!(parsed_paths
+            .values()
+            .any(|p| p == std::path::Path::new("src/lib.rs")));
     }
 
     #[test]
@@ -182,10 +183,7 @@ mod tests {
             make_branch(file_id, 10, 1), // BRDA direction=1
             make_branch(file_id, 15, 0), // DA only
         ];
-        let executed = vec![
-            make_branch(file_id, 10, 0),
-            make_branch(file_id, 10, 1),
-        ];
+        let executed = vec![make_branch(file_id, 10, 0), make_branch(file_id, 10, 1)];
 
         let lcov = export_lcov(&all, &executed, &file_paths);
         let (parsed_all, parsed_exec, _) = import::parse_lcov(&lcov).unwrap();
@@ -214,7 +212,10 @@ mod tests {
         assert!(lcov.contains("SF:src/app.py"), "missing SF marker");
         assert!(lcov.contains("DA:1,1"), "missing DA for covered line");
         assert!(lcov.contains("DA:2,0"), "missing DA for uncovered line");
-        assert!(lcov.contains("BRDA:5,0,1,1"), "missing BRDA for covered branch");
+        assert!(
+            lcov.contains("BRDA:5,0,1,1"),
+            "missing BRDA for covered branch"
+        );
         assert!(lcov.contains("LF:"), "missing LF marker");
         assert!(lcov.contains("LH:"), "missing LH marker");
         assert!(lcov.contains("end_of_record"), "missing end_of_record");
@@ -241,10 +242,7 @@ mod tests {
         let sf_count = lcov.lines().filter(|l| l.starts_with("SF:")).count();
         assert_eq!(sf_count, 2, "expected 2 SF records");
 
-        let eor_count = lcov
-            .lines()
-            .filter(|l| l == &"end_of_record")
-            .count();
+        let eor_count = lcov.lines().filter(|l| l == &"end_of_record").count();
         assert_eq!(eor_count, 2, "expected 2 end_of_record markers");
     }
 
@@ -280,8 +278,7 @@ mod tests {
         ];
 
         let lcov1 = export_lcov(&all, &executed, &file_paths);
-        let (parsed_all, parsed_exec, parsed_paths) =
-            import::parse_lcov(&lcov1).unwrap();
+        let (parsed_all, parsed_exec, parsed_paths) = import::parse_lcov(&lcov1).unwrap();
 
         // Re-export from parsed data
         let lcov2 = export_lcov(&parsed_all, &parsed_exec, &parsed_paths);

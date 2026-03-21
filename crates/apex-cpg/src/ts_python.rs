@@ -185,10 +185,7 @@ fn parse_statement(node: &Node, src: &[u8], cpg: &mut Cpg) -> Option<u32> {
             let lhs_node = node.child_by_field_name("left")?;
             let rhs_node = node.child_by_field_name("right")?;
             let lhs = node_text(&lhs_node, src);
-            let assign_id = cpg.add_node(NodeKind::Assignment {
-                lhs,
-                line: line_no,
-            });
+            let assign_id = cpg.add_node(NodeKind::Assignment { lhs, line: line_no });
             attach_expr(&rhs_node, src, assign_id, 0, cpg);
             Some(assign_id)
         }
@@ -197,10 +194,7 @@ fn parse_statement(node: &Node, src: &[u8], cpg: &mut Cpg) -> Option<u32> {
             let lhs_node = node.child_by_field_name("left")?;
             let rhs_node = node.child_by_field_name("right")?;
             let lhs = node_text(&lhs_node, src);
-            let assign_id = cpg.add_node(NodeKind::Assignment {
-                lhs,
-                line: line_no,
-            });
+            let assign_id = cpg.add_node(NodeKind::Assignment { lhs, line: line_no });
             attach_expr(&rhs_node, src, assign_id, 0, cpg);
             Some(assign_id)
         }
@@ -275,10 +269,7 @@ fn parse_expr_as_statement(node: &Node, src: &[u8], cpg: &mut Cpg) -> Option<u32
             let lhs_node = node.child_by_field_name("left")?;
             let rhs_node = node.child_by_field_name("right")?;
             let lhs = node_text(&lhs_node, src);
-            let assign_id = cpg.add_node(NodeKind::Assignment {
-                lhs,
-                line: line_no,
-            });
+            let assign_id = cpg.add_node(NodeKind::Assignment { lhs, line: line_no });
             attach_expr(&rhs_node, src, assign_id, 0, cpg);
             Some(assign_id)
         }
@@ -287,17 +278,17 @@ fn parse_expr_as_statement(node: &Node, src: &[u8], cpg: &mut Cpg) -> Option<u32
             let lhs_node = node.child_by_field_name("left")?;
             let rhs_node = node.child_by_field_name("right")?;
             let lhs = node_text(&lhs_node, src);
-            let assign_id = cpg.add_node(NodeKind::Assignment {
-                lhs,
-                line: line_no,
-            });
+            let assign_id = cpg.add_node(NodeKind::Assignment { lhs, line: line_no });
             attach_expr(&rhs_node, src, assign_id, 0, cpg);
             Some(assign_id)
         }
 
         "identifier" => {
             let name = node_text(node, src);
-            Some(cpg.add_node(NodeKind::Identifier { name, line: line_no }))
+            Some(cpg.add_node(NodeKind::Identifier {
+                name,
+                line: line_no,
+            }))
         }
 
         _ => None,
@@ -388,7 +379,9 @@ fn attach_expr(node: &Node, src: &[u8], parent: u32, arg_index: u32, cpg: &mut C
         }
 
         // List/set/dict comprehensions and generator expressions
-        "list_comprehension" | "set_comprehension" | "dictionary_comprehension"
+        "list_comprehension"
+        | "set_comprehension"
+        | "dictionary_comprehension"
         | "generator_expression" => {
             let value = node_text(node, src);
             let lit_id = cpg.add_node(NodeKind::Literal {
@@ -407,7 +400,10 @@ fn attach_expr(node: &Node, src: &[u8], parent: u32, arg_index: u32, cpg: &mut C
             cpg.add_edge(parent, lit_id, EdgeKind::Argument { index: arg_index });
         }
 
-        "binary_operator" | "unary_operator" | "boolean_operator" | "comparison_operator"
+        "binary_operator"
+        | "unary_operator"
+        | "boolean_operator"
+        | "comparison_operator"
         | "not_operator" => {
             // For operators, try to attach sub-expressions
             let mut cursor = node.walk();
@@ -478,7 +474,7 @@ fn attach_expr(node: &Node, src: &[u8], parent: u32, arg_index: u32, cpg: &mut C
 fn is_operator_token(kind: &str) -> bool {
     matches!(
         kind,
-        "+"  | "-"
+        "+" | "-"
             | "*"
             | "/"
             | "//"
@@ -561,8 +557,14 @@ mod tests {
         let source = "def foo():\n    print(len(items))\n";
         let cpg = build_ts_python_cpg(source, "test.py");
         let calls = call_names(&cpg);
-        assert!(calls.contains(&"print".to_string()), "should find outer call: print");
-        assert!(calls.contains(&"len".to_string()), "should find inner call: len");
+        assert!(
+            calls.contains(&"print".to_string()),
+            "should find outer call: print"
+        );
+        assert!(
+            calls.contains(&"len".to_string()),
+            "should find inner call: len"
+        );
     }
 
     // ── 2. Decorated functions ───────────────────────────────────────────────
@@ -572,9 +574,15 @@ mod tests {
         let source = "@staticmethod\ndef helper(x):\n    return x + 1\n";
         let cpg = build_ts_python_cpg(source, "test.py");
         let methods = method_names(&cpg);
-        assert!(methods.contains(&"helper".to_string()), "decorated function should be found");
+        assert!(
+            methods.contains(&"helper".to_string()),
+            "decorated function should be found"
+        );
         let params = param_names(&cpg);
-        assert!(params.contains(&"x".to_string()), "parameter x should be found");
+        assert!(
+            params.contains(&"x".to_string()),
+            "parameter x should be found"
+        );
     }
 
     // ── 3. Multi-line statements ─────────────────────────────────────────────
@@ -600,7 +608,10 @@ mod tests {
         let source = "def foo(name):\n    msg = f\"Hello {name.upper()}\"\n";
         let cpg = build_ts_python_cpg(source, "test.py");
         let assigns = assign_lhs_names(&cpg);
-        assert!(assigns.contains(&"msg".to_string()), "f-string assignment should be found");
+        assert!(
+            assigns.contains(&"msg".to_string()),
+            "f-string assignment should be found"
+        );
     }
 
     // ── 5. List comprehension ────────────────────────────────────────────────
@@ -624,7 +635,10 @@ mod tests {
         let cpg = build_ts_python_cpg(source, "test.py");
         let calls = call_names(&cpg);
         let import_count = calls.iter().filter(|n| *n == "import").count();
-        assert!(import_count >= 2, "both import statements should be captured, got {import_count}");
+        assert!(
+            import_count >= 2,
+            "both import statements should be captured, got {import_count}"
+        );
     }
 
     // ── 7. Chained method calls ──────────────────────────────────────────────
@@ -636,17 +650,24 @@ mod tests {
         let assigns = assign_lhs_names(&cpg);
         assert!(assigns.contains(&"result".to_string()));
         // Should have at least one call node
-        assert!(!call_names(&cpg).is_empty(), "should find at least one call in chain");
+        assert!(
+            !call_names(&cpg).is_empty(),
+            "should find at least one call in chain"
+        );
     }
 
     // ── 8. Multiple decorators ───────────────────────────────────────────────
 
     #[test]
     fn multiple_decorators() {
-        let source = "@app.route('/api')\n@login_required\ndef view(request):\n    return response\n";
+        let source =
+            "@app.route('/api')\n@login_required\ndef view(request):\n    return response\n";
         let cpg = build_ts_python_cpg(source, "test.py");
         let methods = method_names(&cpg);
-        assert!(methods.contains(&"view".to_string()), "doubly-decorated function should be found");
+        assert!(
+            methods.contains(&"view".to_string()),
+            "doubly-decorated function should be found"
+        );
         let params = param_names(&cpg);
         assert!(params.contains(&"request".to_string()));
     }
@@ -658,9 +679,18 @@ mod tests {
         let source = "def foo():\n    x += 1\n    y -= 2\n    z **= 3\n";
         let cpg = build_ts_python_cpg(source, "test.py");
         let assigns = assign_lhs_names(&cpg);
-        assert!(assigns.contains(&"x".to_string()), "+= should produce assignment for x");
-        assert!(assigns.contains(&"y".to_string()), "-= should produce assignment for y");
-        assert!(assigns.contains(&"z".to_string()), "**= should produce assignment for z");
+        assert!(
+            assigns.contains(&"x".to_string()),
+            "+= should produce assignment for x"
+        );
+        assert!(
+            assigns.contains(&"y".to_string()),
+            "-= should produce assignment for y"
+        );
+        assert!(
+            assigns.contains(&"z".to_string()),
+            "**= should produce assignment for z"
+        );
     }
 
     // ── 10. Control structures ───────────────────────────────────────────────
@@ -671,16 +701,40 @@ mod tests {
         let cpg = build_ts_python_cpg(source, "test.py");
 
         let has_if = cpg.nodes().any(|(_, k)| {
-            matches!(k, NodeKind::ControlStructure { kind: CtrlKind::If, .. })
+            matches!(
+                k,
+                NodeKind::ControlStructure {
+                    kind: CtrlKind::If,
+                    ..
+                }
+            )
         });
         let has_while = cpg.nodes().any(|(_, k)| {
-            matches!(k, NodeKind::ControlStructure { kind: CtrlKind::While, .. })
+            matches!(
+                k,
+                NodeKind::ControlStructure {
+                    kind: CtrlKind::While,
+                    ..
+                }
+            )
         });
         let has_for = cpg.nodes().any(|(_, k)| {
-            matches!(k, NodeKind::ControlStructure { kind: CtrlKind::For, .. })
+            matches!(
+                k,
+                NodeKind::ControlStructure {
+                    kind: CtrlKind::For,
+                    ..
+                }
+            )
         });
         let has_try = cpg.nodes().any(|(_, k)| {
-            matches!(k, NodeKind::ControlStructure { kind: CtrlKind::Try, .. })
+            matches!(
+                k,
+                NodeKind::ControlStructure {
+                    kind: CtrlKind::Try,
+                    ..
+                }
+            )
         });
 
         assert!(has_if, "should detect if");
@@ -695,7 +749,9 @@ mod tests {
     fn return_nested_call() {
         let source = "def foo(x):\n    return bar(baz(x))\n";
         let cpg = build_ts_python_cpg(source, "test.py");
-        assert!(cpg.nodes().any(|(_, k)| matches!(k, NodeKind::Return { .. })));
+        assert!(cpg
+            .nodes()
+            .any(|(_, k)| matches!(k, NodeKind::Return { .. })));
         let calls = call_names(&cpg);
         assert!(calls.contains(&"bar".to_string()));
         assert!(calls.contains(&"baz".to_string()));
@@ -741,7 +797,10 @@ mod tests {
         let source = "class Foo:\n    def method(self, x, y):\n        pass\n";
         let cpg = build_ts_python_cpg(source, "test.py");
         let params = param_names(&cpg);
-        assert!(!params.contains(&"self".to_string()), "self should be skipped");
+        assert!(
+            !params.contains(&"self".to_string()),
+            "self should be skipped"
+        );
         assert!(params.contains(&"x".to_string()));
         assert!(params.contains(&"y".to_string()));
     }

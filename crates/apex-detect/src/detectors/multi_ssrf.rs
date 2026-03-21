@@ -126,13 +126,19 @@ static PATTERNS: LazyLock<Vec<LangPattern>> = LazyLock::new(|| {
         LangPattern {
             lang: Language::CSharp,
             name: "HttpClient",
-            regex: Regex::new(r#"HttpClient\s*\(\s*\)\s*\.(?:GetAsync|PostAsync|SendAsync)\s*\(\s*[a-zA-Z_]"#).unwrap(),
+            regex: Regex::new(
+                r#"HttpClient\s*\(\s*\)\s*\.(?:GetAsync|PostAsync|SendAsync)\s*\(\s*[a-zA-Z_]"#,
+            )
+            .unwrap(),
             description: "HTTP request with potentially user-controlled URL",
         },
         LangPattern {
             lang: Language::CSharp,
             name: "WebClient",
-            regex: Regex::new(r#"WebClient\s*\(\s*\)\s*\.(?:DownloadString|DownloadFile)\s*\(\s*[a-zA-Z_]"#).unwrap(),
+            regex: Regex::new(
+                r#"WebClient\s*\(\s*\)\s*\.(?:DownloadString|DownloadFile)\s*\(\s*[a-zA-Z_]"#,
+            )
+            .unwrap(),
             description: "WebClient request with potentially user-controlled URL",
         },
         // ── Rust ────────────────────────────────────────────────────
@@ -362,13 +368,22 @@ mod tests {
             name: "url".into(),
             line: 1,
         });
-        cpg.add_edge(param, sink_id, EdgeKind::ReachingDef { variable: "url".into() });
+        cpg.add_edge(
+            param,
+            sink_id,
+            EdgeKind::ReachingDef {
+                variable: "url".into(),
+            },
+        );
 
         let files = single_file("src/app.py", "resp = requests.get(user_url)\n");
         let ctx = make_ctx_with_cpg(files, Language::Python, cpg);
         let findings = MultiSsrfDetector.analyze(&ctx).await.unwrap();
         assert_eq!(findings.len(), 1);
-        assert!(!findings[0].noisy, "taint flow present — should not be noisy");
+        assert!(
+            !findings[0].noisy,
+            "taint flow present — should not be noisy"
+        );
         assert_eq!(
             findings[0].severity,
             Severity::High,

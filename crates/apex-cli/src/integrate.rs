@@ -137,7 +137,8 @@ pub fn detect_editor() -> &'static str {
 pub async fn write_config(path: &Path, config: &Value) -> Result<()> {
     // Load existing config (or start with an empty object).
     let mut existing: Value = if path.exists() {
-        let raw = tokio::fs::read_to_string(path).await
+        let raw = tokio::fs::read_to_string(path)
+            .await
             .map_err(|e| eyre!("read {}: {e}", path.display()))?;
         serde_json::from_str(&raw).unwrap_or(serde_json::json!({}))
     } else {
@@ -156,12 +157,14 @@ pub async fn write_config(path: &Path, config: &Value) -> Result<()> {
 
     // Create parent directories if needed.
     if let Some(parent) = path.parent() {
-        tokio::fs::create_dir_all(parent).await
+        tokio::fs::create_dir_all(parent)
+            .await
             .map_err(|e| eyre!("create_dir_all {}: {e}", parent.display()))?;
     }
 
     let pretty = serde_json::to_string_pretty(&existing)?;
-    tokio::fs::write(path, pretty + "\n").await
+    tokio::fs::write(path, pretty + "\n")
+        .await
         .map_err(|e| eyre!("write {}: {e}", path.display()))?;
     Ok(())
 }

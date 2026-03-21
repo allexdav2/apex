@@ -75,16 +75,19 @@ impl Instrumentor for RustCovInstrumentor {
         };
         let has_rpc = root.join("crates/apex-rpc").exists();
 
-        let mut args = vec!["llvm-cov", "--json", "--output-path", json_path_str.as_str()];
+        let mut args = vec![
+            "llvm-cov",
+            "--json",
+            "--output-path",
+            json_path_str.as_str(),
+        ];
         if is_workspace {
             args.push("--workspace");
             if has_rpc {
                 args.extend(["--exclude", "apex-rpc"]);
             }
         }
-        let mut spec = CommandSpec::new("cargo", root)
-            .args(args)
-            .timeout(300_000); // 5 min — large projects need more than 30s
+        let mut spec = CommandSpec::new("cargo", root).args(args).timeout(300_000); // 5 min — large projects need more than 30s
 
         if let Ok(path) = std::env::var("PATH") {
             spec = spec.env("PATH", path);

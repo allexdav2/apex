@@ -203,9 +203,7 @@ pub struct MutationTestGenerator {
 impl MutationTestGenerator {
     /// Create a new generator with no LLM endpoint (prompt-only mode).
     pub fn new() -> Self {
-        Self {
-            llm_endpoint: None,
-        }
+        Self { llm_endpoint: None }
     }
 
     /// Create a new generator with a specific LLM endpoint.
@@ -512,27 +510,21 @@ def calculate(x, y):
     fn generate_tests_no_mutations_returns_empty() {
         let gen = MutationTestGenerator::new();
         // Source with nothing mutable.
-        let tests = gen.generate_tests_with("pass", Language::Python, |_| {
-            Some("test code".into())
-        });
+        let tests = gen.generate_tests_with("pass", Language::Python, |_| Some("test code".into()));
         assert!(tests.is_empty(), "no mutations => no tests");
     }
 
     #[test]
     fn generate_tests_llm_returns_none() {
         let gen = MutationTestGenerator::new();
-        let tests =
-            gen.generate_tests_with(SAMPLE_FUNCTION, Language::Python, |_| None);
+        let tests = gen.generate_tests_with(SAMPLE_FUNCTION, Language::Python, |_| None);
         assert!(tests.is_empty(), "LLM returning None => no tests");
     }
 
     #[test]
     fn with_endpoint_stores_url() {
         let gen = MutationTestGenerator::with_endpoint("http://localhost:8080".into());
-        assert_eq!(
-            gen.llm_endpoint.as_deref(),
-            Some("http://localhost:8080")
-        );
+        assert_eq!(gen.llm_endpoint.as_deref(), Some("http://localhost:8080"));
     }
 
     #[test]

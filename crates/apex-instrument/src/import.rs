@@ -135,9 +135,14 @@ pub fn load_coverage_file(
         CoverageFormat::CoveragePy => parse_coverage_py(&text),
         CoverageFormat::LlvmCov => {
             let filter = crate::llvm_coverage::FileFilter::default();
-            let result = crate::llvm_coverage::parse_llvm_cov_export(&content, target_root, &filter)
-                .map_err(|e| ApexError::Instrumentation(format!("llvm-cov JSON: {e}")))?;
-            Ok((result.branch_ids, result.executed_branch_ids, result.file_paths))
+            let result =
+                crate::llvm_coverage::parse_llvm_cov_export(&content, target_root, &filter)
+                    .map_err(|e| ApexError::Instrumentation(format!("llvm-cov JSON: {e}")))?;
+            Ok((
+                result.branch_ids,
+                result.executed_branch_ids,
+                result.file_paths,
+            ))
         }
         CoverageFormat::SimpleCov => {
             let (all, exec, paths) = crate::ruby::parse_simplecov_json(&text);
@@ -155,9 +160,7 @@ pub fn load_coverage_file(
 /// Parse LCOV info format into branch data.
 ///
 /// Handles both `DA:` (line coverage) and `BRDA:` (branch coverage) records.
-pub fn parse_lcov(
-    content: &str,
-) -> Result<CoverageData> {
+pub fn parse_lcov(content: &str) -> Result<CoverageData> {
     let mut all = Vec::new();
     let mut executed = Vec::new();
     let mut file_paths = HashMap::new();
@@ -216,9 +219,7 @@ pub fn parse_lcov(
 /// ```json
 /// { "meta": { "version": "7.x" }, "files": { "path": { "executed_lines": [...], "missing_lines": [...], ... } } }
 /// ```
-fn parse_coverage_py(
-    content: &str,
-) -> Result<CoverageData> {
+fn parse_coverage_py(content: &str) -> Result<CoverageData> {
     let val: serde_json::Value = serde_json::from_str(content)
         .map_err(|e| ApexError::Instrumentation(format!("invalid JSON: {e}")))?;
 
@@ -361,7 +362,8 @@ mod tests {
 
     #[test]
     fn detect_llvm_cov() {
-        let data = br#"{"data": [{"files": [], "totals": {}}], "type": "llvm.coverage.json.export"}"#;
+        let data =
+            br#"{"data": [{"files": [], "totals": {}}], "type": "llvm.coverage.json.export"}"#;
         assert!(matches!(
             detect_format(data).unwrap(),
             CoverageFormat::LlvmCov
@@ -522,8 +524,7 @@ end_of_record
         )
         .unwrap();
 
-        let (all, exec, paths) =
-            load_coverage_file(&lcov_path, dir.path(), None).unwrap();
+        let (all, exec, paths) = load_coverage_file(&lcov_path, dir.path(), None).unwrap();
         // 3 DA + 2 BRDA = 5
         assert_eq!(all.len(), 5);
         // DA:1 + DA:3 + BRDA:3,0,0 = 3
@@ -535,11 +536,7 @@ end_of_record
     fn load_coverage_file_with_format_hint() {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("data.txt");
-        std::fs::write(
-            &path,
-            "SF:src/main.rs\nDA:1,1\nDA:2,0\nend_of_record\n",
-        )
-        .unwrap();
+        std::fs::write(&path, "SF:src/main.rs\nDA:1,1\nDA:2,0\nend_of_record\n").unwrap();
 
         let (all, exec, _) =
             load_coverage_file(&path, dir.path(), Some(CoverageFormat::Lcov)).unwrap();

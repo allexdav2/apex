@@ -143,7 +143,9 @@ fn analyze_source(path: &std::path::Path, source: &str, lang: Language) -> Vec<F
                     explanation: None,
                     fix: None,
                     cwe_ids: vec![400],
-                    noisy: false, base_severity: None, coverage_confidence: None,
+                    noisy: false,
+                    base_severity: None,
+                    coverage_confidence: None,
                 });
                 break; // one finding per line
             }
@@ -236,11 +238,7 @@ fn connect_server() {
     #[test]
     fn no_finding_on_non_rust_file() {
         let src = "async function fetch() { await fetch('http://a.com'); }";
-        let findings = analyze_source(
-            &PathBuf::from("src/app.js"),
-            src,
-            Language::JavaScript,
-        );
+        let findings = analyze_source(&PathBuf::from("src/app.js"), src, Language::JavaScript);
         assert_eq!(findings.len(), 0);
     }
 
@@ -267,7 +265,11 @@ async fn lookup(map: &HashMap<String, String>, key: &str) -> Option<String> {
 }
 ";
         let findings = detect(src);
-        assert_eq!(findings.len(), 0, "HashMap::get should not trigger the detector");
+        assert_eq!(
+            findings.len(),
+            0,
+            "HashMap::get should not trigger the detector"
+        );
     }
 
     #[test]
@@ -278,7 +280,11 @@ async fn parse(data: &serde_json::Value) -> Option<&str> {
 }
 ";
         let findings = detect(src);
-        assert_eq!(findings.len(), 0, "serde_json::Value::get should not trigger");
+        assert_eq!(
+            findings.len(),
+            0,
+            "serde_json::Value::get should not trigger"
+        );
     }
 
     #[test]

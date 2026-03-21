@@ -12,7 +12,15 @@ pub struct WallClockMisuseDetector;
 
 /// Variable name fragments that indicate duration-measurement intent.
 static DURATION_NAMES: &[&str] = &[
-    "start", "begin", "before", "t0", "t1", "t_start", "t_begin", "start_time", "begin_time",
+    "start",
+    "begin",
+    "before",
+    "t0",
+    "t1",
+    "t_start",
+    "t_begin",
+    "start_time",
+    "begin_time",
 ];
 
 /// Wall-clock APIs per language that are wrong for duration measurement.
@@ -69,9 +77,7 @@ fn analyze_source(path: &std::path::Path, source: &str, lang: Language) -> Vec<F
 
         // Check if the variable being assigned has a duration-measurement name
         let lower_line = line.to_lowercase();
-        let has_duration_name = DURATION_NAMES
-            .iter()
-            .any(|name| lower_line.contains(name));
+        let has_duration_name = DURATION_NAMES.iter().any(|name| lower_line.contains(name));
 
         if !has_duration_name {
             continue;
@@ -97,7 +103,9 @@ fn analyze_source(path: &std::path::Path, source: &str, lang: Language) -> Vec<F
             explanation: None,
             fix: None,
             cwe_ids: vec![682],
-                    noisy: false, base_severity: None, coverage_confidence: None,
+            noisy: false,
+            base_severity: None,
+            coverage_confidence: None,
         });
     }
 

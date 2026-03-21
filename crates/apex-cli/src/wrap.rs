@@ -56,7 +56,10 @@ fn resolve_coverage_method(
     lang: Language,
     cmd: &[String],
     output_dir: &std::path::Path,
-) -> (CoverageMethod, Option<apex_instrument::wrap::CoverageInjection>) {
+) -> (
+    CoverageMethod,
+    Option<apex_instrument::wrap::CoverageInjection>,
+) {
     match requested {
         CoverageMethod::Native => {
             let injection = inject_coverage(lang, cmd, output_dir);
@@ -87,8 +90,7 @@ fn resolve_coverage_method(
             let injection = inject_coverage(lang, cmd, output_dir);
             // Native injection is considered successful if it modified the
             // command or set environment variables.
-            let native_modified =
-                injection.args != cmd || !injection.env_vars.is_empty();
+            let native_modified = injection.args != cmd || !injection.env_vars.is_empty();
             if native_modified {
                 info!("Auto-cascade: using native coverage for {lang}");
                 return (CoverageMethod::Native, Some(injection));
@@ -101,9 +103,7 @@ fn resolve_coverage_method(
             }
 
             // Step 3: fall back to none
-            info!(
-                "Auto-cascade: neither native nor Frida coverage available — audit-only mode"
-            );
+            info!("Auto-cascade: neither native nor Frida coverage available — audit-only mode");
             (CoverageMethod::None, Option::None)
         }
     }
@@ -210,9 +210,7 @@ pub async fn run_wrap(args: WrapArgs) -> Result<()> {
         );
     } else {
         let code = status.code().unwrap_or(-1);
-        eprintln!(
-            "apex wrap: test command exited with code {code}"
-        );
+        eprintln!("apex wrap: test command exited with code {code}");
         // Still exit with the child's code so CI pipelines propagate failure.
         std::process::exit(code);
     }
@@ -227,10 +225,8 @@ mod tests {
     #[test]
     fn test_wrap_args_parsing() {
         // Simulate: apex wrap --lang python -- pytest -q
-        let args = WrapArgs::try_parse_from([
-            "wrap", "--lang", "python", "--", "pytest", "-q",
-        ])
-        .unwrap();
+        let args =
+            WrapArgs::try_parse_from(["wrap", "--lang", "python", "--", "pytest", "-q"]).unwrap();
         assert!(matches!(args.lang, Some(LangArg::Python)));
         assert_eq!(args.cmd, vec!["pytest", "-q"]);
     }
@@ -238,8 +234,7 @@ mod tests {
     #[test]
     fn test_wrap_args_auto_detect() {
         // Simulate: apex wrap -- cargo test
-        let args =
-            WrapArgs::try_parse_from(["wrap", "--", "cargo", "test"]).unwrap();
+        let args = WrapArgs::try_parse_from(["wrap", "--", "cargo", "test"]).unwrap();
         assert!(args.lang.is_none());
         assert_eq!(args.cmd, vec!["cargo", "test"]);
     }
@@ -261,8 +256,7 @@ mod tests {
 
     #[test]
     fn test_wrap_args_default_output_dir() {
-        let args =
-            WrapArgs::try_parse_from(["wrap", "--", "npm", "test"]).unwrap();
+        let args = WrapArgs::try_parse_from(["wrap", "--", "npm", "test"]).unwrap();
         assert_eq!(args.output_dir, PathBuf::from(".apex-coverage"));
     }
 
@@ -276,35 +270,30 @@ mod tests {
 
     #[test]
     fn test_wrap_args_default_coverage_method_is_auto() {
-        let args =
-            WrapArgs::try_parse_from(["wrap", "--", "pytest"]).unwrap();
+        let args = WrapArgs::try_parse_from(["wrap", "--", "pytest"]).unwrap();
         assert_eq!(args.coverage_method, CoverageMethod::Auto);
     }
 
     #[test]
     fn test_wrap_args_coverage_method_native() {
-        let args = WrapArgs::try_parse_from([
-            "wrap", "--coverage-method", "native", "--", "pytest",
-        ])
-        .unwrap();
+        let args =
+            WrapArgs::try_parse_from(["wrap", "--coverage-method", "native", "--", "pytest"])
+                .unwrap();
         assert_eq!(args.coverage_method, CoverageMethod::Native);
     }
 
     #[test]
     fn test_wrap_args_coverage_method_frida() {
-        let args = WrapArgs::try_parse_from([
-            "wrap", "--coverage-method", "frida", "--", "./my-binary",
-        ])
-        .unwrap();
+        let args =
+            WrapArgs::try_parse_from(["wrap", "--coverage-method", "frida", "--", "./my-binary"])
+                .unwrap();
         assert_eq!(args.coverage_method, CoverageMethod::Frida);
     }
 
     #[test]
     fn test_wrap_args_coverage_method_none() {
-        let args = WrapArgs::try_parse_from([
-            "wrap", "--coverage-method", "none", "--", "pytest",
-        ])
-        .unwrap();
+        let args = WrapArgs::try_parse_from(["wrap", "--coverage-method", "none", "--", "pytest"])
+            .unwrap();
         assert_eq!(args.coverage_method, CoverageMethod::None);
     }
 

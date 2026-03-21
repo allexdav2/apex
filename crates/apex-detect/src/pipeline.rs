@@ -468,7 +468,9 @@ mod tests {
             explanation: None,
             fix: None,
             cwe_ids: vec![],
-                    noisy: false, base_severity: None, coverage_confidence: None,
+            noisy: false,
+            base_severity: None,
+            coverage_confidence: None,
         }
     }
 
@@ -550,7 +552,7 @@ mod tests {
     fn from_config_enables_all_by_default() {
         let cfg = DetectConfig::default();
         let pipeline = DetectorPipeline::from_config(&cfg, Language::Rust);
-        assert_eq!(pipeline.detectors.len(), 47);
+        assert_eq!(pipeline.detectors.len(), 48);
     }
 
     #[test]
@@ -953,7 +955,7 @@ mod tests {
         // Python should get all except unsafe
         let cfg = DetectConfig::default();
         let pipeline = DetectorPipeline::from_config(&cfg, Language::Python);
-        assert_eq!(pipeline.detectors.len(), 40);
+        assert_eq!(pipeline.detectors.len(), 41);
         assert!(pipeline
             .detectors
             .iter()
@@ -1367,9 +1369,18 @@ mod tests {
         let pipeline = DetectorPipeline::from_audit_config(&cfg, Language::Rust);
         let names: Vec<&str> = pipeline.detectors.iter().map(|d| d.name()).collect();
         // Audit mode now includes all detectors — noisy ones tagged, not excluded
-        assert!(names.contains(&"panic-pattern"), "audit should include panic-pattern");
-        assert!(names.contains(&"mixed-bool-ops"), "audit should include mixed-bool-ops");
-        assert!(names.contains(&"static-analysis"), "audit should include static-analysis");
+        assert!(
+            names.contains(&"panic-pattern"),
+            "audit should include panic-pattern"
+        );
+        assert!(
+            names.contains(&"mixed-bool-ops"),
+            "audit should include mixed-bool-ops"
+        );
+        assert!(
+            names.contains(&"static-analysis"),
+            "audit should include static-analysis"
+        );
     }
 
     #[test]
@@ -1486,15 +1497,21 @@ mod tests {
 
     #[test]
     fn severity_rescoring_amplifies_uncovered_finding() {
-        use apex_coverage::compound::{CompoundOracle, CoverageSignal};
         use apex_core::types::BranchId;
+        use apex_coverage::compound::{CompoundOracle, CoverageSignal};
 
         let mut oracle = CompoundOracle::new();
         // Mark line 67 as NOT covered — low confidence
         let branch = BranchId::new(1, 67, 0, 0);
         oracle.add_default_signal(branch, CoverageSignal::Instrumented(false));
 
-        let mut findings = vec![make_finding("sql", "src/auth.py", 67, Severity::Medium, FindingCategory::Injection)];
+        let mut findings = vec![make_finding(
+            "sql",
+            "src/auth.py",
+            67,
+            Severity::Medium,
+            FindingCategory::Injection,
+        )];
         super::apply_coverage_rescoring(&mut findings, &oracle, 1);
 
         // Uncovered code should amplify severity: Medium (5.0) * ~2.0 = ~10.0 -> Critical
@@ -1509,15 +1526,21 @@ mod tests {
 
     #[test]
     fn severity_rescoring_reduces_well_tested_finding() {
-        use apex_coverage::compound::{CompoundOracle, CoverageSignal};
         use apex_core::types::BranchId;
+        use apex_coverage::compound::{CompoundOracle, CoverageSignal};
 
         let mut oracle = CompoundOracle::new();
         // Mark line 42 as covered — high confidence
         let branch = BranchId::new(1, 42, 0, 0);
         oracle.add_default_signal(branch, CoverageSignal::Instrumented(true));
 
-        let mut findings = vec![make_finding("path", "src/utils.py", 42, Severity::High, FindingCategory::PathTraversal)];
+        let mut findings = vec![make_finding(
+            "path",
+            "src/utils.py",
+            42,
+            Severity::High,
+            FindingCategory::PathTraversal,
+        )];
         super::apply_coverage_rescoring(&mut findings, &oracle, 1);
 
         // Well-tested code should reduce severity: High (8.0) * ~1.0 = ~8.0 -> still High
@@ -1533,14 +1556,23 @@ mod tests {
         let oracle = CompoundOracle::new();
         // No signals for line 10 — neutral confidence (0.5)
 
-        let mut findings = vec![make_finding("panic", "src/main.rs", 10, Severity::Medium, FindingCategory::PanicPath)];
+        let mut findings = vec![make_finding(
+            "panic",
+            "src/main.rs",
+            10,
+            Severity::Medium,
+            FindingCategory::PanicPath,
+        )];
         super::apply_coverage_rescoring(&mut findings, &oracle, 1);
 
         // Neutral confidence: 5.0 * (2.0 - 0.5) = 7.5 -> High
         // This is the expected behavior: no coverage data acts as a mild amplifier
         assert_eq!(findings[0].base_severity, Some(Severity::Medium));
         let conf = findings[0].coverage_confidence.unwrap();
-        assert!((conf - 0.5).abs() < 1e-10, "expected neutral 0.5, got {conf}");
+        assert!(
+            (conf - 0.5).abs() < 1e-10,
+            "expected neutral 0.5, got {conf}"
+        );
     }
 
     #[test]
@@ -1549,7 +1581,13 @@ mod tests {
 
         let oracle = CompoundOracle::new();
 
-        let mut finding = make_finding("test", "src/lib.rs", 1, Severity::High, FindingCategory::LogicBug);
+        let mut finding = make_finding(
+            "test",
+            "src/lib.rs",
+            1,
+            Severity::High,
+            FindingCategory::LogicBug,
+        );
         finding.line = None; // No line number
 
         let mut findings = vec![finding];
@@ -1563,14 +1601,20 @@ mod tests {
 
     #[test]
     fn severity_rescoring_preserves_base_severity() {
-        use apex_coverage::compound::{CompoundOracle, CoverageSignal};
         use apex_core::types::BranchId;
+        use apex_coverage::compound::{CompoundOracle, CoverageSignal};
 
         let mut oracle = CompoundOracle::new();
         let branch = BranchId::new(1, 5, 0, 0);
         oracle.add_default_signal(branch, CoverageSignal::Instrumented(false));
 
-        let mut findings = vec![make_finding("sec", "src/api.rs", 5, Severity::Low, FindingCategory::SecuritySmell)];
+        let mut findings = vec![make_finding(
+            "sec",
+            "src/api.rs",
+            5,
+            Severity::Low,
+            FindingCategory::SecuritySmell,
+        )];
         let original_severity = findings[0].severity;
         super::apply_coverage_rescoring(&mut findings, &oracle, 1);
 
@@ -1599,7 +1643,13 @@ mod tests {
 
     #[test]
     fn coverage_label_uncovered_amplified() {
-        let mut f = make_finding("test", "src/a.rs", 1, Severity::High, FindingCategory::Injection);
+        let mut f = make_finding(
+            "test",
+            "src/a.rs",
+            1,
+            Severity::High,
+            FindingCategory::Injection,
+        );
         f.base_severity = Some(Severity::Medium);
         f.coverage_confidence = Some(0.05);
         // severity (High) < base (Medium) in rank terms: High.rank()=1 < Medium.rank()=2 -> amplified
@@ -1608,7 +1658,13 @@ mod tests {
 
     #[test]
     fn coverage_label_tested_reduced() {
-        let mut f = make_finding("test", "src/b.rs", 1, Severity::Low, FindingCategory::Injection);
+        let mut f = make_finding(
+            "test",
+            "src/b.rs",
+            1,
+            Severity::Low,
+            FindingCategory::Injection,
+        );
         f.base_severity = Some(Severity::Medium);
         f.coverage_confidence = Some(0.95);
         // severity (Low) > base (Medium) in rank terms: Low.rank()=3 > Medium.rank()=2 -> reduced
@@ -1617,7 +1673,13 @@ mod tests {
 
     #[test]
     fn coverage_label_none_without_oracle() {
-        let f = make_finding("test", "src/c.rs", 1, Severity::Medium, FindingCategory::Injection);
+        let f = make_finding(
+            "test",
+            "src/c.rs",
+            1,
+            Severity::Medium,
+            FindingCategory::Injection,
+        );
         assert_eq!(f.coverage_label(), None);
     }
 }

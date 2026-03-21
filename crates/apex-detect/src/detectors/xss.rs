@@ -33,9 +33,8 @@ struct XssPattern {
 static DJANGO_SAFE_FILTER: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"\|\s*safe\b").expect("invalid regex"));
 
-static JINJA2_AUTOESCAPE_OFF: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r#"\{%\s*autoescape\s+false\s*%\}"#).expect("invalid regex")
-});
+static JINJA2_AUTOESCAPE_OFF: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r#"\{%\s*autoescape\s+false\s*%\}"#).expect("invalid regex"));
 
 static BLADE_UNESCAPED: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"\{!!\s*\$\S+\s*!!\}").expect("invalid regex"));
@@ -75,7 +74,7 @@ const XSS_SANITIZERS: &[&str] = &[
     "strip_tags",
     "htmlspecialchars",
     "encodeURIComponent",
-    "mark_safe",   // Django intentional — still flag but note
+    "mark_safe", // Django intentional — still flag but note
     "SafeString",
 ];
 
@@ -88,7 +87,8 @@ static TEMPLATE_PATTERNS: &[XssPattern] = &[
         name: "Django |safe filter",
         regex: &DJANGO_SAFE_FILTER,
         severity: Severity::High,
-        description: "Django |safe filter bypasses auto-escaping, allowing XSS if input is user-controlled",
+        description:
+            "Django |safe filter bypasses auto-escaping, allowing XSS if input is user-controlled",
         suggestion: "Remove |safe filter or sanitize input before marking as safe",
     },
     XssPattern {
@@ -127,7 +127,8 @@ static DOM_PATTERNS: &[XssPattern] = &[
         regex: &DOCUMENT_WRITE,
         severity: Severity::High,
         description: "document.write can inject arbitrary HTML including scripts",
-        suggestion: "Use DOM manipulation methods (createElement, appendChild) instead of document.write",
+        suggestion:
+            "Use DOM manipulation methods (createElement, appendChild) instead of document.write",
     },
     XssPattern {
         name: "jQuery .html()",
@@ -195,7 +196,9 @@ fn check_patterns(
                     explanation: None,
                     fix: None,
                     cwe_ids: vec![79],
-                    noisy: false, base_severity: None, coverage_confidence: None,
+                    noisy: false,
+                    base_severity: None,
+                    coverage_confidence: None,
                 });
                 break; // one finding per line
             }
@@ -348,7 +351,9 @@ mod tests {
         );
         let findings = XssDetector.analyze(&ctx).await.unwrap();
         assert!(!findings.is_empty());
-        assert!(findings.iter().any(|f| f.title.contains("dangerouslySetInnerHTML")));
+        assert!(findings
+            .iter()
+            .any(|f| f.title.contains("dangerouslySetInnerHTML")));
     }
 
     #[tokio::test]

@@ -117,7 +117,9 @@ fn analyze_source(path: &std::path::Path, source: &str, lang: Language) -> Vec<F
                     explanation: None,
                     fix: None,
                     cwe_ids: vec![400],
-                    noisy: false, base_severity: None, coverage_confidence: None,
+                    noisy: false,
+                    base_severity: None,
+                    coverage_confidence: None,
                 });
                 break; // one finding per line
             }
@@ -238,11 +240,7 @@ while True:
     #[test]
     fn no_finding_for_unsupported_language() {
         let src = "for item in items { conn = sqlite3.connect('data.db'); }";
-        let findings = analyze_source(
-            &PathBuf::from("src/app.rb"),
-            src,
-            Language::Ruby,
-        );
+        let findings = analyze_source(&PathBuf::from("src/app.rb"), src, Language::Ruby);
         assert_eq!(findings.len(), 0);
     }
 }

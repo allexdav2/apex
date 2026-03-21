@@ -67,7 +67,9 @@ pub fn scan_insecure_deserialization(source: &str, file_path: &str) -> Vec<Findi
                 explanation: None,
                 fix: None,
                 cwe_ids: vec![502],
-                    noisy: false, base_severity: None, coverage_confidence: None,
+                noisy: false,
+                base_severity: None,
+                coverage_confidence: None,
             });
         }
     }

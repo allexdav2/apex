@@ -77,7 +77,11 @@ async fn dispatch_claude(prompt: &str, working_dir: &Path) -> Result<AgentCovera
 }
 
 fn which_claude() -> Result<String> {
-    for candidate in &["claude", "/usr/local/bin/claude", "/opt/homebrew/bin/claude"] {
+    for candidate in &[
+        "claude",
+        "/usr/local/bin/claude",
+        "/opt/homebrew/bin/claude",
+    ] {
         let ok = std::process::Command::new("which")
             .arg(candidate)
             .output()
@@ -177,8 +181,17 @@ Some trailing text"#;
         );
         assert!(!prompt.is_empty());
         assert!(prompt.contains("Python"), "prompt should mention language");
-        assert!(prompt.contains("80%"), "prompt should mention target: {prompt}");
-        assert!(prompt.contains("/tmp/project"), "prompt should mention path");
-        assert!(prompt.contains("poetry"), "prompt should contain preflight info");
+        assert!(
+            prompt.contains("80%"),
+            "prompt should mention target: {prompt}"
+        );
+        assert!(
+            prompt.contains("/tmp/project"),
+            "prompt should mention path"
+        );
+        assert!(
+            prompt.contains("poetry"),
+            "prompt should contain preflight info"
+        );
     }
 }

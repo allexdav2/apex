@@ -14,10 +14,7 @@
 //! Boolean fields may be encoded as `true`/`false` or `0`/`1` depending on the LLVM
 //! version, so we use [`json_truthy`] for compatibility.
 
-use apex_core::{
-    hash::fnv1a_hash as fnv1a,
-    types::BranchId,
-};
+use apex_core::{hash::fnv1a_hash as fnv1a, types::BranchId};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
@@ -238,7 +235,8 @@ mod tests {
     fn empty_data() {
         let json = r#"{"data": [{"files": []}]}"#;
         let filter = FileFilter::default();
-        let result = parse_llvm_cov_export(json.as_bytes(), Path::new("/nonexistent"), &filter).unwrap();
+        let result =
+            parse_llvm_cov_export(json.as_bytes(), Path::new("/nonexistent"), &filter).unwrap();
         assert_eq!(result.branch_ids.len(), 0);
         assert_eq!(result.executed_branch_ids.len(), 0);
         assert_eq!(result.file_paths.len(), 0);

@@ -623,8 +623,7 @@ mod tests {
     #[tokio::test]
     async fn console_tool_rust_command_new_is_noisy_low() {
         let files = single_file("src/main.rs", "Command::new(user_input)\n");
-        let ctx =
-            make_ctx_with_threat_model(files, Language::Rust, ThreatModelType::ConsoleTool);
+        let ctx = make_ctx_with_threat_model(files, Language::Rust, ThreatModelType::ConsoleTool);
         let findings = MultiCommandInjectionDetector.analyze(&ctx).await.unwrap();
         assert_eq!(findings.len(), 1);
         assert!(findings[0].noisy, "ConsoleTool finding should be noisy");
@@ -639,14 +638,10 @@ mod tests {
     #[tokio::test]
     async fn web_service_python_os_system_is_high_not_noisy() {
         let files = single_file("src/app.py", "os.system(user_input)\n");
-        let ctx =
-            make_ctx_with_threat_model(files, Language::Python, ThreatModelType::WebService);
+        let ctx = make_ctx_with_threat_model(files, Language::Python, ThreatModelType::WebService);
         let findings = MultiCommandInjectionDetector.analyze(&ctx).await.unwrap();
         assert_eq!(findings.len(), 1);
-        assert!(
-            !findings[0].noisy,
-            "WebService finding should not be noisy"
-        );
+        assert!(!findings[0].noisy, "WebService finding should not be noisy");
         assert_eq!(
             findings[0].severity,
             Severity::High,
@@ -658,8 +653,7 @@ mod tests {
     #[tokio::test]
     async fn library_go_exec_command_is_high_not_noisy() {
         let files = single_file("src/main.go", "exec.Command(userInput, args...)\n");
-        let ctx =
-            make_ctx_with_threat_model(files, Language::Go, ThreatModelType::Library);
+        let ctx = make_ctx_with_threat_model(files, Language::Go, ThreatModelType::Library);
         let findings = MultiCommandInjectionDetector.analyze(&ctx).await.unwrap();
         assert_eq!(findings.len(), 1);
         assert!(!findings[0].noisy, "Library finding should not be noisy");
@@ -725,13 +719,22 @@ mod tests {
             name: "user_input".into(),
             line: 1,
         });
-        cpg.add_edge(param, sink_id, EdgeKind::ReachingDef { variable: "user_input".into() });
+        cpg.add_edge(
+            param,
+            sink_id,
+            EdgeKind::ReachingDef {
+                variable: "user_input".into(),
+            },
+        );
 
         let files = single_file("src/app.py", "os.system(user_input)\n");
         let ctx = make_ctx_with_cpg(files, Language::Python, cpg);
         let findings = MultiCommandInjectionDetector.analyze(&ctx).await.unwrap();
         assert_eq!(findings.len(), 1);
-        assert!(!findings[0].noisy, "taint flow present — should not be noisy");
+        assert!(
+            !findings[0].noisy,
+            "taint flow present — should not be noisy"
+        );
         assert_eq!(
             findings[0].severity,
             Severity::High,

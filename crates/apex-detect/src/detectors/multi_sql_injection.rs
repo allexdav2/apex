@@ -275,7 +275,8 @@ fn is_parameterized(line: &str, lang: Language) -> bool {
                 || line.contains("executemany(")
         }
         Language::Java | Language::Kotlin => {
-            line.contains("prepareStatement(") || line.contains("setString(")
+            line.contains("prepareStatement(")
+                || line.contains("setString(")
                 || line.contains("setInt(")
         }
         Language::Go => {
@@ -289,9 +290,7 @@ fn is_parameterized(line: &str, lang: Language) -> bool {
         Language::Ruby => {
             line.contains("sanitize_sql") || line.contains("where(") || line.contains("find_by(")
         }
-        Language::Rust => {
-            line.contains(".bind(") || line.contains("query_as!(")
-        }
+        Language::Rust => line.contains(".bind(") || line.contains("query_as!("),
         _ => false,
     }
 }
@@ -393,7 +392,9 @@ impl Detector for MultiSqlInjectionDetector {
                             explanation: None,
                             fix: None,
                             cwe_ids: vec![89],
-                            noisy: false, base_severity: None, coverage_confidence: None,
+                            noisy: false,
+                            base_severity: None,
+                            coverage_confidence: None,
                         };
 
                         // Check taint flow if CPG is available — downgrade instead of discard.
@@ -604,7 +605,10 @@ mod tests {
         );
         let ctx = make_ctx(files, Language::Python);
         let findings = MultiSqlInjectionDetector.analyze(&ctx).await.unwrap();
-        assert!(findings.is_empty(), "parameterized query should not trigger");
+        assert!(
+            findings.is_empty(),
+            "parameterized query should not trigger"
+        );
     }
 
     #[tokio::test]
@@ -612,7 +616,10 @@ mod tests {
         let files = single_file("src/db.js", "db.query(stmt, [param])\n");
         let ctx = make_ctx(files, Language::JavaScript);
         let findings = MultiSqlInjectionDetector.analyze(&ctx).await.unwrap();
-        assert!(findings.is_empty(), "parameterized query should not trigger");
+        assert!(
+            findings.is_empty(),
+            "parameterized query should not trigger"
+        );
     }
 
     #[tokio::test]
@@ -628,10 +635,7 @@ mod tests {
 
     #[tokio::test]
     async fn skips_comments() {
-        let files = single_file(
-            "src/db.js",
-            "// db.query(`SELECT * FROM ${table}`)\n",
-        );
+        let files = single_file("src/db.js", "// db.query(`SELECT * FROM ${table}`)\n");
         let ctx = make_ctx(files, Language::JavaScript);
         let findings = MultiSqlInjectionDetector.analyze(&ctx).await.unwrap();
         assert!(findings.is_empty());
@@ -678,7 +682,13 @@ mod tests {
             name: "params".into(),
             line: 1,
         });
-        cpg.add_edge(param, sink_id, EdgeKind::ReachingDef { variable: "params".into() });
+        cpg.add_edge(
+            param,
+            sink_id,
+            EdgeKind::ReachingDef {
+                variable: "params".into(),
+            },
+        );
 
         let files = single_file(
             "src/db.py",
@@ -687,7 +697,10 @@ mod tests {
         let ctx = make_ctx_with_cpg(files, Language::Python, cpg);
         let findings = MultiSqlInjectionDetector.analyze(&ctx).await.unwrap();
         assert_eq!(findings.len(), 1);
-        assert!(!findings[0].noisy, "taint flow present — should not be noisy");
+        assert!(
+            !findings[0].noisy,
+            "taint flow present — should not be noisy"
+        );
         assert_eq!(
             findings[0].severity,
             Severity::High,

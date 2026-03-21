@@ -614,9 +614,7 @@ fn is_taint_source(cpg: &apex_cpg::Cpg, id: apex_cpg::NodeId, kind: &apex_cpg::N
     use apex_cpg::{EdgeKind, NodeKind};
     match kind {
         NodeKind::Parameter { .. } => true,
-        NodeKind::Call { name, .. } => {
-            apex_cpg::taint::PYTHON_SOURCES.iter().any(|s| name == s)
-        }
+        NodeKind::Call { name, .. } => apex_cpg::taint::PYTHON_SOURCES.iter().any(|s| name == s),
         NodeKind::Identifier { name, .. } => {
             cpg.edges_to(id).iter().any(|(from, _, ek)| {
                 matches!(ek, EdgeKind::ReachingDef { .. })
@@ -1161,7 +1159,11 @@ x = 1
 
         let ctx = make_ctx_with_cpg(cpg);
         let result = taint_reaches_sink(&ctx, Path::new("test.py"), 3, &["subprocess.run"]);
-        assert_eq!(result, Some(true), "expected Some(true) when flow reaches sink");
+        assert_eq!(
+            result,
+            Some(true),
+            "expected Some(true) when flow reaches sink"
+        );
     }
 
     /// CPG with no data-flow connection between parameter and sink on line 5
@@ -1185,7 +1187,11 @@ x = 1
 
         let ctx = make_ctx_with_cpg(cpg);
         let result = taint_reaches_sink(&ctx, Path::new("test.py"), 5, &["subprocess.run"]);
-        assert_eq!(result, Some(false), "expected Some(false) when no flow reaches sink");
+        assert_eq!(
+            result,
+            Some(false),
+            "expected Some(false) when no flow reaches sink"
+        );
     }
 
     /// CPG with a taint flow but no node on the requested sink_line
@@ -1214,6 +1220,10 @@ x = 1
         let ctx = make_ctx_with_cpg(cpg);
         // Ask for line 99 — no node there.
         let result = taint_reaches_sink(&ctx, Path::new("test.py"), 99, &[]);
-        assert_eq!(result, Some(false), "expected Some(false) when sink_line has no nodes");
+        assert_eq!(
+            result,
+            Some(false),
+            "expected Some(false) when sink_line has no nodes"
+        );
     }
 }

@@ -2100,10 +2100,7 @@ mod tests {
 
         let oracle = Arc::new(CoverageOracle::new());
         // Register two branches
-        oracle.register_branches([
-            BranchId::new(1, 1, 0, 0),
-            BranchId::new(1, 2, 0, 0),
-        ]);
+        oracle.register_branches([BranchId::new(1, 1, 0, 0), BranchId::new(1, 2, 0, 0)]);
         let service = CoordinatorService::new(oracle.clone());
 
         // Submit a batch with two separate results, each covering one branch.

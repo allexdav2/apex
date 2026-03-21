@@ -125,22 +125,13 @@ fn detect_test_command(target_path: &Path, use_bundler: bool) -> Vec<String> {
 
     if spec_dir.exists() {
         if use_bundler {
-            vec![
-                "bundle".into(),
-                "exec".into(),
-                "rspec".into(),
-            ]
+            vec!["bundle".into(), "exec".into(), "rspec".into()]
         } else {
             vec!["rspec".into()]
         }
     } else if test_dir.exists() {
         if use_bundler {
-            vec![
-                "bundle".into(),
-                "exec".into(),
-                "rake".into(),
-                "test".into(),
-            ]
+            vec!["bundle".into(), "exec".into(), "rake".into(), "test".into()]
         } else {
             vec!["rake".into(), "test".into()]
         }
@@ -233,7 +224,11 @@ impl Instrumentor for RubyInstrumentor {
         // Preflight: count source files for adaptive timeout
         let file_count = count_source_files(target_path);
         let timeout = adaptive_timeout(file_count, Language::Ruby, OpKind::TestRun);
-        debug!(file_count, timeout_ms = timeout, "adaptive timeout for Ruby test run");
+        debug!(
+            file_count,
+            timeout_ms = timeout,
+            "adaptive timeout for Ruby test run"
+        );
 
         // Resolve Ruby binary via lang runner
         let ruby = resolve_ruby();
@@ -272,10 +267,7 @@ impl Instrumentor for RubyInstrumentor {
 
         let spec = CommandSpec::new(&program, target_path)
             .args(args)
-            .env(
-                "RUBYOPT",
-                format!("-r{}", helper_path.to_string_lossy()),
-            )
+            .env("RUBYOPT", format!("-r{}", helper_path.to_string_lossy()))
             .timeout(timeout);
 
         let output = self
@@ -761,11 +753,7 @@ mod tests {
         // Create coverage output so the instrument call succeeds
         let cov_dir = repo_root.join("coverage");
         std::fs::create_dir(&cov_dir).unwrap();
-        std::fs::write(
-            cov_dir.join(".resultset.json"),
-            r#"{"coverage":{}}"#,
-        )
-        .unwrap();
+        std::fs::write(cov_dir.join(".resultset.json"), r#"{"coverage":{}}"#).unwrap();
 
         let runner = Arc::new(TrackingRunner {
             spec_env: Mutex::new(Vec::new()),

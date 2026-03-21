@@ -287,12 +287,8 @@ async fn test_audit_detects_taint_flow() {
     // Build source cache manually so we can drive the detector pipeline
     // directly and inspect the findings.
     let mut source_cache = std::collections::HashMap::new();
-    let tainted_src = std::fs::read_to_string(target.join("tainted.py"))
-        .expect("read tainted.py");
-    source_cache.insert(
-        std::path::PathBuf::from("tainted.py"),
-        tainted_src,
-    );
+    let tainted_src = std::fs::read_to_string(target.join("tainted.py")).expect("read tainted.py");
+    source_cache.insert(std::path::PathBuf::from("tainted.py"), tainted_src);
 
     // Build CPG via the trait-based dispatch (Python -> PythonCpgBuilder).
     use apex_cpg::{CpgBuilder, PythonCpgBuilder};

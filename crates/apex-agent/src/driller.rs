@@ -165,11 +165,7 @@ pub struct DrillerEscalation {
 }
 
 impl DrillerEscalation {
-    pub fn new(
-        strategy: Arc<DrillerStrategy>,
-        plateau_window: usize,
-        threshold: usize,
-    ) -> Self {
+    pub fn new(strategy: Arc<DrillerStrategy>, plateau_window: usize, threshold: usize) -> Self {
         Self {
             detector: StuckDetector::new(plateau_window, threshold),
             strategy,

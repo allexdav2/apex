@@ -216,7 +216,7 @@ mod tests {
             explanation: None,
             fix: None,
             cwe_ids: vec![],
-                    noisy: false,
+            noisy: false,
             base_severity: None,
             coverage_confidence: None,
         };
@@ -348,7 +348,7 @@ mod tests {
                 diff: "+bounds check".into(),
             }),
             cwe_ids: vec![],
-                    noisy: false,
+            noisy: false,
             base_severity: None,
             coverage_confidence: None,
         };
@@ -378,7 +378,7 @@ mod tests {
             explanation: None,
             fix: None,
             cwe_ids: vec![],
-                    noisy: false,
+            noisy: false,
             base_severity: None,
             coverage_confidence: None,
         };
@@ -407,7 +407,7 @@ mod tests {
             explanation: None,
             fix: None,
             cwe_ids: vec![78, 94],
-                    noisy: false,
+            noisy: false,
             base_severity: None,
             coverage_confidence: None,
         };
@@ -432,7 +432,7 @@ mod tests {
             explanation: None,
             fix: None,
             cwe_ids: vec![],
-                    noisy: false,
+            noisy: false,
             base_severity: None,
             coverage_confidence: None,
         };

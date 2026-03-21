@@ -29,18 +29,21 @@ static PY_DEBUG_TRUE: LazyLock<Regex> =
 // ── Stack traces in responses ───────────────────────────────────────────
 
 static PY_TRACEBACK_IN_RETURN: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r"(?:return|Response|JsonResponse|jsonify)\s*\(.*(?:traceback|stacktrace|stack_trace)")
-        .expect("invalid regex")
+    Regex::new(
+        r"(?:return|Response|JsonResponse|jsonify)\s*\(.*(?:traceback|stacktrace|stack_trace)",
+    )
+    .expect("invalid regex")
 });
 
 static JS_STACK_IN_RESPONSE: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r"(?:res\.(?:json|send|status)\s*\(|response\s*=).*(?:\.stack|\.message|err\.toString)")
-        .expect("invalid regex")
+    Regex::new(
+        r"(?:res\.(?:json|send|status)\s*\(|response\s*=).*(?:\.stack|\.message|err\.toString)",
+    )
+    .expect("invalid regex")
 });
 
-static JAVA_PRINT_STACK: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r"\.printStackTrace\s*\(").expect("invalid regex")
-});
+static JAVA_PRINT_STACK: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"\.printStackTrace\s*\(").expect("invalid regex"));
 
 // ── Sensitive fields in serializers ─────────────────────────────────────
 
@@ -70,7 +73,8 @@ const SERIALIZER_CONTEXTS: &[&str] = &[
 // ── Server version exposure ─────────────────────────────────────────────
 
 static SERVER_HEADER: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r#"['"](?:Server|X-Powered-By|X-AspNet-Version)['"]\s*[,:=]"#).expect("invalid regex")
+    Regex::new(r#"['"](?:Server|X-Powered-By|X-AspNet-Version)['"]\s*[,:=]"#)
+        .expect("invalid regex")
 });
 
 // ── Verbose error messages ──────────────────────────────────────────────
@@ -141,11 +145,15 @@ impl Detector for InfoExposureDetector {
                         ),
                         evidence: vec![],
                         covered: false,
-                        suggestion: "Set DEBUG = False in production or load from environment variable".into(),
+                        suggestion:
+                            "Set DEBUG = False in production or load from environment variable"
+                                .into(),
                         explanation: None,
                         fix: None,
                         cwe_ids: vec![200],
-                        noisy: false, base_severity: None, coverage_confidence: None,
+                        noisy: false,
+                        base_severity: None,
+                        coverage_confidence: None,
                     });
                 }
 
@@ -198,7 +206,9 @@ impl Detector for InfoExposureDetector {
                         explanation: None,
                         fix: None,
                         cwe_ids: vec![200],
-                        noisy: false, base_severity: None, coverage_confidence: None,
+                        noisy: false,
+                        base_severity: None,
+                        coverage_confidence: None,
                     });
                 }
 
@@ -219,16 +229,23 @@ impl Detector for InfoExposureDetector {
                         ),
                         evidence: vec![],
                         covered: false,
-                        suggestion: "Use a logging framework (SLF4J/Log4j) instead of printStackTrace()".into(),
+                        suggestion:
+                            "Use a logging framework (SLF4J/Log4j) instead of printStackTrace()"
+                                .into(),
                         explanation: None,
                         fix: None,
                         cwe_ids: vec![200],
-                        noisy: false, base_severity: None, coverage_confidence: None,
+                        noisy: false,
+                        base_severity: None,
+                        coverage_confidence: None,
                     });
                 }
 
                 // Sensitive fields in serializers/API responses
-                if SERIALIZER_CONTEXTS.iter().any(|ctx_marker| source.contains(ctx_marker)) {
+                if SERIALIZER_CONTEXTS
+                    .iter()
+                    .any(|ctx_marker| source.contains(ctx_marker))
+                {
                     let lower = trimmed.to_lowercase();
                     if !lower.contains("exclude")
                         && !lower.contains("write_only")
@@ -285,7 +302,9 @@ impl Detector for InfoExposureDetector {
                         explanation: None,
                         fix: None,
                         cwe_ids: vec![200],
-                        noisy: false, base_severity: None, coverage_confidence: None,
+                        noisy: false,
+                        base_severity: None,
+                        coverage_confidence: None,
                     });
                 }
 
@@ -306,11 +325,15 @@ impl Detector for InfoExposureDetector {
                         ),
                         evidence: vec![],
                         covered: false,
-                        suggestion: "Return user-friendly error messages; log detailed errors server-side".into(),
+                        suggestion:
+                            "Return user-friendly error messages; log detailed errors server-side"
+                                .into(),
                         explanation: None,
                         fix: None,
                         cwe_ids: vec![200],
-                        noisy: false, base_severity: None, coverage_confidence: None,
+                        noisy: false,
+                        base_severity: None,
+                        coverage_confidence: None,
                     });
                 }
             }
@@ -353,11 +376,7 @@ mod tests {
 
     #[tokio::test]
     async fn no_finding_debug_in_non_settings() {
-        let ctx = make_ctx(
-            "src/utils.py",
-            "DEBUG = True\n",
-            Language::Python,
-        );
+        let ctx = make_ctx("src/utils.py", "DEBUG = True\n", Language::Python);
         let findings = InfoExposureDetector.analyze(&ctx).await.unwrap();
         assert!(findings.is_empty());
     }
@@ -444,11 +463,7 @@ mod tests {
 
     #[tokio::test]
     async fn skips_test_files() {
-        let ctx = make_ctx(
-            "tests/test_settings.py",
-            "DEBUG = True\n",
-            Language::Python,
-        );
+        let ctx = make_ctx("tests/test_settings.py", "DEBUG = True\n", Language::Python);
         let findings = InfoExposureDetector.analyze(&ctx).await.unwrap();
         assert!(findings.is_empty());
     }

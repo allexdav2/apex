@@ -4,7 +4,9 @@ use apex_core::types::Language;
 use async_trait::async_trait;
 use uuid::Uuid;
 
-use super::util::{in_test_block, is_comment, is_test_file, strip_string_literals, taint_reaches_sink};
+use super::util::{
+    in_test_block, is_comment, is_test_file, strip_string_literals, taint_reaches_sink,
+};
 use crate::context::AnalysisContext;
 use crate::finding::{Finding, FindingCategory, Severity};
 use crate::threat_model::should_suppress;
@@ -1203,7 +1205,16 @@ impl Detector for SecurityPatternDetector {
                             ctx,
                             path,
                             line_1based,
-                            &["user_input", "request", "args", "params", "stdin", "env", "socket", "recv"],
+                            &[
+                                "user_input",
+                                "request",
+                                "args",
+                                "params",
+                                "stdin",
+                                "env",
+                                "socket",
+                                "recv",
+                            ],
                         ) {
                             if !has_taint {
                                 finding.noisy = true;
@@ -2139,7 +2150,11 @@ mod tests {
         for f in &findings {
             if f.cwe_ids.contains(&78) {
                 assert!(f.noisy, "CWE-78 in CliTool should be noisy, got {f:?}");
-                assert_eq!(f.severity, Severity::Low, "CWE-78 in CliTool should be Low, got {f:?}");
+                assert_eq!(
+                    f.severity,
+                    Severity::Low,
+                    "CWE-78 in CliTool should be Low, got {f:?}"
+                );
             }
         }
     }
@@ -2158,7 +2173,11 @@ mod tests {
         for f in &findings {
             if f.cwe_ids.contains(&78) {
                 assert!(f.noisy, "CWE-78 in ConsoleTool should be noisy, got {f:?}");
-                assert_eq!(f.severity, Severity::Low, "CWE-78 in ConsoleTool should be Low, got {f:?}");
+                assert_eq!(
+                    f.severity,
+                    Severity::Low,
+                    "CWE-78 in ConsoleTool should be Low, got {f:?}"
+                );
             }
         }
     }
@@ -2180,7 +2199,10 @@ mod tests {
         );
         for f in &findings {
             if f.cwe_ids.contains(&78) {
-                assert!(!f.noisy, "CWE-78 in WebService should not be noisy, got {f:?}");
+                assert!(
+                    !f.noisy,
+                    "CWE-78 in WebService should not be noisy, got {f:?}"
+                );
                 assert!(
                     f.severity >= Severity::High,
                     "CWE-78 in WebService should be High or above, got {:?}",
@@ -2204,7 +2226,10 @@ mod tests {
         // CWE-89 (SQL injection) must not be marked noisy even in CLI tools —
         // the CLI suppression rule only applies to CWE-78 (command injection).
         // Severity can be High or Critical depending on context; just check !noisy.
-        let sql_findings: Vec<_> = findings.iter().filter(|f| f.cwe_ids.contains(&89)).collect();
+        let sql_findings: Vec<_> = findings
+            .iter()
+            .filter(|f| f.cwe_ids.contains(&89))
+            .collect();
         assert!(
             !sql_findings.is_empty(),
             "SQL injection should still be reported for CliTool"
@@ -2255,7 +2280,13 @@ mod tests {
             name: "request".into(),
             line: 2,
         });
-        cpg.add_edge(param, sink_id, EdgeKind::ReachingDef { variable: "request".into() });
+        cpg.add_edge(
+            param,
+            sink_id,
+            EdgeKind::ReachingDef {
+                variable: "request".into(),
+            },
+        );
 
         let mut files = HashMap::new();
         files.insert(
@@ -2265,7 +2296,10 @@ mod tests {
         let ctx = make_ctx_with_cpg(files, Language::Python, cpg);
         let findings = SecurityPatternDetector.analyze(&ctx).await.unwrap();
         assert_eq!(findings.len(), 1);
-        assert!(!findings[0].noisy, "taint flow present — should not be noisy");
+        assert!(
+            !findings[0].noisy,
+            "taint flow present — should not be noisy"
+        );
         // severity stays Critical or High (not downgraded)
         assert!(
             findings[0].severity == Severity::Critical || findings[0].severity == Severity::High,
@@ -2314,7 +2348,8 @@ mod tests {
         let mut files = HashMap::new();
         files.insert(
             PathBuf::from("src/app.py"),
-            "def handle(request):\n    data = request.get('expr')\n    result = eval(data)\n".into(),
+            "def handle(request):\n    data = request.get('expr')\n    result = eval(data)\n"
+                .into(),
         );
         let ctx = make_ctx(files, Language::Python);
         let findings = SecurityPatternDetector.analyze(&ctx).await.unwrap();

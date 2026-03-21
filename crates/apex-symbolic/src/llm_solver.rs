@@ -131,7 +131,11 @@ impl LlmSolver {
     }
 
     /// Call the LLM with retries and parse the response.
-    fn solve_with_llm(&self, constraints: &[String], negate_last: bool) -> Result<Option<InputSeed>> {
+    fn solve_with_llm(
+        &self,
+        constraints: &[String],
+        negate_last: bool,
+    ) -> Result<Option<InputSeed>> {
         let prompt = self.build_prompt(constraints, negate_last);
         let messages = vec![LlmMessage {
             role: "user".to_string(),
@@ -416,15 +420,14 @@ mod tests {
 
     #[test]
     fn llm_solver_produces_valid_input() {
-        let mock = Arc::new(MockLlmClient::new(vec![
-            r#"{"x": 42, "y": -5}"#.to_string(),
-        ]));
+        let mock = Arc::new(MockLlmClient::new(
+            vec![r#"{"x": 42, "y": -5}"#.to_string()],
+        ));
         let solver = LlmSolver::new(mock).with_max_retries(1);
         let result = solver.solve(&["x > 10".to_string()], false).unwrap();
         assert!(result.is_some());
         let seed = result.unwrap();
-        let json: serde_json::Value =
-            serde_json::from_slice(&seed.data).unwrap();
+        let json: serde_json::Value = serde_json::from_slice(&seed.data).unwrap();
         assert_eq!(json["x"], 42);
         assert_eq!(json["y"], -5);
     }
@@ -433,14 +436,16 @@ mod tests {
     fn llm_solver_handles_unsat_response() {
         let mock = Arc::new(MockLlmClient::new(vec!["UNSAT".to_string()]));
         let solver = LlmSolver::new(mock).with_max_retries(1);
-        let result = solver.solve(&["x > 10 and x < 5".to_string()], false).unwrap();
+        let result = solver
+            .solve(&["x > 10 and x < 5".to_string()], false)
+            .unwrap();
         assert!(result.is_none());
     }
 
     #[test]
     fn llm_solver_handles_unparseable_response() {
         let mock = Arc::new(MockLlmClient::new(vec![
-            "I don't know how to solve this".to_string(),
+            "I don't know how to solve this".to_string()
         ]));
         let solver = LlmSolver::new(mock).with_max_retries(1);
         let result = solver.solve(&["x > 10".to_string()], false).unwrap();
@@ -449,9 +454,7 @@ mod tests {
 
     #[test]
     fn llm_solver_with_source_context() {
-        let mock = Arc::new(MockLlmClient::new(vec![
-            r#"{"x": 15}"#.to_string(),
-        ]));
+        let mock = Arc::new(MockLlmClient::new(vec![r#"{"x": 15}"#.to_string()]));
         let solver = LlmSolver::new(mock)
             .with_source_context("def foo(x):\n    if x > 10:\n        return True".into())
             .with_max_retries(1);
@@ -461,9 +464,7 @@ mod tests {
 
     #[test]
     fn llm_solver_with_current_values() {
-        let mock = Arc::new(MockLlmClient::new(vec![
-            r#"{"x": 15}"#.to_string(),
-        ]));
+        let mock = Arc::new(MockLlmClient::new(vec![r#"{"x": 15}"#.to_string()]));
         let solver = LlmSolver::new(mock)
             .with_current_values(r#"{"x": 5}"#.into())
             .with_max_retries(1);
@@ -493,9 +494,7 @@ mod tests {
 
     #[test]
     fn llm_solver_negate_last_prompt_contains_negate() {
-        let mock = Arc::new(MockLlmClient::new(vec![
-            r#"{"x": 5}"#.to_string(),
-        ]));
+        let mock = Arc::new(MockLlmClient::new(vec![r#"{"x": 5}"#.to_string()]));
         let solver = LlmSolver::new(mock).with_max_retries(1);
         // The solve itself should work; we verify the prompt contains negate
         // by checking the solver completes without error
@@ -521,10 +520,7 @@ mod tests {
         let mock = Arc::new(MockLlmClient::new(vec![]));
         let solver = LlmSolver::new(mock);
 
-        let prompt = solver.build_prompt(
-            &["x > 0".to_string(), "x < 100".to_string()],
-            true,
-        );
+        let prompt = solver.build_prompt(&["x > 0".to_string(), "x < 100".to_string()], true);
         assert!(prompt.contains("NEGATE THIS"));
         assert!(prompt.contains("x < 100"));
     }
@@ -562,8 +558,7 @@ mod tests {
         let result = portfolio.solve(&["(= x 42)".to_string()], false).unwrap();
         assert!(result.is_some());
         let seed = result.unwrap();
-        let json: serde_json::Value =
-            serde_json::from_slice(&seed.data).unwrap();
+        let json: serde_json::Value = serde_json::from_slice(&seed.data).unwrap();
         assert_eq!(json["x"], 42);
     }
 
@@ -575,8 +570,7 @@ mod tests {
         let solver = LlmSolver::new(mock).with_max_retries(1);
         let result = solver.solve(&["x > 50".to_string()], false).unwrap();
         assert!(result.is_some());
-        let json: serde_json::Value =
-            serde_json::from_slice(&result.unwrap().data).unwrap();
+        let json: serde_json::Value = serde_json::from_slice(&result.unwrap().data).unwrap();
         assert_eq!(json["x"], 99);
     }
 

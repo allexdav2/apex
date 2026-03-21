@@ -117,7 +117,11 @@ fn patterns_for(lang: Language) -> &'static [DeserPattern] {
                 DeserPattern {
                     name: "ObjectInputStream.readObject",
                     regex: r"\.readObject\s*\(",
-                    safe_indicators: &["ObjectInputFilter", "resolveClass", "lookAheadObjectInputStream"],
+                    safe_indicators: &[
+                        "ObjectInputFilter",
+                        "resolveClass",
+                        "lookAheadObjectInputStream",
+                    ],
                     description: "ObjectInputStream.readObject() deserializes arbitrary objects",
                     suggestion: "Use ObjectInputFilter or a type-safe serialization format",
                     severity: Severity::High,
@@ -282,29 +286,25 @@ fn patterns_for(lang: Language) -> &'static [DeserPattern] {
             P
         }
         Language::C | Language::Cpp => {
-            static P: &[DeserPattern] = &[
-                DeserPattern {
-                    name: "unserialize (C/C++)",
-                    regex: r"\bunserialize\s*\(",
-                    safe_indicators: &[],
-                    description: "Custom unserialize function may be unsafe with untrusted data",
-                    suggestion: "Validate input format and use typed parsing",
-                    severity: Severity::Medium,
-                },
-            ];
+            static P: &[DeserPattern] = &[DeserPattern {
+                name: "unserialize (C/C++)",
+                regex: r"\bunserialize\s*\(",
+                safe_indicators: &[],
+                description: "Custom unserialize function may be unsafe with untrusted data",
+                suggestion: "Validate input format and use typed parsing",
+                severity: Severity::Medium,
+            }];
             P
         }
         Language::Rust => {
-            static P: &[DeserPattern] = &[
-                DeserPattern {
-                    name: "bincode::deserialize",
-                    regex: r"bincode::deserialize\s*[(<]",
-                    safe_indicators: &["options().with_limit", "DefaultOptions"],
-                    description: "bincode::deserialize from untrusted input can cause issues",
-                    suggestion: "Use bincode with size limits: options().with_limit().deserialize()",
-                    severity: Severity::Low,
-                },
-            ];
+            static P: &[DeserPattern] = &[DeserPattern {
+                name: "bincode::deserialize",
+                regex: r"bincode::deserialize\s*[(<]",
+                safe_indicators: &["options().with_limit", "DefaultOptions"],
+                description: "bincode::deserialize from untrusted input can cause issues",
+                suggestion: "Use bincode with size limits: options().with_limit().deserialize()",
+                severity: Severity::Low,
+            }];
             P
         }
         Language::Wasm => &[],
@@ -318,17 +318,7 @@ struct CompiledPatterns {
 static COMPILED: LazyLock<Vec<(Language, CompiledPatterns)>> = LazyLock::new(|| {
     use Language::*;
     let langs = [
-        Python,
-        JavaScript,
-        Java,
-        Kotlin,
-        Go,
-        Ruby,
-        CSharp,
-        Swift,
-        C,
-        Cpp,
-        Rust,
+        Python, JavaScript, Java, Kotlin, Go, Ruby, CSharp, Swift, C, Cpp, Rust,
     ];
     langs
         .iter()
@@ -337,9 +327,8 @@ static COMPILED: LazyLock<Vec<(Language, CompiledPatterns)>> = LazyLock::new(|| 
             let entries = pats
                 .iter()
                 .map(|p| {
-                    let re = Regex::new(p.regex).unwrap_or_else(|e| {
-                        panic!("invalid deser regex '{}': {}", p.regex, e)
-                    });
+                    let re = Regex::new(p.regex)
+                        .unwrap_or_else(|e| panic!("invalid deser regex '{}': {}", p.regex, e));
                     (p, re)
                 })
                 .collect();
@@ -429,7 +418,9 @@ impl Detector for MultiInsecureDeserDetector {
                         explanation: None,
                         fix: None,
                         cwe_ids: vec![502],
-                            noisy: false, base_severity: None, coverage_confidence: None,
+                        noisy: false,
+                        base_severity: None,
+                        coverage_confidence: None,
                     });
                     break; // one finding per line
                 }
@@ -466,7 +457,11 @@ mod tests {
 
     #[tokio::test]
     async fn multi_insecure_deser_python_pickle_loads() {
-        let ctx = single_file("src/data.py", "obj = pickle.loads(data)\n", Language::Python);
+        let ctx = single_file(
+            "src/data.py",
+            "obj = pickle.loads(data)\n",
+            Language::Python,
+        );
         let findings = MultiInsecureDeserDetector.analyze(&ctx).await.unwrap();
         assert_eq!(findings.len(), 1);
         assert_eq!(findings[0].severity, Severity::High);
@@ -522,7 +517,11 @@ mod tests {
 
     #[tokio::test]
     async fn multi_insecure_deser_python_shelve() {
-        let ctx = single_file("src/data.py", "db = shelve.open('data')\n", Language::Python);
+        let ctx = single_file(
+            "src/data.py",
+            "db = shelve.open('data')\n",
+            Language::Python,
+        );
         let findings = MultiInsecureDeserDetector.analyze(&ctx).await.unwrap();
         assert_eq!(findings.len(), 1);
         assert_eq!(findings[0].severity, Severity::Medium);
@@ -661,11 +660,7 @@ mod tests {
 
     #[tokio::test]
     async fn multi_insecure_deser_go_gob_decode() {
-        let ctx = single_file(
-            "main.go",
-            "dec := gob.NewDecoder(conn)\n",
-            Language::Go,
-        );
+        let ctx = single_file("main.go", "dec := gob.NewDecoder(conn)\n", Language::Go);
         let findings = MultiInsecureDeserDetector.analyze(&ctx).await.unwrap();
         assert_eq!(findings.len(), 1);
     }
@@ -686,22 +681,14 @@ mod tests {
 
     #[tokio::test]
     async fn multi_insecure_deser_ruby_marshal_load() {
-        let ctx = single_file(
-            "app/data.rb",
-            "obj = Marshal.load(data)\n",
-            Language::Ruby,
-        );
+        let ctx = single_file("app/data.rb", "obj = Marshal.load(data)\n", Language::Ruby);
         let findings = MultiInsecureDeserDetector.analyze(&ctx).await.unwrap();
         assert_eq!(findings.len(), 1);
     }
 
     #[tokio::test]
     async fn multi_insecure_deser_ruby_yaml_load() {
-        let ctx = single_file(
-            "app/config.rb",
-            "cfg = YAML.load(raw)\n",
-            Language::Ruby,
-        );
+        let ctx = single_file("app/config.rb", "cfg = YAML.load(raw)\n", Language::Ruby);
         let findings = MultiInsecureDeserDetector.analyze(&ctx).await.unwrap();
         assert_eq!(findings.len(), 1);
     }
@@ -719,11 +706,7 @@ mod tests {
 
     #[tokio::test]
     async fn multi_insecure_deser_ruby_eval() {
-        let ctx = single_file(
-            "app/exec.rb",
-            "result = eval(user_input)\n",
-            Language::Ruby,
-        );
+        let ctx = single_file("app/exec.rb", "result = eval(user_input)\n", Language::Ruby);
         let findings = MultiInsecureDeserDetector.analyze(&ctx).await.unwrap();
         assert_eq!(findings.len(), 1);
     }
@@ -876,11 +859,7 @@ mod tests {
 
     #[tokio::test]
     async fn multi_insecure_deser_skips_wasm() {
-        let ctx = single_file(
-            "src/module.wasm",
-            "pickle.loads(data)\n",
-            Language::Wasm,
-        );
+        let ctx = single_file("src/module.wasm", "pickle.loads(data)\n", Language::Wasm);
         let findings = MultiInsecureDeserDetector.analyze(&ctx).await.unwrap();
         assert!(findings.is_empty());
     }

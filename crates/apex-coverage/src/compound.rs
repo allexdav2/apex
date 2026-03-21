@@ -247,7 +247,10 @@ mod tests {
         oracle.add_default_signal(b.clone(), CoverageSignal::Instrumented(true));
         let severity = oracle.adjusted_severity(&b, 8.0);
         // conf ~0.999 → severity ~8.0 * (2.0 - 0.999) = ~8.008
-        assert!(severity < 8.1, "expected severity near base, got {severity}");
+        assert!(
+            severity < 8.1,
+            "expected severity near base, got {severity}"
+        );
     }
 
     #[test]
@@ -311,7 +314,10 @@ mod tests {
         oracle.add_wrap_coverage(b.clone(), true);
         let conf = oracle.coverage_confidence(&b);
         // Imported(true) at 0.95 → high confidence
-        assert!(conf > 0.9, "expected high confidence for wrap covered, got {conf}");
+        assert!(
+            conf > 0.9,
+            "expected high confidence for wrap covered, got {conf}"
+        );
     }
 
     #[test]
@@ -320,7 +326,10 @@ mod tests {
         let b = branch(21);
         oracle.add_wrap_coverage(b.clone(), false);
         let conf = oracle.coverage_confidence(&b);
-        assert!(conf < 0.1, "expected low confidence for wrap not-covered, got {conf}");
+        assert!(
+            conf < 0.1,
+            "expected low confidence for wrap not-covered, got {conf}"
+        );
     }
 
     #[test]
@@ -329,7 +338,10 @@ mod tests {
         let b = branch(22);
         oracle.add_frida_coverage(b.clone(), true);
         let conf = oracle.coverage_confidence(&b);
-        assert!(conf > 0.85, "expected high confidence for frida covered, got {conf}");
+        assert!(
+            conf > 0.85,
+            "expected high confidence for frida covered, got {conf}"
+        );
     }
 
     #[test]
@@ -354,7 +366,10 @@ mod tests {
         let b = branch(24);
         oracle.add_instrumented_coverage(b.clone(), true);
         let conf = oracle.coverage_confidence(&b);
-        assert!(conf > 0.99, "expected very high confidence for instrumented, got {conf}");
+        assert!(
+            conf > 0.99,
+            "expected very high confidence for instrumented, got {conf}"
+        );
     }
 
     #[test]
@@ -436,7 +451,10 @@ mod tests {
         oracle.add_default_signal(b.clone(), CoverageSignal::Imported(true));
         let conf = oracle.coverage_confidence(&b);
         // Imported(true) with conf=0.95 → high but not as extreme as instrumented
-        assert!(conf > 0.9, "expected high confidence for imported, got {conf}");
+        assert!(
+            conf > 0.9,
+            "expected high confidence for imported, got {conf}"
+        );
     }
 
     #[test]

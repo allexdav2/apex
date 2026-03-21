@@ -374,7 +374,9 @@ pub fn scan_hardcoded_secrets(source: &str, file_path: &str) -> Vec<Finding> {
                     explanation: None,
                     fix: None,
                     cwe_ids: vec![798],
-                    noisy: false, base_severity: None, coverage_confidence: None,
+                    noisy: false,
+                    base_severity: None,
+                    coverage_confidence: None,
                 });
             }
         }
@@ -790,7 +792,10 @@ mod tests {
         );
         let ctx = make_ctx(files, Language::Go);
         let findings = HardcodedSecretDetector.analyze(&ctx).await.unwrap();
-        assert!(!findings.is_empty(), "should detect Go apiKey := assignment");
+        assert!(
+            !findings.is_empty(),
+            "should detect Go apiKey := assignment"
+        );
     }
 
     #[tokio::test]
@@ -946,7 +951,10 @@ mod tests {
         );
         let ctx = make_ctx(files, Language::Swift);
         let findings = HardcodedSecretDetector.analyze(&ctx).await.unwrap();
-        assert!(findings.is_empty(), "should skip Swift ProcessInfo.environment");
+        assert!(
+            findings.is_empty(),
+            "should skip Swift ProcessInfo.environment"
+        );
     }
 
     // -----------------------------------------------------------------------
@@ -974,7 +982,10 @@ mod tests {
         );
         let ctx = make_ctx(files, Language::Kotlin);
         let findings = HardcodedSecretDetector.analyze(&ctx).await.unwrap();
-        assert!(!findings.is_empty(), "should detect Kotlin const val apiKey");
+        assert!(
+            !findings.is_empty(),
+            "should detect Kotlin const val apiKey"
+        );
     }
 
     #[tokio::test]

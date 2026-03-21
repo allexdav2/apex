@@ -23,11 +23,7 @@ pub struct CoverageInjection {
 pub fn inject_coverage(lang: Language, cmd: &[String], output_dir: &Path) -> CoverageInjection {
     match lang {
         Language::Python => {
-            let mut args = vec![
-                "coverage".into(),
-                "run".into(),
-                "-m".into(),
-            ];
+            let mut args = vec!["coverage".into(), "run".into(), "-m".into()];
             args.extend(cmd.iter().cloned());
             CoverageInjection {
                 env_vars: vec![(
@@ -39,10 +35,7 @@ pub fn inject_coverage(lang: Language, cmd: &[String], output_dir: &Path) -> Cov
         }
 
         Language::JavaScript => CoverageInjection {
-            env_vars: vec![(
-                "NODE_V8_COVERAGE".into(),
-                output_dir.display().to_string(),
-            )],
+            env_vars: vec![("NODE_V8_COVERAGE".into(), output_dir.display().to_string())],
             args: cmd.to_vec(),
         },
 
@@ -93,7 +86,10 @@ pub fn inject_coverage(lang: Language, cmd: &[String], output_dir: &Path) -> Cov
                 args.extend(cmd[1..].iter().cloned());
             }
             CoverageInjection {
-                env_vars: vec![("JACOCO_AGENT_DEST".into(), jacoco_dest.display().to_string())],
+                env_vars: vec![(
+                    "JACOCO_AGENT_DEST".into(),
+                    jacoco_dest.display().to_string(),
+                )],
                 args,
             }
         }
@@ -111,10 +107,7 @@ pub fn inject_coverage(lang: Language, cmd: &[String], output_dir: &Path) -> Cov
             let mut args = cmd.to_vec();
             args.extend([
                 "--collect:\"XPlat Code Coverage\"".into(),
-                format!(
-                    "--results-directory:{}",
-                    output_dir.display()
-                ),
+                format!("--results-directory:{}", output_dir.display()),
             ]);
             CoverageInjection {
                 env_vars: vec![],
@@ -126,10 +119,7 @@ pub fn inject_coverage(lang: Language, cmd: &[String], output_dir: &Path) -> Cov
             // SimpleCov is typically require'd in test_helper; we set the output
             // dir via env so it lands where we expect.
             CoverageInjection {
-                env_vars: vec![(
-                    "COVERAGE_DIR".into(),
-                    output_dir.display().to_string(),
-                )],
+                env_vars: vec![("COVERAGE_DIR".into(), output_dir.display().to_string())],
                 args: cmd.to_vec(),
             }
         }
@@ -210,10 +200,7 @@ mod tests {
         let out = PathBuf::from("/tmp/cov");
         let inj = inject_coverage(Language::JavaScript, &cmd(&["npm", "test"]), &out);
         assert_eq!(inj.args, cmd(&["npm", "test"]));
-        assert!(inj
-            .env_vars
-            .iter()
-            .any(|(k, _)| k == "NODE_V8_COVERAGE"));
+        assert!(inj.env_vars.iter().any(|(k, _)| k == "NODE_V8_COVERAGE"));
     }
 
     #[test]
@@ -255,10 +242,7 @@ mod tests {
     fn test_inject_swift() {
         let out = PathBuf::from("/tmp/cov");
         let inj = inject_coverage(Language::Swift, &cmd(&["swift", "test"]), &out);
-        assert!(inj
-            .args
-            .iter()
-            .any(|a| a == "--enable-code-coverage"));
+        assert!(inj.args.iter().any(|a| a == "--enable-code-coverage"));
     }
 
     #[test]
@@ -385,10 +369,7 @@ mod tests {
 
     #[test]
     fn test_detect_unknown() {
-        assert_eq!(
-            detect_language_from_command(&cmd(&["unknown-tool"])),
-            None
-        );
+        assert_eq!(detect_language_from_command(&cmd(&["unknown-tool"])), None);
     }
 
     #[test]

@@ -706,7 +706,10 @@ impl<'a> InternalJsParser<'a> {
             .trim()
             .to_string();
         if !name.is_empty() {
-            let id = cpg.add_node(NodeKind::Identifier { name, line: line_no });
+            let id = cpg.add_node(NodeKind::Identifier {
+                name,
+                line: line_no,
+            });
             cpg.add_edge(parent, id, EdgeKind::Argument { index: arg_index });
         }
     }
@@ -717,7 +720,10 @@ impl<'a> InternalJsParser<'a> {
             return None;
         }
         let callee = &expr[..paren];
-        if !callee.chars().all(|c| c.is_alphanumeric() || c == '_' || c == '.') {
+        if !callee
+            .chars()
+            .all(|c| c.is_alphanumeric() || c == '_' || c == '.')
+        {
             return None;
         }
         let close = expr.rfind(')')?;
@@ -751,7 +757,10 @@ fn parse_js_ctrl(stmt: &str, line_no: u32) -> Option<NodeKind> {
     } else {
         return None;
     };
-    Some(NodeKind::ControlStructure { kind, line: line_no })
+    Some(NodeKind::ControlStructure {
+        kind,
+        line: line_no,
+    })
 }
 
 // ─── Go internal parser ───────────────────────────────────────────────────────
@@ -803,26 +812,25 @@ impl<'a> InternalGoParser<'a> {
         let paren = after_func.find('(').unwrap_or(after_func.len());
         let fn_name = after_func[..paren].trim().to_string();
 
-        let params: Vec<String> = if let (Some(open), Some(close)) =
-            (after_func.find('('), after_func.find(')'))
-        {
-            let inner = &after_func[open + 1..close];
-            inner
-                .split(',')
-                .flat_map(|p| {
-                    // Go params: `name type` — take just the name
-                    let parts: Vec<&str> = p.trim().splitn(2, ' ').collect();
-                    if !parts.is_empty() && !parts[0].is_empty() {
-                        vec![parts[0].to_string()]
-                    } else {
-                        vec![]
-                    }
-                })
-                .filter(|p| !p.is_empty())
-                .collect()
-        } else {
-            vec![]
-        };
+        let params: Vec<String> =
+            if let (Some(open), Some(close)) = (after_func.find('('), after_func.find(')')) {
+                let inner = &after_func[open + 1..close];
+                inner
+                    .split(',')
+                    .flat_map(|p| {
+                        // Go params: `name type` — take just the name
+                        let parts: Vec<&str> = p.trim().splitn(2, ' ').collect();
+                        if !parts.is_empty() && !parts[0].is_empty() {
+                            vec![parts[0].to_string()]
+                        } else {
+                            vec![]
+                        }
+                    })
+                    .filter(|p| !p.is_empty())
+                    .collect()
+            } else {
+                vec![]
+            };
 
         let method_id = cpg.add_node(NodeKind::Method {
             name: fn_name,
@@ -930,7 +938,10 @@ impl<'a> InternalGoParser<'a> {
             .trim()
             .to_string();
         if !name.is_empty() {
-            let id = cpg.add_node(NodeKind::Identifier { name, line: line_no });
+            let id = cpg.add_node(NodeKind::Identifier {
+                name,
+                line: line_no,
+            });
             cpg.add_edge(parent, id, EdgeKind::Argument { index: arg_index });
         }
     }
@@ -941,7 +952,10 @@ impl<'a> InternalGoParser<'a> {
             return None;
         }
         let callee = &expr[..paren];
-        if !callee.chars().all(|c| c.is_alphanumeric() || c == '_' || c == '.') {
+        if !callee
+            .chars()
+            .all(|c| c.is_alphanumeric() || c == '_' || c == '.')
+        {
             return None;
         }
         let close = expr.rfind(')')?;
@@ -971,7 +985,10 @@ fn parse_go_ctrl(stmt: &str, line_no: u32) -> Option<NodeKind> {
     } else {
         return None;
     };
-    Some(NodeKind::ControlStructure { kind, line: line_no })
+    Some(NodeKind::ControlStructure {
+        kind,
+        line: line_no,
+    })
 }
 
 // ─── Tests ───────────────────────────────────────────────────────────────────
@@ -1566,11 +1583,11 @@ mod tests {
     #[test]
     fn python_cpg_builder_build_produces_non_empty_cpg() {
         let builder = PythonCpgBuilder;
-        let cpg = builder.build(
-            "def greet(name):\n    print(name)\n",
-            "greet.py",
+        let cpg = builder.build("def greet(name):\n    print(name)\n", "greet.py");
+        assert!(
+            cpg.node_count() > 0,
+            "CpgBuilder::build should produce at least one node"
         );
-        assert!(cpg.node_count() > 0, "CpgBuilder::build should produce at least one node");
     }
 
     /// CpgBuilder is object-safe — can be stored as Box<dyn CpgBuilder>.
@@ -1582,7 +1599,8 @@ mod tests {
         let cpg = builder.build("def foo():\n    pass\n", "foo.py");
         // Should create at least the Method node.
         assert!(
-            cpg.nodes().any(|(_, k)| matches!(k, NodeKind::Method { .. })),
+            cpg.nodes()
+                .any(|(_, k)| matches!(k, NodeKind::Method { .. })),
             "boxed CpgBuilder should produce a Method node"
         );
     }

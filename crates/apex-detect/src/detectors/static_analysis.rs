@@ -126,7 +126,9 @@ pub fn parse_clippy_line(line: &str) -> Vec<Finding> {
         explanation: None,
         fix: None,
         cwe_ids: vec![],
-                    noisy: false, base_severity: None, coverage_confidence: None,
+        noisy: false,
+        base_severity: None,
+        coverage_confidence: None,
     }]
 }
 

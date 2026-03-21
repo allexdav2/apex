@@ -12,7 +12,8 @@ pub struct PoisonedMutexRecoveryDetector;
 
 /// More specific check: the line has a lock() call AND the poison recovery pattern.
 fn is_poison_recovery(line: &str) -> bool {
-    let has_lock = line.contains(".lock()") || line.contains(".write()") || line.contains(".read()");
+    let has_lock =
+        line.contains(".lock()") || line.contains(".write()") || line.contains(".read()");
     let has_recovery = line.contains("into_inner()") && line.contains("unwrap_or_else");
     has_lock && has_recovery
 }
@@ -57,22 +58,28 @@ fn analyze_source(path: &std::path::Path, source: &str, lang: Language) -> Vec<F
                 explanation: None,
                 fix: None,
                 cwe_ids: vec![362],
-                    noisy: false, base_severity: None, coverage_confidence: None,
+                noisy: false,
+                base_severity: None,
+                coverage_confidence: None,
             });
         } else {
             // Multi-line pattern: `.lock()` on one line, `.unwrap_or_else(|e| e.into_inner())`
             // may be on the next. Check a 3-line window.
             let window_end = (line_idx + 3).min(lines.len());
             let window = lines[line_idx..window_end].join(" ");
-            if (window.contains(".lock()") || window.contains(".write()") || window.contains(".read()"))
+            if (window.contains(".lock()")
+                || window.contains(".write()")
+                || window.contains(".read()"))
                 && window.contains("into_inner()")
                 && window.contains("unwrap_or_else")
             {
                 // Only emit if this line starts the pattern (has the lock call)
-                if (line.contains(".lock()") || line.contains(".write()") || line.contains(".read()"))
-                    && !findings.iter().any(|f: &Finding| {
-                        f.line == Some((line_idx + 1) as u32)
-                    })
+                if (line.contains(".lock()")
+                    || line.contains(".write()")
+                    || line.contains(".read()"))
+                    && !findings
+                        .iter()
+                        .any(|f: &Finding| f.line == Some((line_idx + 1) as u32))
                 {
                     let line_1based = (line_idx + 1) as u32;
                     findings.push(Finding {
@@ -83,10 +90,11 @@ fn analyze_source(path: &std::path::Path, source: &str, lang: Language) -> Vec<F
                         file: path.to_path_buf(),
                         line: Some(line_1based),
                         title: "Silent mutex poison recovery via into_inner()".into(),
-                        description: "`.unwrap_or_else(|e| e.into_inner())` silently recovers from \
+                        description:
+                            "`.unwrap_or_else(|e| e.into_inner())` silently recovers from \
                                       mutex poisoning. The protected data may be in a corrupt or \
                                       partially-updated state after a panic."
-                            .into(),
+                                .into(),
                         evidence: vec![],
                         covered: false,
                         suggestion: "Handle the poisoned guard explicitly or use \
@@ -95,7 +103,9 @@ fn analyze_source(path: &std::path::Path, source: &str, lang: Language) -> Vec<F
                         explanation: None,
                         fix: None,
                         cwe_ids: vec![362],
-                    noisy: false, base_severity: None, coverage_confidence: None,
+                        noisy: false,
+                        base_severity: None,
+                        coverage_confidence: None,
                     });
                 }
             }
@@ -173,11 +183,7 @@ fn get_data(m: &Mutex<Vec<i32>>) -> Vec<i32> {
     #[test]
     fn no_finding_for_non_rust() {
         let src = "m.lock().unwrap_or_else(|e| e.into_inner())";
-        let findings = analyze_source(
-            &PathBuf::from("src/app.py"),
-            src,
-            Language::Python,
-        );
+        let findings = analyze_source(&PathBuf::from("src/app.py"), src, Language::Python);
         assert_eq!(findings.len(), 0);
     }
 

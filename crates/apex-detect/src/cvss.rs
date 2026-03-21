@@ -881,7 +881,9 @@ mod tests {
             explanation: None,
             fix: None,
             cwe_ids: vec![78],
-                    noisy: false, base_severity: None, coverage_confidence: None,
+            noisy: false,
+            base_severity: None,
+            coverage_confidence: None,
         };
         let (score, vector) = score_finding(&finding);
         assert!(score.is_some());
@@ -907,7 +909,9 @@ mod tests {
             explanation: None,
             fix: None,
             cwe_ids: vec![],
-                    noisy: false, base_severity: None, coverage_confidence: None,
+            noisy: false,
+            base_severity: None,
+            coverage_confidence: None,
         };
         let (score, vector) = score_finding(&finding);
         assert!(score.is_none());
@@ -931,7 +935,9 @@ mod tests {
             explanation: None,
             fix: None,
             cwe_ids: vec![79, 78], // Should use 79 (XSS), not 78
-                    noisy: false, base_severity: None, coverage_confidence: None,
+            noisy: false,
+            base_severity: None,
+            coverage_confidence: None,
         };
         let (score, _vector) = score_finding(&finding);
         let s = score.unwrap();

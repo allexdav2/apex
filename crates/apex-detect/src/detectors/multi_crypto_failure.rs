@@ -298,7 +298,8 @@ fn patterns_for(lang: Language) -> &'static [CryptoPattern] {
                     regex: r"\bnew\s+Random\s*\(",
                     kind: CryptoIssueKind::InsecureRandom,
                     description: "System.Random is not cryptographically secure",
-                    suggestion: "Use RandomNumberGenerator.Create() or RandomNumberGenerator.GetBytes()",
+                    suggestion:
+                        "Use RandomNumberGenerator.Create() or RandomNumberGenerator.GetBytes()",
                 },
             ];
             P
@@ -439,8 +440,7 @@ fn patterns_for(lang: Language) -> &'static [CryptoPattern] {
 /// Security-related keywords — if an insecure random finding appears near
 /// one of these, severity is elevated.
 const SECURITY_KEYWORDS: &[&str] = &[
-    "token", "key", "secret", "password", "salt", "nonce", "csrf", "auth", "session", "otp",
-    "seed",
+    "token", "key", "secret", "password", "salt", "nonce", "csrf", "auth", "session", "otp", "seed",
 ];
 
 struct CompiledPatterns {
@@ -451,17 +451,7 @@ struct CompiledPatterns {
 static COMPILED: LazyLock<Vec<(Language, CompiledPatterns)>> = LazyLock::new(|| {
     use Language::*;
     let langs = [
-        Python,
-        JavaScript,
-        Java,
-        Kotlin,
-        Go,
-        Ruby,
-        CSharp,
-        Swift,
-        C,
-        Cpp,
-        Rust,
+        Python, JavaScript, Java, Kotlin, Go, Ruby, CSharp, Swift, C, Cpp, Rust,
     ];
     langs
         .iter()
@@ -470,9 +460,8 @@ static COMPILED: LazyLock<Vec<(Language, CompiledPatterns)>> = LazyLock::new(|| 
             let entries = pats
                 .iter()
                 .map(|p| {
-                    let re = Regex::new(p.regex).unwrap_or_else(|e| {
-                        panic!("invalid crypto regex '{}': {}", p.regex, e)
-                    });
+                    let re = Regex::new(p.regex)
+                        .unwrap_or_else(|e| panic!("invalid crypto regex '{}': {}", p.regex, e));
                     (
                         CryptoPattern {
                             regex: p.regex,
@@ -535,8 +524,7 @@ impl Detector for MultiCryptoFailureDetector {
                     }
 
                     // For JS createCipher, skip createCipheriv
-                    if pattern.regex.contains("createCipher")
-                        && trimmed.contains("createCipheriv")
+                    if pattern.regex.contains("createCipher") && trimmed.contains("createCipheriv")
                     {
                         continue;
                     }
@@ -544,8 +532,7 @@ impl Detector for MultiCryptoFailureDetector {
                     // For insecure random, only flag in security contexts
                     if matches!(pattern.kind, CryptoIssueKind::InsecureRandom) {
                         let lower = trimmed.to_lowercase();
-                        let near_security =
-                            SECURITY_KEYWORDS.iter().any(|kw| lower.contains(kw));
+                        let near_security = SECURITY_KEYWORDS.iter().any(|kw| lower.contains(kw));
                         if !near_security {
                             continue;
                         }
@@ -558,11 +545,7 @@ impl Detector for MultiCryptoFailureDetector {
                         category: FindingCategory::SecuritySmell,
                         file: path.clone(),
                         line: Some(line_1based),
-                        title: format!(
-                            "{} at line {}",
-                            pattern.kind.title_prefix(),
-                            line_1based
-                        ),
+                        title: format!("{} at line {}", pattern.kind.title_prefix(), line_1based),
                         description: format!(
                             "{} in {}:{}",
                             pattern.description,
@@ -575,7 +558,9 @@ impl Detector for MultiCryptoFailureDetector {
                         explanation: None,
                         fix: None,
                         cwe_ids: pattern.kind.cwe_ids(),
-                        noisy: false, base_severity: None, coverage_confidence: None,
+                        noisy: false,
+                        base_severity: None,
+                        coverage_confidence: None,
                     });
                     break; // one finding per line
                 }
@@ -627,7 +612,11 @@ mod tests {
 
     #[tokio::test]
     async fn multi_crypto_python_detects_des() {
-        let ctx = single_file("src/enc.py", "c = DES.new(key, DES.MODE_ECB)\n", Language::Python);
+        let ctx = single_file(
+            "src/enc.py",
+            "c = DES.new(key, DES.MODE_ECB)\n",
+            Language::Python,
+        );
         let findings = MultiCryptoFailureDetector.analyze(&ctx).await.unwrap();
         assert_eq!(findings.len(), 1);
         assert_eq!(findings[0].cwe_ids, vec![327]);
@@ -635,11 +624,7 @@ mod tests {
 
     #[tokio::test]
     async fn multi_crypto_python_detects_insecure_random() {
-        let ctx = single_file(
-            "src/auth.py",
-            "token = random.random()\n",
-            Language::Python,
-        );
+        let ctx = single_file("src/auth.py", "token = random.random()\n", Language::Python);
         let findings = MultiCryptoFailureDetector.analyze(&ctx).await.unwrap();
         assert_eq!(findings.len(), 1);
         assert_eq!(findings[0].cwe_ids, vec![330]);
@@ -647,11 +632,7 @@ mod tests {
 
     #[tokio::test]
     async fn multi_crypto_python_skips_random_without_security() {
-        let ctx = single_file(
-            "src/game.py",
-            "roll = random.random()\n",
-            Language::Python,
-        );
+        let ctx = single_file("src/game.py", "roll = random.random()\n", Language::Python);
         let findings = MultiCryptoFailureDetector.analyze(&ctx).await.unwrap();
         assert!(findings.is_empty());
     }
@@ -774,33 +755,21 @@ mod tests {
 
     #[tokio::test]
     async fn multi_crypto_go_detects_md5_import() {
-        let ctx = single_file(
-            "main.go",
-            "import \"crypto/md5\"\n",
-            Language::Go,
-        );
+        let ctx = single_file("main.go", "import \"crypto/md5\"\n", Language::Go);
         let findings = MultiCryptoFailureDetector.analyze(&ctx).await.unwrap();
         assert_eq!(findings.len(), 1);
     }
 
     #[tokio::test]
     async fn multi_crypto_go_detects_sha1_new() {
-        let ctx = single_file(
-            "main.go",
-            "h := sha1.New()\n",
-            Language::Go,
-        );
+        let ctx = single_file("main.go", "h := sha1.New()\n", Language::Go);
         let findings = MultiCryptoFailureDetector.analyze(&ctx).await.unwrap();
         assert_eq!(findings.len(), 1);
     }
 
     #[tokio::test]
     async fn multi_crypto_go_detects_math_rand_import() {
-        let ctx = single_file(
-            "main.go",
-            "import \"math/rand\"\n",
-            Language::Go,
-        );
+        let ctx = single_file("main.go", "import \"math/rand\"\n", Language::Go);
         let findings = MultiCryptoFailureDetector.analyze(&ctx).await.unwrap();
         // math/rand import flagged but only with security keyword context
         // The import line itself doesn't have a security keyword, so this is
@@ -813,22 +782,14 @@ mod tests {
 
     #[tokio::test]
     async fn multi_crypto_go_detects_rand_intn_security() {
-        let ctx = single_file(
-            "main.go",
-            "token := rand.Intn(999999)\n",
-            Language::Go,
-        );
+        let ctx = single_file("main.go", "token := rand.Intn(999999)\n", Language::Go);
         let findings = MultiCryptoFailureDetector.analyze(&ctx).await.unwrap();
         assert_eq!(findings.len(), 1);
     }
 
     #[tokio::test]
     async fn multi_crypto_go_detects_des_cipher() {
-        let ctx = single_file(
-            "main.go",
-            "block, _ := des.NewCipher(key)\n",
-            Language::Go,
-        );
+        let ctx = single_file("main.go", "block, _ := des.NewCipher(key)\n", Language::Go);
         let findings = MultiCryptoFailureDetector.analyze(&ctx).await.unwrap();
         assert_eq!(findings.len(), 1);
     }
@@ -859,11 +820,7 @@ mod tests {
 
     #[tokio::test]
     async fn multi_crypto_ruby_detects_rand_security() {
-        let ctx = single_file(
-            "app/auth.rb",
-            "token = rand(999999)\n",
-            Language::Ruby,
-        );
+        let ctx = single_file("app/auth.rb", "token = rand(999999)\n", Language::Ruby);
         let findings = MultiCryptoFailureDetector.analyze(&ctx).await.unwrap();
         assert_eq!(findings.len(), 1);
     }
@@ -872,11 +829,7 @@ mod tests {
 
     #[tokio::test]
     async fn multi_crypto_csharp_detects_md5_create() {
-        let ctx = single_file(
-            "src/Hash.cs",
-            "var md5 = MD5.Create();\n",
-            Language::CSharp,
-        );
+        let ctx = single_file("src/Hash.cs", "var md5 = MD5.Create();\n", Language::CSharp);
         let findings = MultiCryptoFailureDetector.analyze(&ctx).await.unwrap();
         assert_eq!(findings.len(), 1);
     }
@@ -953,11 +906,7 @@ mod tests {
 
     #[tokio::test]
     async fn multi_crypto_c_detects_md5_init() {
-        let ctx = single_file(
-            "src/hash.c",
-            "MD5_Init(&ctx);\n",
-            Language::C,
-        );
+        let ctx = single_file("src/hash.c", "MD5_Init(&ctx);\n", Language::C);
         let findings = MultiCryptoFailureDetector.analyze(&ctx).await.unwrap();
         assert_eq!(findings.len(), 1);
     }
@@ -975,22 +924,14 @@ mod tests {
 
     #[tokio::test]
     async fn multi_crypto_c_detects_rand_security() {
-        let ctx = single_file(
-            "src/auth.c",
-            "int token = rand();\n",
-            Language::C,
-        );
+        let ctx = single_file("src/auth.c", "int token = rand();\n", Language::C);
         let findings = MultiCryptoFailureDetector.analyze(&ctx).await.unwrap();
         assert_eq!(findings.len(), 1);
     }
 
     #[tokio::test]
     async fn multi_crypto_cpp_detects_sha1() {
-        let ctx = single_file(
-            "src/hash.cpp",
-            "SHA1(data, len, digest);\n",
-            Language::Cpp,
-        );
+        let ctx = single_file("src/hash.cpp", "SHA1(data, len, digest);\n", Language::Cpp);
         let findings = MultiCryptoFailureDetector.analyze(&ctx).await.unwrap();
         assert_eq!(findings.len(), 1);
     }
@@ -1047,22 +988,14 @@ mod tests {
 
     #[tokio::test]
     async fn multi_crypto_skips_comments() {
-        let ctx = single_file(
-            "src/hash.py",
-            "# h = hashlib.md5(data)\n",
-            Language::Python,
-        );
+        let ctx = single_file("src/hash.py", "# h = hashlib.md5(data)\n", Language::Python);
         let findings = MultiCryptoFailureDetector.analyze(&ctx).await.unwrap();
         assert!(findings.is_empty());
     }
 
     #[tokio::test]
     async fn multi_crypto_skips_wasm() {
-        let ctx = single_file(
-            "src/module.wasm",
-            "hashlib.md5(data)\n",
-            Language::Wasm,
-        );
+        let ctx = single_file("src/module.wasm", "hashlib.md5(data)\n", Language::Wasm);
         let findings = MultiCryptoFailureDetector.analyze(&ctx).await.unwrap();
         assert!(findings.is_empty());
     }

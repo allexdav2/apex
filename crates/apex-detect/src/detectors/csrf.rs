@@ -23,27 +23,23 @@ pub struct CsrfDetector;
 static DJANGO_CSRF_EXEMPT: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"@csrf_exempt").expect("invalid regex"));
 
-static DJANGO_POST_HANDLER: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r#"request\.method\s*==\s*['"]POST['"]"#).expect("invalid regex")
-});
+static DJANGO_POST_HANDLER: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r#"request\.method\s*==\s*['"]POST['"]"#).expect("invalid regex"));
 
 // ── Flask ───────────────────────────────────────────────────────────────
 
-static FLASK_METHODS_POST: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r#"methods\s*=\s*\[.*['"]POST['"]"#).expect("invalid regex")
-});
+static FLASK_METHODS_POST: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r#"methods\s*=\s*\[.*['"]POST['"]"#).expect("invalid regex"));
 
 // ── Express ─────────────────────────────────────────────────────────────
 
-static EXPRESS_MUTATION_ROUTE: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r#"\.\s*(?:post|put|delete|patch)\s*\("#).expect("invalid regex")
-});
+static EXPRESS_MUTATION_ROUTE: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r#"\.\s*(?:post|put|delete|patch)\s*\("#).expect("invalid regex"));
 
 // ── Spring ──────────────────────────────────────────────────────────────
 
-static SPRING_CSRF_DISABLE: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r#"csrf\s*\(\s*\)\s*\.\s*disable\s*\("#).expect("invalid regex")
-});
+static SPRING_CSRF_DISABLE: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r#"csrf\s*\(\s*\)\s*\.\s*disable\s*\("#).expect("invalid regex"));
 
 // ── Rails ───────────────────────────────────────────────────────────────
 
@@ -53,9 +49,8 @@ static RAILS_SKIP_CSRF: LazyLock<Regex> = LazyLock::new(|| {
 
 // ── Go ──────────────────────────────────────────────────────────────────
 
-static GO_HANDLE_FUNC: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r#"(?:HandleFunc|Handle)\s*\("#).expect("invalid regex")
-});
+static GO_HANDLE_FUNC: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r#"(?:HandleFunc|Handle)\s*\("#).expect("invalid regex"));
 
 static GO_POST_METHOD: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r#"r\.Method\s*==\s*"POST"|\.Methods\s*\(\s*"POST""#).expect("invalid regex")
@@ -193,11 +188,15 @@ impl Detector for CsrfDetector {
                                     ),
                                     evidence: vec![],
                                     covered: false,
-                                    suggestion: "Add csurf middleware to protect state-changing routes".into(),
+                                    suggestion:
+                                        "Add csurf middleware to protect state-changing routes"
+                                            .into(),
                                     explanation: None,
                                     fix: None,
                                     cwe_ids: vec![352],
-                                    noisy: false, base_severity: None, coverage_confidence: None,
+                                    noisy: false,
+                                    base_severity: None,
+                                    coverage_confidence: None,
                                 });
                             }
                         }

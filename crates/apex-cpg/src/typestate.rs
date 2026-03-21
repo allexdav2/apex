@@ -475,10 +475,7 @@ pub fn analyze_typestate(cpg: &Cpg, machines: &[StateMachine]) -> Vec<TypeStateV
 
     for &exit in &exit_nodes {
         if let Some(state_map) = node_states.get(&exit) {
-            let line = cpg
-                .node(exit)
-                .and_then(node_line)
-                .unwrap_or(0);
+            let line = cpg.node(exit).and_then(node_line).unwrap_or(0);
             for (var, vs) in state_map {
                 let machine = &machines[vs.machine_idx];
                 if machine.leak_on_scope_exit
@@ -1010,9 +1007,11 @@ f.read()
         let machines = vec![file_state_machine()];
         let violations = analyze_source(src, &machines);
         assert!(
-            violations.iter().any(|v| v.kind == ViolationKind::UseAfterClose
-                && v.variable == "f"
-                && v.line == 5),
+            violations
+                .iter()
+                .any(|v| v.kind == ViolationKind::UseAfterClose
+                    && v.variable == "f"
+                    && v.line == 5),
             "expected use-after-close on line 5, got: {:?}",
             violations
         );
@@ -1151,9 +1150,11 @@ conn.execute('SELECT 2')
         let machines = vec![db_connection_state_machine()];
         let violations = analyze_source(src, &machines);
         assert!(
-            violations.iter().any(|v| v.kind == ViolationKind::UseAfterClose
-                && v.variable == "conn"
-                && v.line == 5),
+            violations
+                .iter()
+                .any(|v| v.kind == ViolationKind::UseAfterClose
+                    && v.variable == "conn"
+                    && v.line == 5),
             "expected use-after-close, got: {:?}",
             violations
         );
@@ -1369,13 +1370,19 @@ conn.close()
 
     #[test]
     fn violation_kind_display() {
-        assert_eq!(format!("{}", ViolationKind::UseAfterClose), "use-after-close");
+        assert_eq!(
+            format!("{}", ViolationKind::UseAfterClose),
+            "use-after-close"
+        );
         assert_eq!(
             format!("{}", ViolationKind::DoubleFree),
             "double-free/double-close"
         );
         assert_eq!(format!("{}", ViolationKind::ResourceLeak), "resource-leak");
-        assert_eq!(format!("{}", ViolationKind::DoubleAcquire), "double-acquire");
+        assert_eq!(
+            format!("{}", ViolationKind::DoubleAcquire),
+            "double-acquire"
+        );
     }
 
     // ---- Multiple variables tracked simultaneously ----

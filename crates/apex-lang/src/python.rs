@@ -163,7 +163,7 @@ impl<R: CommandRunner> PythonRunner<R> {
             )));
         }
 
-        Ok(venv_python.to_string_lossy().into_owned())
+        Ok(external_python.to_string_lossy().into_owned())
     }
 
     /// Resolve python for a specific target: prefer venv, fall back to system.

@@ -534,6 +534,38 @@ async fn run_doctor_with_runner(runner: &dyn CommandRunner) -> color_eyre::Resul
     total_failures += print_group("WASM  (--lang wasm)", &wasm_checks);
     total_failures += print_group("Firecracker  (--strategy fuzz with VMs)", &fc_checks);
 
+    // Toolchain detection from project files
+    let cwd = std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."));
+    let toolchain_checks = crate::toolchain::format_toolchain_checks(&cwd);
+    if !toolchain_checks.is_empty() {
+        let green = "\x1b[32m";
+        let red = "\x1b[31m";
+        let bold = "\x1b[1m";
+        let reset = "\x1b[0m";
+
+        println!("\n{bold}Toolchain (detected from project){reset}");
+        println!("─────────────────────────────────");
+        for tc in &toolchain_checks {
+            println!("{tc}");
+        }
+
+        let missing = toolchain_checks.iter().filter(|t| !t.installed).count();
+        if missing > 0 {
+            println!(
+                "\n  {red}{missing} toolchain(s) not installed.{reset} \
+                 Install mise for auto-setup: https://mise.jdx.dev"
+            );
+        }
+
+        // Also check for environment config
+        if let Some(env_cfg) = crate::toolchain::detect_environment_config(&cwd) {
+            println!(
+                "\n  {green}Environment:{reset} {env_cfg} detected — \
+                 toolchain may be managed automatically"
+            );
+        }
+    }
+
     println!();
 
     if total_failures == 0 {

@@ -12,6 +12,7 @@ pub mod doctor;
 pub mod fuzz;
 pub mod integrate;
 pub mod mcp;
+pub mod toolchain;
 pub mod wrap;
 
 use apex_agent::{AgentCluster, OrchestratorConfig};
@@ -889,6 +890,42 @@ async fn run_analyze(args: AnalyzeArgs, cfg: &ApexConfig) -> Result<()> {
         }
         for warning in &info.warnings {
             eprintln!("  \x1b[33m\u{26a0}\x1b[0m {warning}");
+        }
+    }
+
+    // ── 1b. Toolchain detection ─────────────────────────────────────────
+    let detected_tools = toolchain::detect_toolchain_versions(&target_path);
+    if !detected_tools.is_empty() {
+        info!(count = detected_tools.len(), "detected toolchain requirements");
+        if toolchain::MiseBackend::is_available() {
+            let results = toolchain::MiseBackend::ensure_installed(&detected_tools);
+            for (tool, installed) in &results {
+                if *installed {
+                    info!(%tool, "installed via mise");
+                }
+            }
+        } else {
+            for tool in &detected_tools {
+                eprintln!(
+                    "  \x1b[33m\u{26a0}\x1b[0m {}: {} needed (from {}). Install mise for auto-setup.",
+                    tool.tool, tool.version, tool.source,
+                );
+            }
+        }
+    }
+
+    // Environment config hints
+    if let Some(env_cfg) = toolchain::detect_environment_config(&target_path) {
+        match env_cfg {
+            toolchain::EnvironmentConfig::Devcontainer => {
+                info!("project has devcontainer.json — consider: devcontainer up && apex analyze");
+            }
+            toolchain::EnvironmentConfig::Devbox => {
+                info!("project has devbox.json — consider: devbox shell && apex analyze");
+            }
+            toolchain::EnvironmentConfig::Mise => {
+                info!("project has mise.toml — toolchain versions managed by mise");
+            }
         }
     }
 

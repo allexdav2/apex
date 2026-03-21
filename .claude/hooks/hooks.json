@@ -1,9 +1,11 @@
 {
+  "description": "Fleet hooks — auto-continuation, notification logging, officer auto-dispatch (dual runtime: Agent Teams + subagent fallback), ownership tracking, tool usage mining, and active bridge awareness",
+  "schema_version": "3.0",
   "hooks": {
     "SubagentStop": [
       {
         "description": "Ralph — auto-continue crew/officer agents that stop with questions instead of results",
-        "matcher": "crew|officer",
+        "matcher": "crew|officer|fleet:crew|fleet:officer",
         "hooks": [
           {
             "type": "command",
@@ -12,22 +14,53 @@
         ]
       },
       {
-        "description": "Auto-dispatch officers when crew agents complete implementation work matching SDLC concerns",
-        "matcher": "crew",
+        "description": "Persist crew notification logs when a crew agent reports partner-impacting changes (subagent fallback runtime)",
+        "matcher": "crew|fleet:crew",
         "hooks": [
           {
-            "type": "prompt",
-            "prompt": "Determine if the crew agent performed implementation work (code changes). Look for evidence in its response: file paths it wrote/edited, commit messages, branch names, FLEET_NOTIFICATION blocks, or statements like 'created/modified/updated/refactored/fixed/implemented'. Mentions of 'reviewed', 'acknowledged', 'no action needed', or pure Q&A responses do NOT count as implementation work.\n\nIf NO implementation work was performed, do nothing — say nothing.\n\nIf implementation work WAS performed:\n1. Identify the crew name from the response (look for crew name in branch names like fleet/crew/<name>/... or agent self-identification).\n2. Read .fleet/crews/<crew-name>.yaml to get the sdlc_concerns list.\n3. If sdlc_concerns is empty or missing, do nothing — say nothing.\n4. Read all .fleet/officers/*.yaml files.\n5. For each officer, check if ANY of the officer's triggers list items match ANY of the crew's sdlc_concerns items (exact string match).\n6. For each matching officer, dispatch it via the Agent tool with this prompt:\n   'You are the <officer title> (<officer name>).\n   Your config:\n   <full officer YAML contents>\n   ---\n   Auto-dispatched after <crew-name>-crew completed implementation work.\n   Crew config: <crew YAML contents>\n   Changes summary: <extract from crew response: what files were changed and what was done>\n   ---\n   Review the crew\\'s changes against your review_checklist and expertise. Return structured findings with severity (critical/warning/info) and recommendations. Focus only on your domain. Be concise.'\n7. After dispatching, briefly confirm: 'Fleet: auto-dispatched officer review — <officer-names> reviewing <crew-name>-crew changes.'\n\nIf .fleet/ directory does not exist, do nothing."
+            "type": "command",
+            "command": "${CLAUDE_PLUGIN_ROOT}/hooks/notification-logger.sh"
           }
         ]
       },
       {
-        "description": "Persist crew notification logs when a crew agent reports partner-impacting changes",
-        "matcher": "crew",
+        "description": "Auto-dispatch officers when crew subagents complete implementation work (subagent fallback runtime)",
+        "matcher": "crew|fleet:crew",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "${CLAUDE_PLUGIN_ROOT}/hooks/officer-dispatch.sh"
+          }
+        ]
+      }
+    ],
+    "TaskCompleted": [
+      {
+        "description": "Persist crew notification logs when a crew teammate completes a task (Agent Teams runtime)",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "${CLAUDE_PLUGIN_ROOT}/hooks/task-notification-logger.sh"
+          }
+        ]
+      },
+      {
+        "description": "Auto-dispatch officers when crew teammates complete implementation tasks (Agent Teams runtime)",
         "hooks": [
           {
             "type": "prompt",
-            "prompt": "Check the crew agent's response for FLEET_NOTIFICATION blocks (HTML comments starting with <!-- FLEET_NOTIFICATION). If none are found, do nothing — say nothing. If one or more are found: 1) Ensure .fleet/changes/ directory exists (create it if not). 2) For each notification block, extract: crew, affected_partners, severity, summary, detail. 3) Write a changelog entry to .fleet/changes/YYYY-MM-DD-<crew>-<short-slug>.md with this format:\n---\ndate: YYYY-MM-DD\ncrew: <crew>\naffected_partners: [<partners>]\nseverity: <severity>\nacknowledged_by: []\n---\n\n<detail text>\n\n4) After writing, briefly confirm: 'Fleet: logged <severity> notification from <crew>-crew affecting <partners>.' 5) If severity is breaking or major, dispatch each affected partner's crew agent with: 'You are the <partner>-crew agent. --- Notification from <crew>-crew [<severity>]: <summary>. <detail> --- Review this notification. If action is needed on your owned paths, describe what should change. If no action needed, acknowledge the change.' For minor/info severity, skip dispatch — the changelog entry is sufficient."
+            "prompt": "This hook fires when a task is marked complete in an Agent Team. Determine if the completed task involved implementation work by a crew agent. Look for evidence: the task description mentions file modifications, the teammate that completed it is a crew agent (crew-related name or prompt).\n\nIf this is NOT a crew implementation task (e.g. captain planning task, research task), do nothing — say nothing.\n\nIf this IS a crew implementation task:\n1. Identify the crew name from the task metadata or teammate name.\n2. Read .fleet/crews/<crew-name>.yaml to get the sdlc_concerns list.\n3. If sdlc_concerns is empty or missing, do nothing — say nothing.\n4. Read all .fleet/officers/*.yaml files.\n5. For each officer whose triggers match the crew's sdlc_concerns (exact string match), dispatch it via the Agent tool with subagent_type 'fleet:officer' and this prompt:\n   'You are the <officer title> (<officer name>).\n   Your config:\n   <full officer YAML contents>\n   ---\n   Auto-dispatched after <crew-name>-crew completed task: <task description>\n   Crew config: <crew YAML contents>\n   ---\n   Review the crew\\'s changes against your review_checklist and expertise. Return structured findings with severity (critical/warning/info) and recommendations. Focus only on your domain. Be concise.'\n6. After dispatching, briefly confirm: 'Fleet: auto-dispatched officer review — <officer-names> reviewing <crew-name>-crew task completion.'\n\nIf .fleet/ directory does not exist, do nothing."
+          }
+        ]
+      }
+    ],
+    "TeammateIdle": [
+      {
+        "description": "Notify captain when a crew teammate goes idle after completing all claimed tasks (Agent Teams runtime)",
+        "hooks": [
+          {
+            "type": "prompt",
+            "prompt": "A crew teammate has gone idle. Check the shared task list for unclaimed tasks that match this crew's owned paths. If unclaimed tasks exist, exit with code 2 and message: 'There are unclaimed tasks matching your paths. Claim the next available task.' If no matching tasks remain, do nothing — the crew is done."
           }
         ]
       }
@@ -38,8 +71,39 @@
         "matcher": "Write|Edit",
         "hooks": [
           {
+            "type": "command",
+            "command": "${CLAUDE_PLUGIN_ROOT}/hooks/ownership-check.sh"
+          }
+        ]
+      },
+      {
+        "description": "Log tool usage per agent type to .fleet/tool-usage.jsonl for allowed-tools analysis",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "${CLAUDE_PLUGIN_ROOT}/hooks/tool-usage-logger.sh"
+          }
+        ]
+      }
+    ],
+    "SessionStart": [
+      {
+        "description": "Load fleet context, surface unacknowledged changes, prune old changelog entries, detect pending bridge work, and check federation inbox",
+        "hooks": [
+          {
             "type": "prompt",
-            "prompt": "Check if the file that was just written/edited falls within any crew's owned paths. To do this: 1) Read .fleet/crews/*.yaml files to get all crews' paths. 2) Check if the edited file matches any crew's path globs. If it matches a crew AND the change could affect partner crews (based on the crew's partners list), suggest: 'This file is owned by <crew-name>-crew. Consider notifying partners: <partner-list>. Run /fleet notify <partner> <summary> to notify.' If the file is not owned by any crew, note: 'This file is not covered by any Fleet crew.' Be brief — one line if no action needed. If .fleet/ directory does not exist, say nothing."
+            "prompt": "If .fleet/bridge.yaml does not exist, say nothing. Otherwise:\n\n1. Silently read .fleet/bridge.yaml and all .fleet/crews/*.yaml to understand the fleet structure.\n\n2. Check .fleet/changes/ for ALL entries where affected_partners contains crews not yet in acknowledged_by (regardless of date).\n\n2b. Check changelog_retention_days from .fleet/bridge.yaml (default 30). Delete any .fleet/changes/ entries older than that many days WHERE acknowledged_by is non-empty (all partners have seen it). Do not delete unacknowledged entries regardless of age.\n\n3. Run: git branch --list 'fleet/crew/*' 'fleet/review/*' 2>/dev/null — to find pending crew branches.\n\n4. Check version drift: read fleet_plugin_version from .fleet/bridge.yaml. Read ${CLAUDE_PLUGIN_ROOT}/.claude-plugin/plugin.json for current plugin version. If they differ (or fleet_plugin_version is missing), flag it.\n\n4b. If .fleet/federation.yaml exists and gh CLI is available, run: gh issue list --label fleet:request --state open --json number,title --limit 10. Count incoming federation requests.\n\n5. Build a Fleet status block with only the items that apply (skip items with nothing to report):\n   - If version drift: 'Fleet plugin updated (<old> → <new>). Run /fleet upgrade to sync.'\n   - If unacknowledged changes: 'X unacknowledged change(s). Run /fleet changelog.'\n   - If crew/review branches exist: 'N branch(es) pending merge. Run /fleet bridge release.'\n   - If .fleet/officers/ directory is empty or missing while crews have sdlc_concerns: 'No officers defined. Run /fleet officer create.'\n   - If .fleet/crews/ has 2+ crew YAML files but .fleet/captains/ directory is empty or doesn't exist: 'No captain configured. Multi-crew tasks benefit from captain orchestration. Run `/fleet plan create` to set up.'\n   - If federation requests found: 'N incoming federation request(s). Run /fleet federation inbox.'\n   - If ${CLAUDE_PLUGIN_ROOT}/marketplace/catalog.json exists: count packages not yet installed in .fleet/officers/. If any: 'N marketplace packages available. Run /fleet marketplace browse.'\n   - If ${CLAUDE_PLUGIN_ROOT}/scripts/hygiene-score.sh exists, run it. If score <70: 'Fleet hygiene score: <score>/100. Run /hygiene to clean up.'\n   - If CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS env var is not set to 1: 'Agent Teams not enabled. Add to .claude/settings.json: {\"env\":{\"CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS\":\"1\"}} for persistent crew sessions.'\n\n6. If any items found, output them prefixed with 'Fleet:' on separate lines. If nothing to report, say nothing.\n\nBe brief — one line per item, no extra formatting."
+          }
+        ]
+      }
+    ],
+    "SessionEnd": [
+      {
+        "description": "Clean up session temp files, stale caches, and rotate oversized logs",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "${CLAUDE_PLUGIN_ROOT}/hooks/session-cleanup.sh"
           }
         ]
       }

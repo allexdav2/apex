@@ -78,12 +78,20 @@ impl<R: CommandRunner> PythonRunner<R> {
     }
 
     /// Find a virtualenv python binary relative to the target directory.
+    /// Also checks external venv at `$TMPDIR/apex-venvs/<hash>/`.
     pub fn find_venv_python(target: &Path) -> Option<String> {
+        // Check internal venvs first
         for venv_dir in &[".apex-venv", ".venv", "venv", ".env", "env"] {
             let python_path = target.join(venv_dir).join("bin").join("python");
             if python_path.exists() {
                 return Some(python_path.to_string_lossy().into_owned());
             }
+        }
+        // Check external apex venv
+        let target_hash = format!("{:x}", apex_core::hash::fnv1a_hash(&target.to_string_lossy()));
+        let external = std::env::temp_dir().join("apex-venvs").join(&target_hash).join("bin").join("python");
+        if external.exists() {
+            return Some(external.to_string_lossy().into_owned());
         }
         None
     }
@@ -109,24 +117,39 @@ impl<R: CommandRunner> PythonRunner<R> {
         }
     }
 
-    /// Ensure a `.apex-venv` virtualenv exists in `target`, creating one if needed.
+    /// Ensure a venv exists for this target, creating one if needed.
+    ///
+    /// Creates the venv OUTSIDE the target directory to avoid importing
+    /// the target's own source modules (e.g., CPython's Lib/venv/).
+    /// Location: `$TMPDIR/apex-venvs/<hash>/` or `<target>/.apex-venv/`
     ///
     /// Returns the path to the venv python binary.
     async fn ensure_venv(&self, target: &Path) -> Result<String> {
-        let venv_dir = target.join(".apex-venv");
-        let venv_python = venv_dir.join("bin").join("python");
+        // First check if venv already exists inside target (from previous run)
+        let internal_venv = target.join(".apex-venv");
+        let internal_python = internal_venv.join("bin").join("python");
+        if internal_python.exists() {
+            return Ok(internal_python.to_string_lossy().into_owned());
+        }
 
-        if venv_python.exists() {
-            return Ok(venv_python.to_string_lossy().into_owned());
+        // Use external venv dir to avoid importing target's source modules
+        let target_hash = format!("{:x}", apex_core::hash::fnv1a_hash(&target.to_string_lossy()));
+        let external_venv = std::env::temp_dir().join("apex-venvs").join(&target_hash);
+        let external_python = external_venv.join("bin").join("python");
+        if external_python.exists() {
+            return Ok(external_python.to_string_lossy().into_owned());
         }
 
         info!(
             target = %target.display(),
-            "creating .apex-venv (PEP 668 externally-managed Python detected)"
+            venv = %external_venv.display(),
+            "creating venv OUTSIDE target (PEP 668 externally-managed Python)"
         );
 
         let python = Self::resolve_python();
-        let spec = CommandSpec::new(python, target).args(["-m", "venv", ".apex-venv"]);
+        // Run from /tmp (NOT from target) so Python doesn't pick up target's source modules
+        let venv_path_str = external_venv.to_string_lossy().to_string();
+        let spec = CommandSpec::new(python, std::env::temp_dir()).args(["-m", "venv", &venv_path_str]);
         let output = self
             .runner
             .run_command(&spec)

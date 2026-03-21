@@ -9,7 +9,7 @@ import tempfile
 import urllib.request
 from pathlib import Path
 
-__version__ = "0.4.0"
+__version__ = "0.4.1"
 
 REPO = "sahajamoth/apex"
 BINARY = "apex"

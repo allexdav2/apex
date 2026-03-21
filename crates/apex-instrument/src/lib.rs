@@ -5,6 +5,7 @@
 
 pub mod c_coverage;
 pub mod csharp;
+pub mod frida_coverage;
 pub mod go;
 pub mod import;
 pub mod java;

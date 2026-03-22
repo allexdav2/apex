@@ -1,4 +1,4 @@
-<!-- status: ACTIVE -->
+<!-- status: DONE -->
 
 # Security Detector Feature Parity Across All 11 Languages
 

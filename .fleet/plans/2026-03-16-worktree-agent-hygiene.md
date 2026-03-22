@@ -1,4 +1,4 @@
-<!-- status: ACTIVE -->
+<!-- status: PARKED -->
 
 # Worktree Agent Hygiene — Preventing Silent Regressions
 

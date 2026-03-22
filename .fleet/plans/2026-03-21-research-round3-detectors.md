@@ -1,4 +1,4 @@
-<!-- status: IN_PROGRESS -->
+<!-- status: DONE -->
 
 # Research Round 3 — Detector Quality, Coverage, and Novel Approaches
 

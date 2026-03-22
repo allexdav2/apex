@@ -1,4 +1,4 @@
-<!-- status: ACTIVE -->
+<!-- status: PARKED -->
 
 # Agentic Instrumentation Pipeline
 

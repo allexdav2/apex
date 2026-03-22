@@ -1,4 +1,4 @@
-<!-- status: ACTIVE -->
+<!-- status: DONE -->
 
 # Modernize Python Toolchain: uv Integration
 

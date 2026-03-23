@@ -10,7 +10,7 @@ use regex::Regex;
 use std::sync::LazyLock;
 use uuid::Uuid;
 
-use super::util::{is_comment, is_test_file};
+use super::util::{is_comment, is_test_file, taint_reaches_sink};
 use crate::context::AnalysisContext;
 use crate::finding::{Finding, FindingCategory, Severity};
 use crate::Detector;
@@ -131,7 +131,7 @@ impl Detector for JsCommandInjectionDetector {
                     if pattern.regex.is_match(trimmed) {
                         let line_1based = (line_num + 1) as u32;
 
-                        findings.push(Finding {
+                        let mut finding = Finding {
                             id: Uuid::new_v4(),
                             detector: self.name().into(),
                             severity: Severity::High,
@@ -160,7 +160,26 @@ impl Detector for JsCommandInjectionDetector {
                             noisy: false,
                             base_severity: None,
                             coverage_confidence: None,
-                        });
+                        };
+
+                        // CPG taint check: downgrade if no taint flow detected.
+                        if let Some(has_taint) = taint_reaches_sink(
+                            ctx,
+                            path,
+                            line_1based,
+                            &["user_input", "request", "req", "args", "params", "stdin", "cmd"],
+                        ) {
+                            if !has_taint {
+                                finding.noisy = true;
+                                finding.severity = Severity::Low;
+                                finding.description = format!(
+                                    "{} (no taint flow detected — likely safe)",
+                                    finding.description
+                                );
+                            }
+                        }
+
+                        findings.push(finding);
                         break; // One finding per line max
                     }
                 }
@@ -286,5 +305,85 @@ mod tests {
     #[test]
     fn does_not_use_cargo_subprocess() {
         assert!(!JsCommandInjectionDetector.uses_cargo_subprocess());
+    }
+
+    // -----------------------------------------------------------------------
+    // CPG taint validation
+    // -----------------------------------------------------------------------
+
+    fn make_ctx_with_cpg(
+        files: HashMap<PathBuf, String>,
+        lang: Language,
+        cpg: apex_cpg::Cpg,
+    ) -> AnalysisContext {
+        use std::sync::Arc;
+        AnalysisContext {
+            language: lang,
+            source_cache: files,
+            cpg: Some(Arc::new(cpg)),
+            ..AnalysisContext::test_default()
+        }
+    }
+
+    #[tokio::test]
+    async fn cpg_taint_flow_present_keeps_high_severity() {
+        use apex_cpg::{EdgeKind, NodeKind};
+
+        let mut cpg = apex_cpg::Cpg::new();
+        let param = cpg.add_node(NodeKind::Parameter {
+            name: "cmd".into(),
+            index: 0,
+        });
+        let sink = cpg.add_node(NodeKind::Identifier {
+            name: "cmd".into(),
+            line: 1,
+        });
+        cpg.add_edge(
+            param,
+            sink,
+            EdgeKind::ReachingDef {
+                variable: "cmd".into(),
+            },
+        );
+
+        let mut files = HashMap::new();
+        files.insert(PathBuf::from("src/run.js"), "exec(`ls ${cmd}`)\n".into());
+        let ctx = make_ctx_with_cpg(files, Language::JavaScript, cpg);
+        let findings = JsCommandInjectionDetector.analyze(&ctx).await.unwrap();
+        assert_eq!(findings.len(), 1);
+        assert!(!findings[0].noisy, "taint flow present — should not be noisy");
+        assert_eq!(findings[0].severity, Severity::High);
+    }
+
+    #[tokio::test]
+    async fn cpg_no_taint_flow_downgrades_to_noisy_low() {
+        use apex_cpg::NodeKind;
+
+        let mut cpg = apex_cpg::Cpg::new();
+        // Identifier present on line 1 but no taint source connected.
+        cpg.add_node(NodeKind::Identifier {
+            name: "cmd".into(),
+            line: 1,
+        });
+
+        let mut files = HashMap::new();
+        files.insert(PathBuf::from("src/run.js"), "exec(`ls ${cmd}`)\n".into());
+        let ctx = make_ctx_with_cpg(files, Language::JavaScript, cpg);
+        let findings = JsCommandInjectionDetector.analyze(&ctx).await.unwrap();
+        assert_eq!(findings.len(), 1);
+        assert!(findings[0].noisy, "no taint flow — should be noisy");
+        assert_eq!(findings[0].severity, Severity::Low);
+        assert!(findings[0].description.contains("no taint flow"));
+    }
+
+    #[tokio::test]
+    async fn cpg_absent_falls_back_to_pattern_severity() {
+        let mut files = HashMap::new();
+        files.insert(PathBuf::from("src/run.js"), "exec(`ls ${cmd}`)\n".into());
+        let ctx = make_ctx(files, Language::JavaScript);
+        let findings = JsCommandInjectionDetector.analyze(&ctx).await.unwrap();
+        assert_eq!(findings.len(), 1);
+        assert!(!findings[0].noisy);
+        assert_eq!(findings[0].severity, Severity::High);
     }
 }

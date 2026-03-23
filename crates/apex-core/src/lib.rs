@@ -5,6 +5,7 @@
 pub mod agent_report;
 pub mod command;
 pub mod config;
+pub mod diff;
 pub mod error;
 pub mod fixture_runner;
 pub mod git;

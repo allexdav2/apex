@@ -898,11 +898,12 @@ async fn run_analyze(args: AnalyzeArgs, cfg: &ApexConfig) -> Result<()> {
     if !detected_tools.is_empty() {
         info!(count = detected_tools.len(), "detected toolchain requirements");
         if toolchain::MiseBackend::is_available() {
-            let results = toolchain::MiseBackend::ensure_installed(&detected_tools);
-            for (tool, installed) in &results {
-                if *installed {
-                    info!(%tool, "installed via mise");
-                }
+            let installed = toolchain::MiseBackend::install_and_activate(
+                &detected_tools,
+                &target_path,
+            );
+            if installed > 0 {
+                info!(count = installed, "installed and activated tools via mise");
             }
         } else {
             for tool in &detected_tools {

@@ -26,6 +26,79 @@ fn fnv1a_hash(s: &str) -> u64 {
     hash
 }
 
+/// Recursively search for a JaCoCo XML report in submodule build directories.
+///
+/// Multi-module Gradle projects put reports at `<module>/build/reports/jacoco/test/jacocoTestReport.xml`.
+/// We search up to 3 levels deep to avoid scanning the entire tree.
+fn find_jacoco_report_recursive(target: &Path) -> Option<PathBuf> {
+    let mut candidates = Vec::new();
+    collect_jacoco_reports(target, 0, 3, &mut candidates);
+    // Return the largest report (most coverage data)
+    candidates.sort_by(|a, b| {
+        let size_a = std::fs::metadata(a).map(|m| m.len()).unwrap_or(0);
+        let size_b = std::fs::metadata(b).map(|m| m.len()).unwrap_or(0);
+        size_b.cmp(&size_a)
+    });
+    candidates.into_iter().next()
+}
+
+fn collect_jacoco_reports(dir: &Path, depth: usize, max_depth: usize, results: &mut Vec<PathBuf>) {
+    if depth > max_depth {
+        return;
+    }
+    // Check this directory for a JaCoCo report
+    for report_path in &[
+        "build/reports/jacoco/test/jacocoTestReport.xml",
+        "build/reports/jacoco/jacocoTestReport.xml",
+    ] {
+        let p = dir.join(report_path);
+        if p.exists() {
+            results.push(p);
+        }
+    }
+    // Recurse into subdirectories (skip hidden, build, node_modules, .git)
+    if let Ok(entries) = std::fs::read_dir(dir) {
+        for entry in entries.flatten() {
+            let name = entry.file_name();
+            let name_str = name.to_string_lossy();
+            if name_str.starts_with('.')
+                || name_str == "build"
+                || name_str == "node_modules"
+                || name_str == "target"
+            {
+                continue;
+            }
+            let path = entry.path();
+            if path.is_dir() {
+                collect_jacoco_reports(&path, depth + 1, max_depth, results);
+            }
+        }
+    }
+}
+
+/// Detect Kotlin Multiplatform projects (which may need Xcode for native targets).
+fn is_kotlin_multiplatform(target: &Path) -> bool {
+    for name in &["build.gradle.kts", "build.gradle"] {
+        if let Ok(content) = std::fs::read_to_string(target.join(name)) {
+            if content.contains("kotlin(\"multiplatform\")")
+                || content.contains("kotlin-multiplatform")
+                || content.contains("KotlinMultiplatform")
+            {
+                return true;
+            }
+        }
+    }
+    // Also check settings.gradle for plugin declarations
+    for name in &["settings.gradle.kts", "settings.gradle"] {
+        if let Ok(content) = std::fs::read_to_string(target.join(name)) {
+            if content.contains("kotlin(\"multiplatform\")") || content.contains("kotlin-multiplatform") {
+                return true;
+            }
+        }
+    }
+    false
+}
+
 /// Check whether a Gradle build file already applies the JaCoCo plugin.
 fn gradle_has_jacoco(target: &Path) -> bool {
     for name in &["build.gradle", "build.gradle.kts"] {
@@ -39,12 +112,26 @@ fn gradle_has_jacoco(target: &Path) -> bool {
 }
 
 /// Content for a Gradle init script that applies the JaCoCo plugin globally.
+///
+/// Uses `plugins.apply` with `afterEvaluate` to handle projects that don't have
+/// the Java plugin applied yet (Kotlin, Android, etc.).  The `jacocoTestReport`
+/// task is configured to produce XML output (which APEX parses).
 const JACOCO_INIT_GRADLE: &str = r#"
 allprojects {
-    apply plugin: 'jacoco'
-    tasks.withType(Test) {
-        jacoco {
-            enabled = true
+    afterEvaluate {
+        if (plugins.hasPlugin('java') || plugins.hasPlugin('java-library') || plugins.hasPlugin('org.jetbrains.kotlin.jvm')) {
+            apply plugin: 'jacoco'
+            tasks.withType(Test) {
+                jacoco {
+                    enabled = true
+                }
+            }
+            tasks.matching { it.name == 'jacocoTestReport' }.configureEach {
+                reports {
+                    xml.required = true
+                    html.required = false
+                }
+            }
         }
     }
 }
@@ -96,7 +183,24 @@ async fn run_jacoco_gradle(
         args.push(init_path.to_string_lossy().into_owned());
     }
 
-    args.extend(["test".into(), "jacocoTestReport".into(), "--quiet".into()]);
+    // For Kotlin Multiplatform projects, only run JVM tests to avoid
+    // requiring Xcode (for Kotlin/Native) or a browser (for Kotlin/JS).
+    let is_kmp = is_kotlin_multiplatform(target);
+    let test_task = if is_kmp { "jvmTest" } else { "test" };
+
+    args.extend([
+        test_task.into(),
+        "jacocoTestReport".into(),
+        "--quiet".into(),
+        "--continue".into(), // Don't stop on first submodule failure
+    ]);
+
+    if is_kmp {
+        // Skip native/JS compilation that requires platform-specific toolchains
+        args.push("-x".into());
+        args.push("compileKotlinNative".into());
+        info!("Kotlin Multiplatform detected — running jvmTest only");
+    }
 
     let spec = jvm_command("./gradlew", target, timeout_ms).args(args);
     let output = runner
@@ -114,7 +218,7 @@ async fn run_jacoco_gradle(
         );
     }
 
-    // Try primary Gradle report path first, then fallback.
+    // Try primary Gradle report path first, then fallback, then search submodules.
     let primary = target.join("build/reports/jacoco/test/jacocoTestReport.xml");
     if primary.exists() {
         return Ok(primary);
@@ -122,6 +226,12 @@ async fn run_jacoco_gradle(
     let fallback = target.join("build/reports/jacoco/jacocoTestReport.xml");
     if fallback.exists() {
         return Ok(fallback);
+    }
+
+    // Multi-module projects: search for any JaCoCo XML report in subdirectories.
+    if let Some(found) = find_jacoco_report_recursive(target) {
+        info!(report = %found.display(), "found JaCoCo report in submodule");
+        return Ok(found);
     }
 
     Err(ApexError::Instrumentation(

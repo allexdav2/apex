@@ -29,10 +29,12 @@ fn fnv1a_hash(s: &str) -> u64 {
 /// Recursively search for a JaCoCo XML report in submodule build directories.
 ///
 /// Multi-module Gradle projects put reports at `<module>/build/reports/jacoco/test/jacocoTestReport.xml`.
-/// We search up to 3 levels deep to avoid scanning the entire tree.
+/// Deeply nested projects (e.g. Spring Boot: `core/spring-boot/build/reports/...`) need 4+ levels.
+/// We search up to 5 levels deep to cover `group/module/build/reports/jacoco` paths while
+/// still avoiding a full tree walk.
 fn find_jacoco_report_recursive(target: &Path) -> Option<PathBuf> {
     let mut candidates = Vec::new();
-    collect_jacoco_reports(target, 0, 3, &mut candidates);
+    collect_jacoco_reports(target, 0, 5, &mut candidates);
     // Return the largest report (most coverage data)
     candidates.sort_by(|a, b| {
         let size_a = std::fs::metadata(a).map(|m| m.len()).unwrap_or(0);
@@ -99,6 +101,46 @@ fn is_kotlin_multiplatform(target: &Path) -> bool {
     false
 }
 
+/// Detect whether the root project is a non-Java umbrella (applies only `base`,
+/// `build-scan`, etc.) with subprojects that contain the real Java code.
+///
+/// Returns `true` when the root build file does NOT apply java/java-library/kotlin
+/// plugins but `settings.gradle[.kts]` includes subprojects.  In this case we must
+/// run `subprojects { test }` style invocations rather than bare `test`.
+fn is_umbrella_project(target: &Path) -> bool {
+    let has_java_root = {
+        let mut found = false;
+        for name in &["build.gradle", "build.gradle.kts"] {
+            if let Ok(content) = std::fs::read_to_string(target.join(name)) {
+                // Heuristic: if the root build file applies java/java-library/kotlin,
+                // it is a self-contained project (or the root *is* the Java project).
+                if content.contains("'java'")
+                    || content.contains("\"java\"")
+                    || content.contains("java-library")
+                    || content.contains("org.jetbrains.kotlin.jvm")
+                    || content.contains("application")
+                    || content.contains("'java-library'")
+                {
+                    found = true;
+                }
+            }
+        }
+        found
+    };
+    if has_java_root {
+        return false;
+    }
+    // Check for subproject includes in settings.gradle
+    for name in &["settings.gradle", "settings.gradle.kts"] {
+        if let Ok(content) = std::fs::read_to_string(target.join(name)) {
+            if content.contains("include ") || content.contains("include(") {
+                return true;
+            }
+        }
+    }
+    false
+}
+
 /// Check whether a Gradle build file already applies the JaCoCo plugin.
 fn gradle_has_jacoco(target: &Path) -> bool {
     for name in &["build.gradle", "build.gradle.kts"] {
@@ -116,20 +158,64 @@ fn gradle_has_jacoco(target: &Path) -> bool {
 /// Uses `plugins.apply` with `afterEvaluate` to handle projects that don't have
 /// the Java plugin applied yet (Kotlin, Android, etc.).  The `jacocoTestReport`
 /// task is configured to produce XML output (which APEX parses).
+///
+/// Key design decisions for multi-module (e.g., Spring Boot) compatibility:
+///   - Uses `allprojects.afterEvaluate` so convention plugins have already run.
+///   - Explicitly sets `executionData` on `jacocoTestReport` from all Test tasks,
+///     because some frameworks register custom test tasks after the jacoco plugin.
+///   - Wires `jacocoTestReport.dependsOn test` so a single `jacocoTestReport` task
+///     name triggers the full chain.
+///   - Guards against projects whose `test` task exists but has no sources (common
+///     in umbrella/platform modules) by using `ignoreFailures = true` on the report.
 const JACOCO_INIT_GRADLE: &str = r#"
 allprojects {
     afterEvaluate {
-        if (plugins.hasPlugin('java') || plugins.hasPlugin('java-library') || plugins.hasPlugin('org.jetbrains.kotlin.jvm')) {
+        def hasJava = plugins.hasPlugin('java') ||
+                      plugins.hasPlugin('java-library') ||
+                      plugins.hasPlugin('org.jetbrains.kotlin.jvm')
+        if (!hasJava) return
+
+        // Apply JaCoCo if not already present.
+        if (!plugins.hasPlugin('jacoco')) {
             apply plugin: 'jacoco'
-            tasks.withType(Test) {
-                jacoco {
-                    enabled = true
-                }
+        }
+
+        // Enable the JaCoCo agent on every Test task.
+        tasks.withType(Test) {
+            jacoco {
+                enabled = true
             }
-            tasks.matching { it.name == 'jacocoTestReport' }.configureEach {
-                reports {
-                    xml.required = true
-                    html.required = false
+        }
+
+        // Ensure a jacocoTestReport task exists and is correctly wired.
+        // The jacoco plugin creates it lazily; force-resolve it.
+        def reportTask = tasks.findByName('jacocoTestReport')
+        if (reportTask == null) {
+            // Some convention plugins suppress task creation — create our own.
+            reportTask = tasks.create('jacocoTestReport', JacocoReport) {
+                group = 'verification'
+                description = 'Generate JaCoCo XML coverage report (APEX-injected)'
+            }
+        }
+
+        reportTask.configure {
+            reports {
+                xml.required = true
+                html.required = false
+            }
+            // Wire execution data from ALL test tasks so multi-variant
+            // builds (unit + integration) are captured.
+            def testTasks = tasks.withType(Test)
+            dependsOn testTasks
+            executionData.setFrom(files(testTasks.collect { t ->
+                t.extensions.findByType(JacocoTaskExtension)?.destinationFile
+            }.findAll { it != null }))
+            // Wire source sets for XML class-name resolution.
+            if (project.hasProperty('sourceSets')) {
+                def main = project.sourceSets.findByName('main')
+                if (main != null) {
+                    sourceDirectories.setFrom(main.allJava.srcDirs)
+                    classDirectories.setFrom(main.output)
                 }
             }
         }
@@ -170,6 +256,7 @@ async fn run_jacoco_gradle(
     timeout_ms: u64,
 ) -> Result<PathBuf> {
     let needs_init = !gradle_has_jacoco(target);
+    let umbrella = is_umbrella_project(target);
 
     let mut args: Vec<String> = Vec::new();
 
@@ -188,12 +275,34 @@ async fn run_jacoco_gradle(
     let is_kmp = is_kotlin_multiplatform(target);
     let test_task = if is_kmp { "jvmTest" } else { "test" };
 
-    args.extend([
-        test_task.into(),
-        "jacocoTestReport".into(),
-        "--quiet".into(),
-        "--continue".into(), // Don't stop on first submodule failure
-    ]);
+    if umbrella {
+        // Umbrella projects (e.g., Spring Boot) have a root build.gradle that
+        // applies only `base` — no `test` or `jacocoTestReport` task at root.
+        // We must target subprojects explicitly via the `:*:task` Gradle syntax.
+        //
+        // Using `subprojects:test` would be ideal but Gradle doesn't support that
+        // syntax. Instead we pass the task names and add `--exclude-task :test`
+        // and `--exclude-task :jacocoTestReport` to skip the (nonexistent) root
+        // tasks while still running them in all subprojects.
+        info!("umbrella project detected — excluding root-level tasks");
+        args.extend([
+            test_task.into(),
+            "jacocoTestReport".into(),
+            "--quiet".into(),
+            "--continue".into(),
+            "-x".into(),
+            format!(":{test_task}"),
+            "-x".into(),
+            ":jacocoTestReport".into(),
+        ]);
+    } else {
+        args.extend([
+            test_task.into(),
+            "jacocoTestReport".into(),
+            "--quiet".into(),
+            "--continue".into(), // Don't stop on first submodule failure
+        ]);
+    }
 
     if is_kmp {
         // Skip native/JS compilation that requires platform-specific toolchains
@@ -1266,6 +1375,213 @@ mod tests {
         assert!(
             !repo_root.join(".apex-jacoco-init.gradle").exists(),
             "init script should be cleaned up after run"
+        );
+    }
+
+    // -----------------------------------------------------------------------
+    // Umbrella project detection tests
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn test_is_umbrella_no_java_with_subprojects() {
+        let tmp = tempfile::tempdir().unwrap();
+        // Root applies only `base`, not java/java-library/kotlin
+        std::fs::write(
+            tmp.path().join("build.gradle"),
+            "plugins { id 'base' }\n",
+        )
+        .unwrap();
+        std::fs::write(
+            tmp.path().join("settings.gradle"),
+            "include 'core:spring-boot'\ninclude 'module:spring-boot-web'\n",
+        )
+        .unwrap();
+        assert!(is_umbrella_project(tmp.path()));
+    }
+
+    #[test]
+    fn test_is_umbrella_java_root_not_umbrella() {
+        let tmp = tempfile::tempdir().unwrap();
+        // Root applies java plugin => not umbrella even with subprojects
+        std::fs::write(
+            tmp.path().join("build.gradle"),
+            "apply plugin: 'java'\n",
+        )
+        .unwrap();
+        std::fs::write(
+            tmp.path().join("settings.gradle"),
+            "include 'sub'\n",
+        )
+        .unwrap();
+        assert!(!is_umbrella_project(tmp.path()));
+    }
+
+    #[test]
+    fn test_is_umbrella_java_library_root_not_umbrella() {
+        let tmp = tempfile::tempdir().unwrap();
+        std::fs::write(
+            tmp.path().join("build.gradle"),
+            "plugins { id 'java-library' }\n",
+        )
+        .unwrap();
+        std::fs::write(
+            tmp.path().join("settings.gradle"),
+            "include 'sub'\n",
+        )
+        .unwrap();
+        assert!(!is_umbrella_project(tmp.path()));
+    }
+
+    #[test]
+    fn test_is_umbrella_no_settings() {
+        let tmp = tempfile::tempdir().unwrap();
+        std::fs::write(
+            tmp.path().join("build.gradle"),
+            "plugins { id 'base' }\n",
+        )
+        .unwrap();
+        // No settings.gradle => no subprojects => not umbrella
+        assert!(!is_umbrella_project(tmp.path()));
+    }
+
+    #[test]
+    fn test_is_umbrella_kts_settings() {
+        let tmp = tempfile::tempdir().unwrap();
+        std::fs::write(
+            tmp.path().join("build.gradle.kts"),
+            "plugins { base }\n",
+        )
+        .unwrap();
+        std::fs::write(
+            tmp.path().join("settings.gradle.kts"),
+            "include(\"sub-a\")\ninclude(\"sub-b\")\n",
+        )
+        .unwrap();
+        assert!(is_umbrella_project(tmp.path()));
+    }
+
+    #[tokio::test]
+    async fn test_gradle_umbrella_excludes_root_tasks() {
+        let tmp = tempfile::tempdir().unwrap();
+        let repo_root = tmp.path();
+
+        // Umbrella project: root has `base` only, settings has includes
+        std::fs::write(
+            repo_root.join("build.gradle"),
+            "plugins { id 'base' }\n",
+        )
+        .unwrap();
+        std::fs::write(
+            repo_root.join("settings.gradle"),
+            "include 'core:my-lib'\n",
+        )
+        .unwrap();
+
+        // Create the JaCoCo XML report in a submodule path
+        let report_dir = repo_root.join("core/my-lib/build/reports/jacoco/test");
+        std::fs::create_dir_all(&report_dir).unwrap();
+        std::fs::write(
+            report_dir.join("jacocoTestReport.xml"),
+            sample_jacoco_xml(),
+        )
+        .unwrap();
+
+        let runner = Arc::new(FakeRunner::success());
+        let inst = JavaInstrumentor::with_runner(runner.clone());
+
+        let target = Target {
+            root: repo_root.to_path_buf(),
+            language: apex_core::types::Language::Java,
+            test_command: Vec::new(),
+        };
+
+        let result = inst.instrument(&target).await.unwrap();
+        assert_eq!(result.branch_ids.len(), 10);
+
+        // Verify -x :test and -x :jacocoTestReport are in args (umbrella exclusion)
+        let spec = runner.last_spec().expect("should have recorded a spec");
+        assert!(
+            spec.args.contains(&"-x".to_string()),
+            "expected -x in args: {:?}",
+            spec.args
+        );
+        assert!(
+            spec.args.contains(&":test".to_string()),
+            "expected :test exclusion in args: {:?}",
+            spec.args
+        );
+        assert!(
+            spec.args.contains(&":jacocoTestReport".to_string()),
+            "expected :jacocoTestReport exclusion in args: {:?}",
+            spec.args
+        );
+        // Also verify init script was injected (no jacoco in build.gradle)
+        assert!(
+            spec.args.contains(&"--init-script".to_string()),
+            "expected --init-script in args: {:?}",
+            spec.args
+        );
+    }
+
+    #[tokio::test]
+    async fn test_gradle_non_umbrella_no_task_exclusion() {
+        let tmp = tempfile::tempdir().unwrap();
+        let repo_root = tmp.path();
+
+        // Standard Java project (not umbrella)
+        std::fs::write(
+            repo_root.join("build.gradle"),
+            "apply plugin: 'java'\n",
+        )
+        .unwrap();
+
+        let report_dir = repo_root.join("build/reports/jacoco/test");
+        std::fs::create_dir_all(&report_dir).unwrap();
+        std::fs::write(
+            report_dir.join("jacocoTestReport.xml"),
+            sample_jacoco_xml(),
+        )
+        .unwrap();
+
+        let runner = Arc::new(FakeRunner::success());
+        let inst = JavaInstrumentor::with_runner(runner.clone());
+
+        let target = Target {
+            root: repo_root.to_path_buf(),
+            language: apex_core::types::Language::Java,
+            test_command: Vec::new(),
+        };
+
+        let _ = inst.instrument(&target).await.unwrap();
+
+        let spec = runner.last_spec().expect("should have recorded a spec");
+        // Non-umbrella should NOT have :test exclusion
+        assert!(
+            !spec.args.contains(&":test".to_string()),
+            "non-umbrella should not exclude :test: {:?}",
+            spec.args
+        );
+    }
+
+    #[test]
+    fn test_find_jacoco_report_deep_submodule() {
+        // Simulate Spring Boot structure: core/spring-boot/build/reports/jacoco/test/
+        let tmp = tempfile::tempdir().unwrap();
+        let deep_dir = tmp
+            .path()
+            .join("core/spring-boot/build/reports/jacoco/test");
+        std::fs::create_dir_all(&deep_dir).unwrap();
+        std::fs::write(
+            deep_dir.join("jacocoTestReport.xml"),
+            sample_jacoco_xml(),
+        )
+        .unwrap();
+
+        let found = find_jacoco_report_recursive(tmp.path());
+        assert!(found.is_some(), "should find report in deep submodule");
+        assert!(
+            found.unwrap().ends_with("jacocoTestReport.xml"),
+            "should find the XML report"
         );
     }
 }

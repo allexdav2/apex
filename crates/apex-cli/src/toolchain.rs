@@ -116,7 +116,11 @@ pub fn detect_toolchain_versions(target: &Path) -> Vec<DetectedToolchain> {
 }
 
 /// Read a single-line version file like `.python-version`.
-fn read_single_version_file(target: &Path, filename: &str, tool: &str) -> Option<DetectedToolchain> {
+fn read_single_version_file(
+    target: &Path,
+    filename: &str,
+    tool: &str,
+) -> Option<DetectedToolchain> {
     let path = target.join(filename);
     let content = std::fs::read_to_string(&path).ok()?;
     let version = content.lines().next()?.trim().to_string();
@@ -136,7 +140,13 @@ fn extract_go_mod_version(content: &str) -> Option<String> {
         let trimmed = line.trim();
         if let Some(rest) = trimmed.strip_prefix("go ") {
             let version = rest.trim();
-            if !version.is_empty() && version.chars().next().map(|c| c.is_ascii_digit()).unwrap_or(false) {
+            if !version.is_empty()
+                && version
+                    .chars()
+                    .next()
+                    .map(|c| c.is_ascii_digit())
+                    .unwrap_or(false)
+            {
                 return Some(version.to_string());
             }
         }
@@ -170,7 +180,11 @@ pub fn parse_github_actions(target: &Path) -> Vec<DetectedToolchain> {
             continue;
         }
         if let Ok(content) = std::fs::read_to_string(&path) {
-            let filename = path.file_name().unwrap_or_default().to_string_lossy().to_string();
+            let filename = path
+                .file_name()
+                .unwrap_or_default()
+                .to_string_lossy()
+                .to_string();
             detected.extend(extract_setup_actions(&content, &filename));
         }
     }
@@ -256,7 +270,11 @@ fn extract_setup_actions(yaml: &str, source_file: &str) -> Vec<DetectedToolchain
 
 /// Detect environment configuration files (devcontainer, devbox, mise).
 pub fn detect_environment_config(target: &Path) -> Option<EnvironmentConfig> {
-    if target.join(".devcontainer").join("devcontainer.json").exists() {
+    if target
+        .join(".devcontainer")
+        .join("devcontainer.json")
+        .exists()
+    {
         return Some(EnvironmentConfig::Devcontainer);
     }
     if target.join("devbox.json").exists() {
@@ -349,7 +367,11 @@ pub struct ToolchainCheck {
 
 impl std::fmt::Display for ToolchainCheck {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let icon = if self.installed { "\x1b[32m✓\x1b[0m" } else { "\x1b[31m✗\x1b[0m" };
+        let icon = if self.installed {
+            "\x1b[32m✓\x1b[0m"
+        } else {
+            "\x1b[31m✗\x1b[0m"
+        };
         let managed = match &self.managed_by {
             Some(m) if self.installed => format!(", installed via {m}"),
             _ if !self.installed => ", not installed".to_string(),
@@ -559,8 +581,12 @@ steps:
         .unwrap();
 
         let detected = detect_toolchain_versions(dir.path());
-        assert!(detected.iter().any(|d| d.tool == "python" && d.version == "3.12.1"));
-        assert!(detected.iter().any(|d| d.tool == "node" && d.version == "20.11.0"));
+        assert!(detected
+            .iter()
+            .any(|d| d.tool == "python" && d.version == "3.12.1"));
+        assert!(detected
+            .iter()
+            .any(|d| d.tool == "node" && d.version == "20.11.0"));
     }
 
     #[test]
@@ -569,7 +595,9 @@ steps:
         fs::write(dir.path().join(".python-version"), "3.11.7\n").unwrap();
 
         let detected = detect_toolchain_versions(dir.path());
-        assert!(detected.iter().any(|d| d.tool == "python" && d.version == "3.11.7"));
+        assert!(detected
+            .iter()
+            .any(|d| d.tool == "python" && d.version == "3.11.7"));
     }
 
     #[test]
@@ -578,7 +606,9 @@ steps:
         fs::write(dir.path().join("go.mod"), "module foo\n\ngo 1.22\n").unwrap();
 
         let detected = detect_toolchain_versions(dir.path());
-        assert!(detected.iter().any(|d| d.tool == "go" && d.version == "1.22"));
+        assert!(detected
+            .iter()
+            .any(|d| d.tool == "go" && d.version == "1.22"));
     }
 
     #[test]
@@ -593,7 +623,9 @@ steps:
         .unwrap();
 
         let detected = detect_toolchain_versions(dir.path());
-        assert!(detected.iter().any(|d| d.tool == "node" && d.version == "18"));
+        assert!(detected
+            .iter()
+            .any(|d| d.tool == "node" && d.version == "18"));
     }
 
     #[test]
@@ -627,7 +659,11 @@ steps:
         let dir = make_temp_dir();
         let wf_dir = dir.path().join(".github").join("workflows");
         fs::create_dir_all(&wf_dir).unwrap();
-        fs::write(wf_dir.join("README.md"), "steps:\n  - uses: actions/setup-go@v4\n").unwrap();
+        fs::write(
+            wf_dir.join("README.md"),
+            "steps:\n  - uses: actions/setup-go@v4\n",
+        )
+        .unwrap();
 
         let result = parse_github_actions(dir.path());
         assert!(result.is_empty());
@@ -701,7 +737,9 @@ steps:
         fs::write(dir.path().join(".nvmrc"), "18.19.0\n").unwrap();
 
         let detected = detect_toolchain_versions(dir.path());
-        assert!(detected.iter().any(|d| d.tool == "node" && d.version == "18.19.0"));
+        assert!(detected
+            .iter()
+            .any(|d| d.tool == "node" && d.version == "18.19.0"));
     }
 
     #[test]

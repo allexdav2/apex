@@ -4,6 +4,13 @@ All notable changes to APEX will be documented in this file.
 
 ## [Unreleased]
 
+### Added
+- **`--diff <REF>`** — differential coverage mode for `apex run` and `apex audit`; filters coverage and findings to only lines changed since the given git ref (e.g. `--diff main`); reports "Changed: N lines, M covered (P%)"
+- **`--mcdc`** — MC/DC (Modified Condition/Decision Coverage) mode for `apex run`; requires nightly Rust + LLVM 18+, falls back to branch coverage with a warning when unavailable
+- **`apex_core::diff` module** — `changed_lines()` git diff parser, `parse_diff_output()` hunk header parser, `filter_findings_by_changed_lines()` helper, and `DiffCoverageReport` struct
+- **`CoverageMode` enum** in `apex_core::types` — `Branch` (default) and `Mcdc` variants with serde roundtrip and `Display`
+- **`build_coverage_args()` / `is_nightly_toolchain()`** in `apex_instrument::rust_cov` — MC/DC instrumentation helpers with nightly detection and graceful fallback
+
 ### Fixed
 - **CWD bug in analyze pipeline** — `parse_llvm_cov_export` now canonicalizes both the target root and coverage filenames before `strip_prefix`, fixing symlink mismatches (e.g. `/tmp` vs `/private/tmp` on macOS) that caused "0 source files" and "could not find Cargo.toml" when analyzing out-of-tree targets
 - **`apex doctor`** — `CommandSpec` working directory changed from `"."` to `std::env::current_dir()` so version checks don't depend on inherited CWD

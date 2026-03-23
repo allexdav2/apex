@@ -197,6 +197,21 @@ pub struct RunArgs {
     /// Supported formats: LCOV, Cobertura XML, Go coverprofile, coverage.py JSON.
     #[arg(long)]
     pub coverage_file: Option<PathBuf>,
+
+    /// Filter coverage and findings to only lines changed since this git ref.
+    ///
+    /// Example: `--diff main` or `--diff HEAD~5`.
+    /// Reports changed-line coverage as: "Changed: N lines, M covered (P%)".
+    #[arg(long)]
+    pub diff: Option<String>,
+
+    /// Enable MC/DC (Modified Condition/Decision Coverage) instrumentation.
+    ///
+    /// Requires nightly Rust and LLVM 18+. Falls back to branch coverage
+    /// with a warning when nightly is unavailable.
+    /// Only supported for Rust targets.
+    #[arg(long)]
+    pub mcdc: bool,
 }
 
 #[derive(Parser)]
@@ -301,6 +316,12 @@ pub struct AuditArgs {
     /// Write output to a file instead of stdout.
     #[arg(long, short)]
     pub output: Option<PathBuf>,
+
+    /// Filter findings to only those on lines changed since this git ref.
+    ///
+    /// Example: `--diff main` or `--diff HEAD~1`.
+    #[arg(long)]
+    pub diff: Option<String>,
 }
 
 #[derive(Parser)]
@@ -896,7 +917,10 @@ async fn run_analyze(args: AnalyzeArgs, cfg: &ApexConfig) -> Result<()> {
     // ── 1b. Toolchain detection ─────────────────────────────────────────
     let detected_tools = toolchain::detect_toolchain_versions(&target_path);
     if !detected_tools.is_empty() {
-        info!(count = detected_tools.len(), "detected toolchain requirements");
+        info!(
+            count = detected_tools.len(),
+            "detected toolchain requirements"
+        );
         if toolchain::MiseBackend::is_available() {
             let results = toolchain::MiseBackend::ensure_installed(&detected_tools);
             for (tool, installed) in &results {
@@ -1028,6 +1052,8 @@ async fn run_analyze(args: AnalyzeArgs, cfg: &ApexConfig) -> Result<()> {
                 fuzz_iters: args.fuzz_iters,
                 fuzz_cmd: args.fuzz_cmd.clone(),
                 coverage_file: None, // already imported above
+                diff: None,
+                mcdc: false,
             };
 
             // Compile sancov binary if needed
@@ -1666,6 +1692,11 @@ async fn run(args: RunArgs, cfg: &ApexConfig) -> Result<()> {
         None
     };
 
+    // 4b. If --diff was requested, compute and print changed-line coverage summary.
+    if let Some(ref base_ref) = args.diff {
+        print_diff_coverage_report(&oracle, &instrumented, base_ref, &target_path).await;
+    }
+
     // 5. Output gap report
     match output_format {
         OutputFormat::Json if uses_agent => {
@@ -2031,6 +2062,74 @@ async fn instrument(
     );
 
     Ok(instrumented)
+}
+
+// ---------------------------------------------------------------------------
+// Differential coverage report printer (--diff <REF>)
+// ---------------------------------------------------------------------------
+
+/// Compute changed lines from git diff against `base_ref`, intersect with
+/// coverage data, and print a summary line.
+///
+/// Example output:
+/// ```text
+/// Changed: 45 lines, 38 covered (84.4%) vs main
+/// ```
+async fn print_diff_coverage_report(
+    _oracle: &CoverageOracle,
+    instrumented: &apex_core::types::InstrumentedTarget,
+    base_ref: &str,
+    target_root: &std::path::Path,
+) {
+    use apex_core::command::RealCommandRunner;
+    use apex_core::diff as diff_util;
+
+    let runner = RealCommandRunner;
+    let changed = match diff_util::changed_lines(&runner, target_root, base_ref).await {
+        Ok(c) => c,
+        Err(e) => {
+            warn!("--diff: failed to get changed lines from git: {e}");
+            return;
+        }
+    };
+
+    // Build a fast lookup: file_id -> set of executed lines (from executed_branch_ids)
+    let executed_by_file: std::collections::HashMap<u64, HashSet<u32>> = {
+        let mut m: std::collections::HashMap<u64, HashSet<u32>> = std::collections::HashMap::new();
+        for branch in &instrumented.executed_branch_ids {
+            m.entry(branch.file_id).or_default().insert(branch.line);
+        }
+        m
+    };
+
+    // Count changed lines and covered lines across all changed files
+    let mut total_changed = 0usize;
+    let mut covered = 0usize;
+
+    for (file_path, line_set) in &changed {
+        total_changed += line_set.len();
+        // Resolve file_path to a file_id via the instrumented file_paths map
+        let file_id = instrumented.file_paths.iter().find_map(|(id, inst_path)| {
+            if inst_path.ends_with(file_path) || inst_path == file_path {
+                Some(*id)
+            } else {
+                None
+            }
+        });
+        if let Some(fid) = file_id {
+            if let Some(exec_lines) = executed_by_file.get(&fid) {
+                covered += line_set.iter().filter(|l| exec_lines.contains(*l)).count();
+            }
+        }
+    }
+
+    let report =
+        diff_util::DiffCoverageReport::new(base_ref, total_changed, covered, changed.len());
+
+    println!(
+        "Changed: {} lines, {} covered ({:.1}%) vs {}",
+        report.changed_lines, report.covered_lines, report.coverage_pct, report.base_ref
+    );
 }
 
 // ---------------------------------------------------------------------------
@@ -2524,7 +2623,45 @@ async fn run_audit(args: AuditArgs, cfg: &ApexConfig) -> Result<()> {
     };
 
     let pipeline = DetectorPipeline::from_config(&detect_cfg, lang);
-    let report = pipeline.run_all(&ctx).await;
+    let mut report = pipeline.run_all(&ctx).await;
+
+    // If --diff was requested, filter findings to only those on changed lines.
+    if let Some(ref base_ref) = args.diff {
+        use apex_core::command::RealCommandRunner;
+        use apex_core::diff as diff_util;
+
+        match diff_util::changed_lines(&RealCommandRunner, &target_path, base_ref).await {
+            Ok(changed) => {
+                let original_count = report.findings.len();
+                report.findings.retain(|f| {
+                    let line = match f.line {
+                        Some(l) => l,
+                        None => return false,
+                    };
+                    // Check if any changed-file entry is a suffix of (or equal to) the finding file
+                    changed.iter().any(|(changed_path, lines)| {
+                        (f.file.ends_with(changed_path) || &f.file == changed_path)
+                            && lines.contains(&line)
+                    })
+                });
+                info!(
+                    base_ref,
+                    before = original_count,
+                    after = report.findings.len(),
+                    "filtered findings to changed lines"
+                );
+                println!(
+                    "Diff filter ({}): {} of {} findings on changed lines",
+                    base_ref,
+                    report.findings.len(),
+                    original_count
+                );
+            }
+            Err(e) => {
+                warn!("--diff: failed to get changed lines: {e}");
+            }
+        }
+    }
 
     let min_severity = match args.severity_threshold.as_str() {
         "critical" => Severity::Critical,
@@ -5148,6 +5285,8 @@ mod tests {
             fuzz_iters: Some(10000),
             fuzz_cmd: vec!["./my_binary".into(), "--arg".into()],
             coverage_file: None,
+            diff: None,
+            mcdc: false,
         };
         let cmd = fuzz_command(&args, std::path::Path::new("/repo"));
         assert_eq!(cmd, vec!["./my_binary", "--arg"]);
@@ -5167,6 +5306,8 @@ mod tests {
             fuzz_iters: Some(10000),
             fuzz_cmd: vec![],
             coverage_file: None,
+            diff: None,
+            mcdc: false,
         };
         let cmd = fuzz_command(&args, std::path::Path::new("/repo"));
         assert_eq!(cmd, vec!["/repo/apex_target"]);

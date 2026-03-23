@@ -4,6 +4,12 @@ All notable changes to APEX will be documented in this file.
 
 ## [Unreleased]
 
+### Added
+- **seccomp-bpf sandbox** (`apex-sandbox`) — `apply_seccomp_filter()` applies a restrictive BPF allow-list after fork/before exec on Linux (feature-gated behind `seccomp`); no-op stub on macOS and other platforms
+- **macOS sandbox-exec profiles** (`apex-sandbox`) — `sandbox_profile(allowed_paths)` generates `sandbox-exec(1)` profiles that deny default + network with allow-list for target dirs; tested for deny-default, system paths, network deny, allowed-path inclusion, and process-exec
+- **Dynamic call graph collection** (`apex-reach`) — `DynamicCallGraph` type with per-language collectors (`collect_python_callgraph`, `collect_js_callgraph`, `collect_go_callgraph`); Python uses `sys.settrace`, JS uses Error stack capture, Go uses `runtime/trace` + `go tool trace`
+- **Static+dynamic graph merge** (`apex-reach`) — `merge_dynamic_callgraph()` union-merges a `DynamicCallGraph` into a static `CallGraph`; inserts synthetic stub nodes for unknown functions and deduplicates existing edges
+
 ### Fixed
 - **CWD bug in analyze pipeline** — `parse_llvm_cov_export` now canonicalizes both the target root and coverage filenames before `strip_prefix`, fixing symlink mismatches (e.g. `/tmp` vs `/private/tmp` on macOS) that caused "0 source files" and "could not find Cargo.toml" when analyzing out-of-tree targets
 - **`apex doctor`** — `CommandSpec` working directory changed from `"."` to `std::env::current_dir()` so version checks don't depend on inherited CWD

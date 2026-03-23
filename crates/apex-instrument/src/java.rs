@@ -46,10 +46,12 @@ fn collect_jacoco_reports(dir: &Path, depth: usize, max_depth: usize, results: &
     if depth > max_depth {
         return;
     }
-    // Check this directory for a JaCoCo report
+    // Check this directory for a JaCoCo report (standard JVM and KMP paths)
     for report_path in &[
         "build/reports/jacoco/test/jacocoTestReport.xml",
         "build/reports/jacoco/jacocoTestReport.xml",
+        "build/reports/jacoco/jvmTest/jacocoJvmTestReport.xml",
+        "build/reports/jacoco/jacocoJvmTestReport.xml",
     ] {
         let p = dir.join(report_path);
         if p.exists() {
@@ -99,6 +101,95 @@ fn is_kotlin_multiplatform(target: &Path) -> bool {
     false
 }
 
+/// Detect KMP submodules that are likely to fail compilation and should be excluded.
+///
+/// Scans for modules whose `gradle.properties` or `build.gradle.kts` reference
+/// platform-specific toolchains (Rust/Cargo, Android NDK, etc.) or plugins known
+/// to cause transform errors (e.g., `atomicfu` with certain native targets).
+///
+/// Returns Gradle module paths like `:ktor-client:ktor-client-webrtc`.
+fn find_excludable_kmp_modules(target: &Path) -> Vec<String> {
+    let mut excluded = Vec::new();
+    collect_excludable_modules(target, target, &mut excluded);
+    excluded
+}
+
+fn collect_excludable_modules(root: &Path, dir: &Path, results: &mut Vec<String>) {
+    let entries = match std::fs::read_dir(dir) {
+        Ok(e) => e,
+        Err(_) => return,
+    };
+
+    for entry in entries.flatten() {
+        let name = entry.file_name();
+        let name_str = name.to_string_lossy();
+
+        // Skip hidden dirs, build outputs, and non-project dirs
+        if name_str.starts_with('.')
+            || name_str == "build"
+            || name_str == "node_modules"
+            || name_str == "target"
+            || name_str == "buildSrc"
+            || name_str == "build-logic"
+            || name_str == "build-settings-logic"
+            || name_str == "gradle"
+        {
+            continue;
+        }
+
+        let path = entry.path();
+        if !path.is_dir() {
+            continue;
+        }
+
+        // Check if this directory is a Gradle submodule with a build file
+        let has_build = path.join("build.gradle.kts").exists() || path.join("build.gradle").exists();
+
+        if has_build && should_exclude_module(&path) {
+            // Convert filesystem path to Gradle module path
+            if let Ok(rel) = path.strip_prefix(root) {
+                let module_path = format!(
+                    ":{}",
+                    rel.components()
+                        .map(|c| c.as_os_str().to_string_lossy().to_string())
+                        .collect::<Vec<_>>()
+                        .join(":")
+                );
+                results.push(module_path);
+            }
+        }
+
+        // Recurse into subdirectories
+        collect_excludable_modules(root, &path, results);
+    }
+}
+
+/// Heuristics for modules that should be excluded from JVM test runs.
+fn should_exclude_module(module_dir: &Path) -> bool {
+    // Check gradle.properties for Rust compilation flags
+    if let Ok(props) = std::fs::read_to_string(module_dir.join("gradle.properties")) {
+        if props.contains("rustCompilation") || props.contains("cargo") {
+            return true;
+        }
+    }
+
+    // Check build file for platform-specific requirements
+    for name in &["build.gradle.kts", "build.gradle"] {
+        if let Ok(content) = std::fs::read_to_string(module_dir.join(name)) {
+            // Modules requiring Rust/Cargo compilation
+            if content.contains("cargo") && content.contains("rust") {
+                return true;
+            }
+            // Modules with WebRTC native dependencies
+            if content.contains("webrtc") && content.contains("native") {
+                return true;
+            }
+        }
+    }
+
+    false
+}
+
 /// Check whether a Gradle build file already applies the JaCoCo plugin.
 fn gradle_has_jacoco(target: &Path) -> bool {
     for name in &["build.gradle", "build.gradle.kts"] {
@@ -116,17 +207,26 @@ fn gradle_has_jacoco(target: &Path) -> bool {
 /// Uses `plugins.apply` with `afterEvaluate` to handle projects that don't have
 /// the Java plugin applied yet (Kotlin, Android, etc.).  The `jacocoTestReport`
 /// task is configured to produce XML output (which APEX parses).
+///
+/// Handles both standard JVM projects and Kotlin Multiplatform (KMP) projects.
+/// For KMP, JaCoCo is applied to JVM test tasks and produces `jacocoJvmTestReport`.
 const JACOCO_INIT_GRADLE: &str = r#"
 allprojects {
     afterEvaluate {
-        if (plugins.hasPlugin('java') || plugins.hasPlugin('java-library') || plugins.hasPlugin('org.jetbrains.kotlin.jvm')) {
+        def hasJvm = plugins.hasPlugin('java') ||
+                     plugins.hasPlugin('java-library') ||
+                     plugins.hasPlugin('org.jetbrains.kotlin.jvm')
+        def hasKmp = plugins.hasPlugin('org.jetbrains.kotlin.multiplatform')
+
+        if (hasJvm || hasKmp) {
             apply plugin: 'jacoco'
             tasks.withType(Test) {
                 jacoco {
                     enabled = true
                 }
             }
-            tasks.matching { it.name == 'jacocoTestReport' }.configureEach {
+            // Configure all JaCoCo report tasks to produce XML
+            tasks.withType(JacocoReport) {
                 reports {
                     xml.required = true
                     html.required = false
@@ -186,20 +286,56 @@ async fn run_jacoco_gradle(
     // For Kotlin Multiplatform projects, only run JVM tests to avoid
     // requiring Xcode (for Kotlin/Native) or a browser (for Kotlin/JS).
     let is_kmp = is_kotlin_multiplatform(target);
-    let test_task = if is_kmp { "jvmTest" } else { "test" };
-
-    args.extend([
-        test_task.into(),
-        "jacocoTestReport".into(),
-        "--quiet".into(),
-        "--continue".into(), // Don't stop on first submodule failure
-    ]);
 
     if is_kmp {
-        // Skip native/JS compilation that requires platform-specific toolchains
-        args.push("-x".into());
-        args.push("compileKotlinNative".into());
-        info!("Kotlin Multiplatform detected — running jvmTest only");
+        // KMP projects: run jvmTest and generate JaCoCo reports for JVM targets.
+        // The JaCoCo plugin auto-creates `jacocoJvmTestReport` when applied to KMP
+        // projects with JVM targets.  We request both report task names since
+        // convention-plugin setups may wire either name.
+        args.extend([
+            "jvmTest".into(),
+            "jacocoTestReport".into(),
+            "jacocoJvmTestReport".into(),
+            "--quiet".into(),
+            "--continue".into(),
+        ]);
+
+        // Exclude native/JS/Wasm compilation tasks that require platform-specific
+        // toolchains (Xcode, browser, wasm-opt, Rust cargo, etc.).
+        for exclude in &[
+            "compileKotlinNative",
+            "compileKotlinJs",
+            "compileKotlinWasmJs",
+            "compileKotlinWasmWasi",
+        ] {
+            args.push("-x".into());
+            args.push((*exclude).into());
+        }
+
+        // Detect and exclude modules that are known to cause atomicfu or other
+        // compilation errors (e.g., WebRTC modules requiring Rust/Cargo).
+        let excluded = find_excludable_kmp_modules(target);
+        for module_path in &excluded {
+            // Exclude both test and report tasks for the failing module
+            args.push("-x".into());
+            args.push(format!("{module_path}:jvmTest"));
+            args.push("-x".into());
+            args.push(format!("{module_path}:jacocoTestReport"));
+            args.push("-x".into());
+            args.push(format!("{module_path}:jacocoJvmTestReport"));
+        }
+
+        info!(
+            excluded_modules = excluded.len(),
+            "Kotlin Multiplatform detected — running jvmTest only, excluding native/JS/Wasm compilation"
+        );
+    } else {
+        args.extend([
+            "test".into(),
+            "jacocoTestReport".into(),
+            "--quiet".into(),
+            "--continue".into(),
+        ]);
     }
 
     let spec = jvm_command("./gradlew", target, timeout_ms).args(args);
@@ -1267,5 +1403,211 @@ mod tests {
             !repo_root.join(".apex-jacoco-init.gradle").exists(),
             "init script should be cleaned up after run"
         );
+    }
+
+    // -----------------------------------------------------------------------
+    // Kotlin Multiplatform (KMP) tests
+    // -----------------------------------------------------------------------
+
+    #[tokio::test]
+    async fn test_kmp_project_uses_jvm_test_task() {
+        let tmp = tempfile::tempdir().unwrap();
+        let repo_root = tmp.path();
+
+        // KMP project
+        std::fs::write(
+            repo_root.join("build.gradle.kts"),
+            r#"plugins { kotlin("multiplatform") }"#,
+        )
+        .unwrap();
+
+        // Create JaCoCo report at KMP-specific path
+        let report_dir = repo_root.join("build/reports/jacoco/jvmTest");
+        std::fs::create_dir_all(&report_dir).unwrap();
+        std::fs::write(
+            report_dir.join("jacocoJvmTestReport.xml"),
+            sample_jacoco_xml(),
+        )
+        .unwrap();
+
+        let runner = Arc::new(FakeRunner::success());
+        let inst = JavaInstrumentor::with_runner(runner.clone());
+
+        let target = Target {
+            root: repo_root.to_path_buf(),
+            language: apex_core::types::Language::Java,
+            test_command: Vec::new(),
+        };
+
+        let result = inst.instrument(&target).await.unwrap();
+        assert_eq!(result.branch_ids.len(), 10);
+
+        // Verify KMP-specific args
+        let spec = runner.last_spec().expect("should have recorded a spec");
+        assert!(
+            spec.args.contains(&"jvmTest".to_string()),
+            "KMP should use jvmTest task: {:?}",
+            spec.args
+        );
+        assert!(
+            !spec.args.iter().any(|a| a == "test"),
+            "KMP should not use plain 'test' task: {:?}",
+            spec.args
+        );
+        // Should exclude native/JS/Wasm compilation
+        assert!(
+            spec.args.contains(&"compileKotlinNative".to_string()),
+            "KMP should exclude compileKotlinNative: {:?}",
+            spec.args
+        );
+        assert!(
+            spec.args.contains(&"compileKotlinJs".to_string()),
+            "KMP should exclude compileKotlinJs: {:?}",
+            spec.args
+        );
+        assert!(
+            spec.args.contains(&"compileKotlinWasmJs".to_string()),
+            "KMP should exclude compileKotlinWasmJs: {:?}",
+            spec.args
+        );
+    }
+
+    #[tokio::test]
+    async fn test_kmp_project_requests_both_report_tasks() {
+        let tmp = tempfile::tempdir().unwrap();
+        let repo_root = tmp.path();
+
+        std::fs::write(
+            repo_root.join("build.gradle.kts"),
+            r#"plugins { kotlin("multiplatform") }"#,
+        )
+        .unwrap();
+
+        let report_dir = repo_root.join("build/reports/jacoco/test");
+        std::fs::create_dir_all(&report_dir).unwrap();
+        std::fs::write(report_dir.join("jacocoTestReport.xml"), sample_jacoco_xml()).unwrap();
+
+        let runner = Arc::new(FakeRunner::success());
+        let inst = JavaInstrumentor::with_runner(runner.clone());
+
+        let target = Target {
+            root: repo_root.to_path_buf(),
+            language: apex_core::types::Language::Java,
+            test_command: Vec::new(),
+        };
+
+        let _ = inst.instrument(&target).await.unwrap();
+
+        let spec = runner.last_spec().expect("should have recorded a spec");
+        assert!(
+            spec.args.contains(&"jacocoTestReport".to_string()),
+            "should request jacocoTestReport: {:?}",
+            spec.args
+        );
+        assert!(
+            spec.args.contains(&"jacocoJvmTestReport".to_string()),
+            "should request jacocoJvmTestReport: {:?}",
+            spec.args
+        );
+    }
+
+    #[test]
+    fn test_kmp_report_search_finds_jvm_test_report() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path();
+
+        // Create a KMP-style report in a submodule
+        let report_dir = root.join("submod/build/reports/jacoco/jvmTest");
+        std::fs::create_dir_all(&report_dir).unwrap();
+        std::fs::write(
+            report_dir.join("jacocoJvmTestReport.xml"),
+            sample_jacoco_xml(),
+        )
+        .unwrap();
+
+        let found = find_jacoco_report_recursive(root);
+        assert!(found.is_some(), "should find jacocoJvmTestReport.xml");
+        let path_str = found.unwrap().to_string_lossy().to_string();
+        assert!(
+            path_str.contains("jacocoJvmTestReport.xml"),
+            "found path should contain jacocoJvmTestReport.xml: {path_str}"
+        );
+    }
+
+    #[test]
+    fn test_find_excludable_kmp_modules_empty_project() {
+        let tmp = tempfile::tempdir().unwrap();
+        let excluded = find_excludable_kmp_modules(tmp.path());
+        assert!(excluded.is_empty());
+    }
+
+    #[test]
+    fn test_find_excludable_kmp_modules_detects_rust_module() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path();
+
+        // Create a module with cargo/rust references
+        let mod_dir = root.join("ktor-client/ktor-client-webrtc");
+        std::fs::create_dir_all(&mod_dir).unwrap();
+        std::fs::write(
+            mod_dir.join("build.gradle.kts"),
+            "// uses cargo to build rust native code\nplugins { kotlin(\"multiplatform\") }",
+        )
+        .unwrap();
+
+        let excluded = find_excludable_kmp_modules(root);
+        assert_eq!(excluded.len(), 1);
+        assert_eq!(excluded[0], ":ktor-client:ktor-client-webrtc");
+    }
+
+    #[test]
+    fn test_find_excludable_kmp_modules_skips_normal_modules() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path();
+
+        // Normal module without cargo/rust
+        let mod_dir = root.join("ktor-server/ktor-server-core");
+        std::fs::create_dir_all(&mod_dir).unwrap();
+        std::fs::write(
+            mod_dir.join("build.gradle.kts"),
+            "plugins { kotlin(\"multiplatform\") }",
+        )
+        .unwrap();
+
+        let excluded = find_excludable_kmp_modules(root);
+        assert!(excluded.is_empty());
+    }
+
+    #[test]
+    fn test_jacoco_init_gradle_includes_kmp_plugin_check() {
+        assert!(
+            JACOCO_INIT_GRADLE.contains("org.jetbrains.kotlin.multiplatform"),
+            "init script should check for KMP plugin"
+        );
+    }
+
+    #[test]
+    fn test_jacoco_init_gradle_uses_jacoco_report_type() {
+        assert!(
+            JACOCO_INIT_GRADLE.contains("JacocoReport"),
+            "init script should configure all JacocoReport tasks"
+        );
+    }
+
+    #[test]
+    fn test_should_exclude_module_with_gradle_properties_rust() {
+        let tmp = tempfile::tempdir().unwrap();
+        let mod_dir = tmp.path();
+        std::fs::write(mod_dir.join("build.gradle.kts"), "").unwrap();
+        std::fs::write(mod_dir.join("gradle.properties"), "rustCompilation=true").unwrap();
+        assert!(should_exclude_module(mod_dir));
+    }
+
+    #[test]
+    fn test_should_exclude_module_normal() {
+        let tmp = tempfile::tempdir().unwrap();
+        let mod_dir = tmp.path();
+        std::fs::write(mod_dir.join("build.gradle.kts"), "plugins { kotlin(\"multiplatform\") }").unwrap();
+        assert!(!should_exclude_module(mod_dir));
     }
 }

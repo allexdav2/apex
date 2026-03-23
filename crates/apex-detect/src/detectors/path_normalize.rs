@@ -1,7 +1,7 @@
 use async_trait::async_trait;
 use uuid::Uuid;
 
-use super::util::{is_comment, is_test_file};
+use super::util::{is_comment, is_test_file, taint_reaches_sink};
 use crate::context::AnalysisContext;
 use crate::finding::{Finding, FindingCategory, Severity};
 use crate::Detector;
@@ -696,6 +696,30 @@ impl Detector for PathNormalizationDetector {
             // Pass 2: expression-level file-operation sink scanning.
             let expr_findings = find_expression_sinks(&lines, lang, path, self.name(), file_noisy);
             findings.extend(expr_findings);
+        }
+
+        // Pass 3: CPG taint validation — downgrade findings where no taint
+        // flow from user-controlled sources is detected.
+        let source_indicators = &[
+            "user_input", "request", "req", "args", "params", "query",
+            "path", "url", "uri", "file", "body", "input",
+        ];
+        for finding in &mut findings {
+            if let Some(has_taint) = taint_reaches_sink(
+                ctx,
+                &finding.file,
+                finding.line.unwrap_or(0),
+                source_indicators,
+            ) {
+                if !has_taint {
+                    finding.noisy = true;
+                    finding.severity = Severity::Low;
+                    finding.description = format!(
+                        "{} (no taint flow detected — likely safe)",
+                        finding.description
+                    );
+                }
+            }
         }
 
         Ok(findings)

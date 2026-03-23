@@ -23,7 +23,6 @@ pub mod hunt_hints;
 pub mod i18n_check;
 pub mod iac_scan;
 pub mod incident_match;
-pub mod llm_triage;
 pub mod lockfile;
 pub mod mem_check;
 pub mod migration_check;
@@ -45,7 +44,6 @@ pub mod threat;
 pub mod threat_model;
 pub mod trace_analysis;
 pub mod vuln_pipeline;
-pub mod yaml_rules;
 
 pub use config::{DetectConfig, DetectMode};
 pub use context::AnalysisContext;

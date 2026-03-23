@@ -5,7 +5,7 @@ use regex::Regex;
 use std::sync::LazyLock;
 use uuid::Uuid;
 
-use super::util::{is_comment, is_test_file, taint_reaches_sink};
+use super::util::{is_comment, is_test_file};
 use crate::context::AnalysisContext;
 use crate::finding::{Finding, FindingCategory, Severity};
 use crate::Detector;
@@ -50,7 +50,7 @@ impl Detector for JsSsrfDetector {
                 if SSRF_PATTERN.is_match(trimmed) {
                     let line_1based = (line_num + 1) as u32;
 
-                    let mut finding = Finding {
+                    findings.push(Finding {
                         id: Uuid::new_v4(),
                         detector: self.name().into(),
                         severity: Severity::High,
@@ -75,38 +75,8 @@ impl Detector for JsSsrfDetector {
                         explanation: None,
                         fix: None,
                         cwe_ids: vec![918],
-                        noisy: false,
-                        base_severity: None,
-                        coverage_confidence: None,
-                    };
-
-                    // CPG taint check: downgrade if no taint flow detected.
-                    if let Some(has_taint) = taint_reaches_sink(
-                        ctx,
-                        path,
-                        line_1based,
-                        &[
-                            "user_input",
-                            "request",
-                            "req",
-                            "args",
-                            "params",
-                            "body",
-                            "url",
-                            "endpoint",
-                        ],
-                    ) {
-                        if !has_taint {
-                            finding.noisy = true;
-                            finding.severity = Severity::Low;
-                            finding.description = format!(
-                                "{} (no taint flow detected — likely safe)",
-                                finding.description
-                            );
-                        }
-                    }
-
-                    findings.push(finding);
+                    noisy: false, base_severity: None, coverage_confidence: None,
+                    });
                 }
             }
         }

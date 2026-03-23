@@ -13,6 +13,7 @@ pub mod git;
 pub mod hash;
 pub mod llm;
 pub mod path_shim;
+pub mod probe;
 pub mod traits;
 pub mod types;
 

@@ -4,6 +4,8 @@ All notable changes to APEX will be documented in this file.
 
 ## [Unreleased]
 
+## [0.5.0] — 2026-03-24
+
 ### Added
 - **`apex init`** — new CLI subcommand that detects project language, runs `probe_all()`, saves `.apex/environment.json`, and generates `apex.toml` if absent; supports `--lang` override and `--dry-run`
 - **Auto-probe on `apex run`** — environment probe is loaded or refreshed (7-day freshness window) automatically before the coverage pipeline runs; result logged as a structured `info!` line

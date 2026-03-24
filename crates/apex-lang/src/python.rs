@@ -100,7 +100,7 @@ impl<R: CommandRunner> PythonRunner<R> {
     ///
     /// Runs `python3 -c "import sysconfig; ..."` to locate the stdlib directory,
     /// then checks for the `EXTERNALLY-MANAGED` marker file.
-    fn is_externally_managed(target: &Path) -> bool {
+    pub fn is_externally_managed(target: &Path) -> bool {
         let python = Self::resolve_python();
         let output = std::process::Command::new(python)
             .args([

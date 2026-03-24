@@ -10,6 +10,7 @@ pub mod java;
 pub mod javascript;
 pub mod js_env;
 pub mod kotlin;
+pub mod probe_impl;
 pub mod python;
 pub mod ruby;
 pub mod rust_lang;

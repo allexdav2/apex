@@ -31,16 +31,15 @@ zero config. Works as both a CLI tool and a set of AI agents inside Claude Code.
 
 ## Quick Start
 
-All commands run inside [Claude Code](https://claude.com/claude-code).
-
 ```bash
-# 1. Register the APEX marketplace
-claude plugins add-marketplace https://github.com/sahajamoth/apex
+# 1. Install the APEX binary
+curl -sSL https://raw.githubusercontent.com/sahajamoth/apex/main/install.sh | sh
 
-# 2. Install the plugin
+# 2. Install the Claude Code plugin
+claude plugins add-marketplace https://github.com/sahajamoth/apex
 claude plugins install apex@apex
 
-# 3. Open your project in Claude Code, then:
+# 3. Open your project in Claude Code:
 /apex init      # Auto-detect language, venv, toolchain
 /apex           # Full analysis: coverage + security + intelligence
 /apex detect    # Security scan (63 detectors, 40+ CWEs)

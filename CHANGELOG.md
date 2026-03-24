@@ -4,6 +4,13 @@ All notable changes to APEX will be documented in this file.
 
 ## [Unreleased]
 
+### Added
+- **`apex init`** — new CLI subcommand that detects project language, runs `probe_all()`, saves `.apex/environment.json`, and generates `apex.toml` if absent; supports `--lang` override and `--dry-run`
+- **Auto-probe on `apex run`** — environment probe is loaded or refreshed (7-day freshness window) automatically before the coverage pipeline runs; result logged as a structured `info!` line
+- **`apex_lang::probe_impl`** — new module with `EnvironmentProbe`, `probe_all()`, `save_cache()`, `load_cached()`, and language-specific sub-probes for Python, Rust, Node, Go, and Java
+- **`apex doctor` environment section** — shows cached probe summary (Python version, venv, package manager, PEP 668 flag) at the end of doctor output; suggests `apex init` when no cache exists
+- **`detect_language()`** — heuristic language detection from project marker files (`Cargo.toml`, `pyproject.toml`, `package.json`, `go.mod`, `pom.xml`, `CMakeLists.txt`)
+
 ### Fixed
 - **CWD bug in analyze pipeline** — `parse_llvm_cov_export` now canonicalizes both the target root and coverage filenames before `strip_prefix`, fixing symlink mismatches (e.g. `/tmp` vs `/private/tmp` on macOS) that caused "0 source files" and "could not find Cargo.toml" when analyzing out-of-tree targets
 - **`apex doctor`** — `CommandSpec` working directory changed from `"."` to `std::env::current_dir()` so version checks don't depend on inherited CWD

@@ -5,11 +5,9 @@ Use this for CI/CD pipelines, scripts, and non-Claude environments.
 
 ## Install the Binary
 
-Pick one method:
-
 ```bash
-# Recommended — macOS and Linux
-curl -sSL https://raw.githubusercontent.com/sahajamoth/apex/main/install.sh | sh
+# Recommended — macOS and Linux (auto-detects platform, no sudo)
+curl -LsSf https://github.com/sahajamoth/apex/releases/latest/download/apex-cli-installer.sh | sh
 
 # Homebrew
 brew install sahajamoth/tap/apex

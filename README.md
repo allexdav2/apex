@@ -33,47 +33,26 @@ zero config. Works as both a CLI tool and a set of AI agents inside Claude Code.
 
 ### 1. Install the binary
 
-**macOS (Apple Silicon):**
 ```bash
-curl -sL https://github.com/sahajamoth/apex/releases/latest/download/apex-aarch64-apple-darwin.tar.gz | tar xz
-sudo mv apex /usr/local/bin/
+# macOS / Linux (auto-detects platform, no sudo needed)
+curl -LsSf https://github.com/sahajamoth/apex/releases/latest/download/apex-cli-installer.sh | sh
 ```
 
-**macOS (Intel):**
-```bash
-curl -sL https://github.com/sahajamoth/apex/releases/latest/download/apex-x86_64-apple-darwin.tar.gz | tar xz
-sudo mv apex /usr/local/bin/
-```
-
-**Linux (x86_64):**
-```bash
-curl -sL https://github.com/sahajamoth/apex/releases/latest/download/apex-x86_64-unknown-linux-gnu.tar.gz | tar xz
-sudo mv apex /usr/local/bin/
-```
-
-**Linux (ARM64):**
-```bash
-curl -sL https://github.com/sahajamoth/apex/releases/latest/download/apex-aarch64-unknown-linux-gnu.tar.gz | tar xz
-sudo mv apex /usr/local/bin/
+```powershell
+# Windows
+powershell -ExecutionPolicy ByPass -c "irm https://github.com/sahajamoth/apex/releases/latest/download/apex-cli-installer.ps1 | iex"
 ```
 
 <details>
 <summary><strong>Alternative install methods</strong></summary>
 
 ```bash
-# Install script (auto-detects platform)
-curl -sSL https://raw.githubusercontent.com/sahajamoth/apex/main/install.sh | sh
-
-# Cargo (from source)
-cargo install --git https://github.com/sahajamoth/apex
-
-# Homebrew (tap first)
-brew tap sahajamoth/tap && brew install apex
-
-# npm / pip / nix
-npx @apex-coverage/cli
-pipx install apex-coverage
-nix run github:sahajamoth/apex
+cargo binstall apex-cli                              # Rust devs (pre-built, no compile)
+cargo install --git https://github.com/sahajamoth/apex  # From source (~5 min)
+brew install sahajamoth/tap/apex                     # Homebrew
+npx @apex-coverage/cli                               # npm
+pipx install apex-coverage                           # pip
+nix run github:sahajamoth/apex                       # Nix
 ```
 
 </details>

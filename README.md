@@ -5,12 +5,15 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![0 crashes](https://img.shields.io/badge/crashes-0_across_10_repos-green)](docs/real-world-validation-summary.md)
 [![Validated](https://img.shields.io/badge/validated-Linux_%7C_K8s_%7C_CPython-blue)](docs/real-world-validation-summary.md)
-[![3000+ tests](https://img.shields.io/badge/tests-3000%2B_passing-green)](https://github.com/sahajamoth/apex/actions/workflows/ci.yml)
+[![6600+ tests](https://img.shields.io/badge/tests-6600%2B_passing-green)](https://github.com/sahajamoth/apex/actions/workflows/ci.yml)
+[![63 detectors](https://img.shields.io/badge/detectors-63-blue)](docs/DETECTORS.md)
+[![Claude Code Plugin](https://img.shields.io/badge/Claude_Code-plugin-blueviolet)](https://claude.com/claude-code)
 
 **Find vulnerabilities. Fix coverage gaps. Automatically.**
 
-APEX scans your codebase for security gaps, dead code, and untested branches —
-then writes the tests to fix them. Single binary, 11 languages, zero config.
+APEX is a Claude Code plugin that scans your codebase for security gaps, dead code,
+and untested branches — then writes the tests to fix them. 63 detectors, 11 languages,
+zero config. Works as both a CLI tool and a set of AI agents inside Claude Code.
 
 > **Validated against:** Linux kernel · Kubernetes · CPython · TypeScript compiler ·
 > ripgrep · Spring Boot · .NET Runtime · Vapor · Rails · ktor
@@ -28,19 +31,70 @@ then writes the tests to fix them. Single binary, 11 languages, zero config.
 
 ## Quick Start
 
+> **Note:** All commands below run inside **Claude Code** (the Claude CLI).
+> APEX works as a Claude Code plugin with slash commands and AI agents.
+> You can also run `apex` directly from a terminal for CI/CD pipelines.
+
+**Step 1 — Install APEX in Claude Code:**
+
+```
+# In Claude Code, install the APEX plugin:
+/install-plugin apex
+
+# Or from a local clone:
+/install-plugin /path/to/apex
+```
+
+**Step 2 — Initialize your project:**
+
+```
+# Claude Code auto-detects your language, venv, toolchain:
+/apex init
+```
+
+**Step 3 — Run:**
+
+```
+# Scan for security issues (63 detectors, 40+ CWEs)
+/apex detect
+
+# Full analysis: coverage + security + intelligence
+/apex
+
+# Hunt for bugs in uncovered code
+/apex hunt
+
+# Deploy readiness check
+/apex deploy
+```
+
+Claude Code's APEX agents handle everything: they detect your environment,
+install missing tools (via uv, bun, mise), run coverage, write tests, and
+produce reports — all inside your editor.
+
+<details>
+<summary><strong>Standalone CLI (for CI/CD, scripts, non-Claude environments)</strong></summary>
+
 ```bash
-# Install
+# Install the binary
 curl -sSL https://raw.githubusercontent.com/sahajamoth/apex/main/install.sh | sh
 
-# Scan your project for security issues
+# Or: brew install sahajamoth/tap/apex
+# Or: npx @apex-coverage/cli
+# Or: pipx install apex-coverage
+# Or: nix run github:sahajamoth/apex
+# Or: cargo install --git https://github.com/sahajamoth/apex
+
+# Initialize
+apex init
+
+# Run
 apex audit --target . --lang python
-
-# See coverage gaps + get auto-generated tests
 apex run --target . --lang python
-
-# CI gate — fail if coverage drops below 80%
-apex ratchet --target . --lang python --min-cov 0.8
+apex deploy-score --target .
 ```
+
+</details>
 
 <details>
 <summary><strong>GitHub Actions</strong></summary>
@@ -64,10 +118,13 @@ jobs:
 
 ---
 
-## What APEX finds in real projects
+## What APEX Finds in Real Projects
+
+> The output below is from Claude Code running the `/apex` command.
+> APEX agents orchestrate the full analysis cycle automatically.
 
 ```
-$ apex run --target ./your-project --lang python
+> /apex
 
   ╭──────────────────────────────────────────────────╮
   │  APEX — Autonomous Path EXploration              │
@@ -88,10 +145,10 @@ $ apex run --target ./your-project --lang python
   Tests written: 31 new tests across 6 files
 ```
 
-Then ask what it learned:
+Then ask Claude for intelligence:
 
 ```
-$ /apex-intel
+> /apex intel
 
   ┌─ Test Optimization ──────────────────────────────┐
   │  312 tests → 94 minimal set (3.3× speedup)       │
@@ -137,10 +194,14 @@ $ /apex-intel
 
 | | APEX | Semgrep | CodeQL | Snyk | coverage.py |
 |---|:---:|:---:|:---:|:---:|:---:|
+| Claude Code integration | **native** | — | — | — | — |
+| AI agents (hunt, plan, fix) | ✓ | — | — | — | — |
 | Auto-writes tests | ✓ | — | — | — | — |
+| 63 detectors, 40+ CWEs | ✓ | ✓ | ✓ | ✓ | — |
 | Branch-level coverage | ✓ | — | — | — | line only |
+| CPG taint analysis | ✓ | ✓ | ✓ | — | — |
 | Security + coverage unified | ✓ | security | security | security | coverage |
-| Dead code detection | semantic | — | limited | — | — |
+| MCP server (33 tools) | ✓ | — | — | — | — |
 | Deploy readiness score | ✓ | — | — | — | — |
 | Single binary, zero deps | ✓ | ✓ | cloud | cloud | pip |
 | 11 languages | ✓ | ✓ | ✓ | ✓ | Python |
@@ -149,62 +210,50 @@ $ /apex-intel
 
 ## Installation
 
-### 1. Install the APEX Binary
+### 1. Install in Claude Code (Recommended)
 
-Pick one method:
+```
+# Install the APEX plugin
+/install-plugin apex
 
-**Standalone installer** (recommended — macOS and Linux):
-
-```bash
-curl -sSL https://raw.githubusercontent.com/sahajamoth/apex/main/install.sh | sh
+# Or from a local clone
+/install-plugin /path/to/apex
 ```
 
-**Homebrew:**
-
-```bash
-brew install sahajamoth/tap/apex
-```
-
-**npm:**
-
-```bash
-npx @apex-coverage/cli run --target . --lang python
-```
-
-**pip:**
-
-```bash
-pipx install apex-coverage
-```
-
-**Nix:**
-
-```bash
-nix run github:sahajamoth/apex
-```
-
-**Cargo** (from source):
-
-```bash
-cargo install --git https://github.com/sahajamoth/apex
-```
-
-Verify the installation:
-
-```bash
-apex doctor    # Check all prerequisites
-apex --version # Should print v0.5.0
-```
+This installs both the APEX binary and all AI agents. Everything works
+inside Claude Code — slash commands, subagents, MCP tools.
 
 ### 2. Initialize Your Project
 
-```bash
-cd your-project
+```
+# In Claude Code:
+/apex init
+
+# Or from terminal:
 apex init
 ```
 
-This auto-detects your language, toolchain, venvs, and generates `apex.toml`.
+Auto-detects your language, toolchain, venvs, and generates `apex.toml`.
 No manual config needed.
+
+<details>
+<summary><strong>Standalone binary install (CI/CD, non-Claude environments)</strong></summary>
+
+```bash
+# Pick one:
+curl -sSL https://raw.githubusercontent.com/sahajamoth/apex/main/install.sh | sh
+brew install sahajamoth/tap/apex
+npx @apex-coverage/cli
+pipx install apex-coverage
+nix run github:sahajamoth/apex
+cargo install --git https://github.com/sahajamoth/apex
+
+# Verify
+apex doctor
+apex --version  # v0.5.0
+```
+
+</details>
 
 ### 3. Connect to Claude Code (MCP Server)
 

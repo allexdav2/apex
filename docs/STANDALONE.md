@@ -6,24 +6,17 @@ Use this for CI/CD pipelines, scripts, and non-Claude environments.
 ## Install the Binary
 
 ```bash
-# Recommended — macOS and Linux (auto-detects platform, no sudo)
+# Recommended — macOS / Linux (auto-detects platform, no sudo)
 curl -LsSf https://github.com/sahajamoth/apex/releases/latest/download/apex-cli-installer.sh | sh
 
-# Homebrew
-brew install sahajamoth/tap/apex
-
-# npm (runs via npx)
-npx @apex-coverage/cli run --target . --lang python
-
-# pip
-pipx install apex-coverage
+# From source (needs Rust toolchain, ~5 min)
+cargo install --git https://github.com/sahajamoth/apex
 
 # Nix
 nix run github:sahajamoth/apex
-
-# Cargo (from source)
-cargo install --git https://github.com/sahajamoth/apex
 ```
+
+> Homebrew, npm, and pip packages coming soon.
 
 ## Verify
 

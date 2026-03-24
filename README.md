@@ -47,13 +47,14 @@ powershell -ExecutionPolicy ByPass -c "irm https://github.com/sahajamoth/apex/re
 <summary><strong>Alternative install methods</strong></summary>
 
 ```bash
-cargo binstall apex-cli                              # Rust devs (pre-built, no compile)
-cargo install --git https://github.com/sahajamoth/apex  # From source (~5 min)
-brew install sahajamoth/tap/apex                     # Homebrew
-npx @apex-coverage/cli                               # npm
-pipx install apex-coverage                           # pip
-nix run github:sahajamoth/apex                       # Nix
+# From source (needs Rust toolchain, ~5 min)
+cargo install --git https://github.com/sahajamoth/apex
+
+# Nix
+nix run github:sahajamoth/apex
 ```
+
+Package registry publishing (npm, Homebrew, pip) coming soon.
 
 </details>
 

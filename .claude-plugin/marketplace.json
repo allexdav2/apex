@@ -1,0 +1,39 @@
+{
+  "name": "apex",
+  "owner": {
+    "name": "sahajamoth",
+    "email": "allexdav@gmail.com"
+  },
+  "metadata": {
+    "repository": "https://github.com/sahajamoth/apex",
+    "homepage": "https://github.com/sahajamoth/apex",
+    "license": "MIT",
+    "documentation": "https://github.com/sahajamoth/apex/blob/main/README.md"
+  },
+  "plugins": [
+    {
+      "name": "apex",
+      "description": "APEX coverage analysis, security detection, and AI-guided test generation. 63 detectors, 33 MCP tools, 20+ AI agents for 11 languages.",
+      "source": "./",
+      "category": "development",
+      "version": "0.5.0",
+      "author": {
+        "name": "sahajamoth",
+        "email": "allexdav@gmail.com",
+        "url": "https://github.com/sahajamoth/apex"
+      },
+      "license": "MIT",
+      "homepage": "https://github.com/sahajamoth/apex",
+      "repository": "https://github.com/sahajamoth/apex",
+      "keywords": [
+        "coverage",
+        "security",
+        "testing",
+        "static-analysis",
+        "detectors",
+        "mcp",
+        "agents"
+      ]
+    }
+  ]
+}

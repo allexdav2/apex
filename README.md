@@ -81,7 +81,18 @@ nix run github:sahajamoth/apex
 ### 2. Install the Claude Code plugin
 
 ```bash
-claude plugins add-marketplace https://github.com/sahajamoth/apex
+# Add the APEX marketplace (GitHub repo)
+claude plugins marketplace add sahajamoth/apex
+
+# Install the APEX plugin from it
+claude plugins install apex@apex
+```
+
+Or from a local clone:
+
+```bash
+git clone https://github.com/sahajamoth/apex.git
+claude plugins marketplace add ./apex
 claude plugins install apex@apex
 ```
 
@@ -199,26 +210,17 @@ Then ask Claude for intelligence:
 ### Claude Code Plugin (Recommended)
 
 ```bash
-# Register the APEX marketplace
-claude plugins add-marketplace https://github.com/sahajamoth/apex
+# From GitHub
+claude plugins marketplace add sahajamoth/apex
+claude plugins install apex@apex
 
-# Install
+# Or from a local clone
+git clone https://github.com/sahajamoth/apex.git
+claude plugins marketplace add ./apex
 claude plugins install apex@apex
 ```
 
-This installs the APEX binary, 33 MCP tools, slash commands, and 20+ AI agents.
-
-### From a Local Clone
-
-```bash
-git clone https://github.com/sahajamoth/apex.git
-
-# Register as local marketplace
-claude plugins add-marketplace ./apex
-
-# Install from it
-claude plugins install apex@local
-```
+This installs slash commands, 20+ AI agents, and 33 MCP tools.
 
 ### Verify
 

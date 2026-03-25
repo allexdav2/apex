@@ -359,6 +359,82 @@ The `/apex-run` loop automatically picks the best strategy per gap:
 
 ---
 
+## AI Tool Integration
+
+APEX works with any MCP-compatible AI coding assistant. Run `apex mcp` to start the STDIO server (33 tools).
+
+### Claude Code
+Add to `.claude/settings.local.json`:
+```json
+{
+  "mcpServers": {
+    "apex": {
+      "command": "apex",
+      "args": ["mcp"]
+    }
+  }
+}
+```
+
+### Cursor
+Add to `.cursor/mcp.json`:
+```json
+{
+  "mcpServers": {
+    "apex": {
+      "command": "apex",
+      "args": ["mcp"]
+    }
+  }
+}
+```
+
+### Codex CLI
+Add to `.codex/config.toml`:
+```toml
+[mcp_servers.apex]
+type = "stdio"
+command = "apex"
+args = ["mcp"]
+```
+
+### Cline
+In Cline MCP settings, add:
+```json
+{
+  "apex": {
+    "command": "apex",
+    "args": ["mcp"]
+  }
+}
+```
+
+### Continue.dev
+Save to `.continue/mcpServers/apex.json`:
+```json
+{
+  "apex": {
+    "command": "apex",
+    "args": ["mcp"]
+  }
+}
+```
+
+### Windsurf
+Add to MCP configuration:
+```json
+{
+  "mcpServers": {
+    "apex": {
+      "command": "apex",
+      "args": ["mcp"]
+    }
+  }
+}
+```
+
+---
+
 ## Architecture
 
 Rust workspace, 16 crates. Heavy dependencies (Z3, LibAFL, PyO3, Inkwell,

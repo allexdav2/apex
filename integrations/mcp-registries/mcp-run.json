@@ -1,7 +1,7 @@
 {
   "name": "apex",
-  "description": "Code coverage & security analysis for 11 languages. Coverage gaps, CWE-mapped security findings, reverse path reachability, deployment confidence scores.",
-  "version": "0.1.0",
+  "description": "Code coverage & security analysis for 11 languages. 33 MCP tools: coverage gaps, CWE-mapped findings, reachability, blast radius, deployment scoring, and more.",
+  "version": "0.5.0",
   "author": "sahajamoth",
   "homepage": "https://github.com/sahajamoth/apex",
   "license": "MIT",
@@ -9,30 +9,39 @@
   "command": "apex",
   "args": ["mcp"],
   "tools": [
-    {
-      "name": "apex_run",
-      "description": "Run coverage analysis on a project"
-    },
-    {
-      "name": "apex_detect",
-      "description": "Run security detectors with CWE mappings"
-    },
-    {
-      "name": "apex_reach",
-      "description": "Find entry points reaching a code location"
-    },
-    {
-      "name": "apex_ratchet",
-      "description": "CI coverage gate check"
-    },
-    {
-      "name": "apex_doctor",
-      "description": "Check tool prerequisites"
-    },
-    {
-      "name": "apex_deploy_score",
-      "description": "Deployment confidence score 0-100"
-    }
+    { "name": "apex_run", "description": "Run coverage analysis on a project" },
+    { "name": "apex_detect", "description": "Run security detectors with CWE mappings" },
+    { "name": "apex_reach", "description": "Find entry points reaching a code location" },
+    { "name": "apex_ratchet", "description": "CI coverage gate check" },
+    { "name": "apex_doctor", "description": "Check tool prerequisites" },
+    { "name": "apex_deploy_score", "description": "Deployment confidence score 0-100" },
+    { "name": "apex_complexity", "description": "Cyclomatic complexity analysis" },
+    { "name": "apex_dead_code", "description": "Find unreachable branches and dead code" },
+    { "name": "apex_risk", "description": "Risk assessment for changed files" },
+    { "name": "apex_hotpaths", "description": "Most frequently executed code paths" },
+    { "name": "apex_test_optimize", "description": "Identify redundant tests" },
+    { "name": "apex_test_prioritize", "description": "Prioritize tests for changed files" },
+    { "name": "apex_blast_radius", "description": "Blast radius of file changes" },
+    { "name": "apex_secret_scan", "description": "Scan for hardcoded secrets and API keys" },
+    { "name": "apex_data_flow", "description": "Trace data flow and taint paths" },
+    { "name": "apex_diff", "description": "Coverage diff between commits" },
+    { "name": "apex_regression_check", "description": "Coverage regression check" },
+    { "name": "apex_lint", "description": "Code quality lints" },
+    { "name": "apex_flaky_detect", "description": "Detect flaky tests" },
+    { "name": "apex_contracts", "description": "Extract function contracts" },
+    { "name": "apex_attack_surface", "description": "Map attack surface" },
+    { "name": "apex_verify_boundaries", "description": "Verify trust boundaries" },
+    { "name": "apex_features", "description": "Feature coverage status" },
+    { "name": "apex_index", "description": "Build branch coverage index" },
+    { "name": "apex_docs", "description": "Documentation coverage report" },
+    { "name": "apex_license_scan", "description": "License compliance scan" },
+    { "name": "apex_flag_hygiene", "description": "Detect stale feature flags" },
+    { "name": "apex_api_diff", "description": "OpenAPI breaking change detection" },
+    { "name": "apex_compliance_export", "description": "Compliance report export" },
+    { "name": "apex_api_coverage", "description": "API endpoint test coverage" },
+    { "name": "apex_service_map", "description": "Service dependency mapping" },
+    { "name": "apex_schema_check", "description": "Schema validation" },
+    { "name": "apex_test_data", "description": "Test data generation" }
   ],
   "categories": ["code-analysis", "security", "testing"],
   "install": {

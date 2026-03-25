@@ -1,4 +1,4 @@
-<!-- status: FUTURE -->
+<!-- status: ACTIVE -->
 # MCP Distribution & Marketplace Publishing Plan
 
 > **For agentic workers:** Execute steps sequentially. Each step has a verification command. Steps use checkbox (`- [ ]`) syntax for tracking.

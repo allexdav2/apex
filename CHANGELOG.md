@@ -4,6 +4,11 @@ All notable changes to APEX will be documented in this file.
 
 ## [Unreleased]
 
+### Added
+- **MCP distribution configs** — updated all MCP registry files (`server.json`, `mcp-registry.json`, `mcp-run.json`, `smithery.yaml`) to v0.5.0 with all 33 tools; added `smithery.yaml` to repo root for Smithery.ai marketplace discovery
+- **npm MCP keywords** — added `mcp`, `mcp-server`, `model-context-protocol`, and 6 other discovery keywords to `npm/package.json`
+- **AI Tool Integration docs** — added README section with MCP config snippets for Claude Code, Cursor, Codex CLI, Cline, Continue.dev, and Windsurf
+
 ### Fixed
 - **Claude Code plugin install** — repo was missing top-level `commands/` directory, so `claude plugin install` found zero slash commands; added `commands/` with all 9 APEX commands (`/apex`, `/apex-run`, `/apex-index`, etc.) and promoted agent `.md` files from `agents/agents/` to `agents/` root for auto-dispatch; added `.claude-plugin/plugin.json` manifest so the plugin registry picks up name, version, and metadata
 

@@ -2,68 +2,52 @@
   "$schema": "https://registry.modelcontextprotocol.io/server.schema.json",
   "id": "io.github.sahajamoth/apex",
   "name": "APEX",
-  "description": "Autonomous code coverage analysis and security detection for 11 languages. Coverage gaps, CWE-mapped findings, reverse path reachability, and deployment confidence scoring.",
-  "version": "0.1.0",
+  "description": "Autonomous code coverage analysis and security detection for 11 languages. 33 MCP tools: coverage gaps, CWE-mapped findings, reverse path reachability, blast radius, deployment confidence scoring, and more.",
+  "version": "0.5.0",
   "homepage": "https://github.com/sahajamoth/apex",
   "repository": "https://github.com/sahajamoth/apex",
   "license": "MIT",
   "authors": ["sahajamoth"],
-  "keywords": ["coverage", "security", "testing", "sast", "cwe", "sarif", "code-analysis"],
+  "keywords": ["coverage", "security", "testing", "sast", "cwe", "sarif", "mcp", "mcp-server", "code-analysis"],
   "transport": {
     "type": "stdio",
     "command": "apex",
     "args": ["mcp"]
   },
   "tools": [
-    {
-      "name": "apex_run",
-      "description": "Run coverage analysis on a project. Returns uncovered branches, gap report, and coverage percentage.",
-      "parameters": {
-        "target": { "type": "string", "required": true, "description": "Path to project root" },
-        "lang": { "type": "string", "required": true, "description": "Language (python, rust, javascript, java, go, ruby, cpp, swift, csharp, kotlin)" },
-        "strategy": { "type": "string", "description": "Analysis strategy (agent, fuzz, concolic, all)" }
-      }
-    },
-    {
-      "name": "apex_detect",
-      "description": "Run security detectors. Returns findings with CWE IDs, severity, and remediation advice.",
-      "parameters": {
-        "target": { "type": "string", "required": true },
-        "lang": { "type": "string", "required": true },
-        "severity_threshold": { "type": "string", "description": "Minimum severity (low, medium, high, critical)" }
-      }
-    },
-    {
-      "name": "apex_reach",
-      "description": "Find all entry points (tests, HTTP handlers, main) that can reach a specific code location.",
-      "parameters": {
-        "target": { "type": "string", "required": true, "description": "file:line format" },
-        "lang": { "type": "string", "required": true },
-        "granularity": { "type": "string", "description": "function, block, or line" },
-        "entry_kind": { "type": "string", "description": "Filter: test, http, main, api, cli" }
-      }
-    },
-    {
-      "name": "apex_ratchet",
-      "description": "CI coverage gate. Returns PASS/FAIL with coverage percentage.",
-      "parameters": {
-        "target": { "type": "string", "required": true },
-        "lang": { "type": "string", "required": true },
-        "min_coverage": { "type": "number", "description": "Minimum coverage ratio 0.0-1.0" }
-      }
-    },
-    {
-      "name": "apex_doctor",
-      "description": "Check that all required tools are installed."
-    },
-    {
-      "name": "apex_deploy_score",
-      "description": "Deployment confidence score (0-100) based on coverage, security, and test health.",
-      "parameters": {
-        "target": { "type": "string", "required": true },
-        "lang": { "type": "string", "required": true }
-      }
-    }
+    { "name": "apex_run", "description": "Run coverage analysis. Returns branch coverage data, uncovered branches, and suggested test targets." },
+    { "name": "apex_detect", "description": "Run security/bug detection. Returns findings with CWE IDs, severity, and remediation advice." },
+    { "name": "apex_reach", "description": "Map reachable code paths from a source location (file:line). Entry-point reachability and attack surface." },
+    { "name": "apex_ratchet", "description": "CI coverage gate. Fails if branch coverage drops below threshold." },
+    { "name": "apex_doctor", "description": "Verify all required external tools are installed and configured." },
+    { "name": "apex_deploy_score", "description": "Deployment confidence score (0-100) based on coverage, findings, and quality." },
+    { "name": "apex_complexity", "description": "Analyze function-level cyclomatic complexity. Hotspots sorted by score." },
+    { "name": "apex_dead_code", "description": "Find unreachable branches and dead code." },
+    { "name": "apex_risk", "description": "Assess risk of changed files. Affected test count and risk level." },
+    { "name": "apex_hotpaths", "description": "Identify most frequently executed code paths." },
+    { "name": "apex_test_optimize", "description": "Identify redundant tests that can be removed to save CI time." },
+    { "name": "apex_test_prioritize", "description": "Prioritize tests by relevance to changed files." },
+    { "name": "apex_blast_radius", "description": "Calculate blast radius of changed files — affected modules and tests." },
+    { "name": "apex_secret_scan", "description": "Scan for hardcoded secrets, API keys, and high-entropy strings." },
+    { "name": "apex_data_flow", "description": "Trace data flow and taint paths through the codebase." },
+    { "name": "apex_diff", "description": "Analyze coverage diff between two commits or branches." },
+    { "name": "apex_regression_check", "description": "Check for coverage regressions against the stored baseline." },
+    { "name": "apex_lint", "description": "Run code quality lints including complexity, naming, and style checks." },
+    { "name": "apex_flaky_detect", "description": "Detect flaky tests by analyzing test history and execution patterns." },
+    { "name": "apex_contracts", "description": "Extract function contracts (pre/post conditions) from source code." },
+    { "name": "apex_attack_surface", "description": "Map attack surface — entry points, trust boundaries, and exposed APIs." },
+    { "name": "apex_verify_boundaries", "description": "Verify trust boundary enforcement between modules." },
+    { "name": "apex_features", "description": "List features and their test coverage status." },
+    { "name": "apex_index", "description": "Build the branch coverage index for a target project." },
+    { "name": "apex_docs", "description": "Generate documentation coverage report." },
+    { "name": "apex_license_scan", "description": "Scan dependencies for license compliance issues." },
+    { "name": "apex_flag_hygiene", "description": "Detect stale or unused feature flags in source code." },
+    { "name": "apex_api_diff", "description": "Compare two OpenAPI specs for breaking changes." },
+    { "name": "apex_compliance_export", "description": "Export compliance report (ASVS, STRIDE, SSDF) for audit." },
+    { "name": "apex_api_coverage", "description": "Measure API endpoint test coverage against an OpenAPI spec." },
+    { "name": "apex_service_map", "description": "Build a service dependency map from imports and API calls." },
+    { "name": "apex_schema_check", "description": "Validate data schemas against actual usage patterns." },
+    { "name": "apex_test_data", "description": "Generate test data based on schema analysis." }
   ],
   "install": {
     "npm": "@apex-coverage/cli",

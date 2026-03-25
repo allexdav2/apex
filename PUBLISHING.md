@@ -2,10 +2,10 @@
 
 ## Prerequisites
 
-- [ ] `apex mcp` subcommand working (committed)
+- [ ] `apex mcp` subcommand working (committed) — 33 MCP tools at v0.5.0
 - [ ] npm package published: `npm publish` in `npm/`
 - [ ] PyPI package published: `twine upload` in `python/`
-- [ ] GitHub Release tagged: `git tag v0.1.0 && git push --tags`
+- [ ] GitHub Release tagged: `git tag v0.5.0 && git push --tags`
 
 ## 1. Official MCP Registry (highest priority)
 

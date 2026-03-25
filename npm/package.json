@@ -7,6 +7,17 @@
     "type": "git",
     "url": "https://github.com/sahajamoth/apex"
   },
+  "keywords": [
+    "mcp",
+    "mcp-server",
+    "model-context-protocol",
+    "modelcontextprotocol",
+    "coverage",
+    "security",
+    "sast",
+    "code-analysis",
+    "ai"
+  ],
   "bin": {
     "apex": "bin/apex"
   },
